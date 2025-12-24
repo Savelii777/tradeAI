@@ -1,9 +1,9 @@
 # AI Trading Bot - Main Settings Configuration
-# Version 1.0
+# Version 2.1
 
 app:
   name: "AI Trading Bot"
-  version: "1.0.0"
+  version: "2.1.0"
   environment: "development"  # development, staging, production
   debug: true
   log_level: "INFO"
@@ -17,11 +17,17 @@ exchange:
   retry_delay: 1  # seconds
 
 trading:
-  symbol: "BTCUSDT"
+  # v2.1: Multi-pair mode enabled
+  symbol: "BTCUSDT"  # Default symbol (scanner will override)
   base_currency: "USDT"
   quote_currency: "BTC"
-  leverage: 1  # 1x for spot, higher for futures
+  leverage: 10  # Default leverage (auto-calculated by aggressive sizer)
   mode: "paper"  # paper, live
+  
+  # v2.1: Aggressive trading mode
+  aggressive_mode: true  # Use 100% deposit with leverage
+  single_position: true  # Only one position at a time
+  use_scanner: true  # Enable multi-pair scanner
 
 data:
   primary_timeframe: "5m"

@@ -1,4 +1,4 @@
-# AI Trading Bot v1.0
+# AI Trading Bot v2.1
 
 🤖 **Autonomous ML-powered cryptocurrency trading bot for scalping**
 
@@ -9,6 +9,16 @@
 
 A fully autonomous trading bot with its own machine learning system, capable of analyzing real-time market data and executing profitable trades on cryptocurrency exchanges without relying on external AI APIs.
 
+### 🚀 What's New in v2.1
+
+**Multi-Pair Scanner + M1 Sniper + Aggressive Trading**
+
+- **Multi-Pair Scanner**: Continuously scans 25+ cryptocurrency pairs for high-potential setups
+- **M1 Sniper Entry**: Precise entry execution on 1-minute timeframe for optimal fills
+- **Aggressive Position Sizing**: 100% deposit usage with auto-calculated leverage (5x-20x)
+- **Single Position Mode**: "One shot, one target" strategy for maximum focus
+- **Fixed Risk Management**: 5% risk per trade with automatic leverage calculation
+
 ### Key Features
 
 - **Autonomous ML Models**: Own ensemble of models trained on historical data
@@ -18,27 +28,37 @@ A fully autonomous trading bot with its own machine learning system, capable of 
 - **Paper & Live Trading**: Test strategies before deploying real capital
 - **Monitoring Dashboard**: Real-time performance tracking and alerts
 
-### Target Performance
+### Target Performance (Aggressive Mode)
 
 | Metric | Target |
 |--------|--------|
 | Win Rate | ≥ 55% |
-| Profit Factor | ≥ 1.5 |
-| Max Drawdown | ≤ 10% |
-| Trades/Day | 5-15 |
-| Monthly Return | 3-10% |
+| Risk:Reward | 1:3 |
+| Risk per Trade | 5% |
+| Leverage | 5x-20x (auto) |
+| Trades/Day | 3-10 |
 
 ## Architecture
 
+### v2.1 Architecture with Scanner
+
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Data Collector │────▶│ Feature Engine  │────▶│   ML Models     │
-│  (Exchange API) │     │  (Indicators)   │     │  (Ensemble)     │
-└─────────────────┘     └─────────────────┘     └────────┬────────┘
-                                                         │
-┌─────────────────┐     ┌─────────────────┐     ┌────────▼────────┐
-│    Execution    │◀────│  Risk Manager   │◀────│ Decision Engine │
-│  (Orders/Pos)   │     │  (Limits)       │     │  (Signals)      │
+│  Multi-Pair     │────▶│ Feature Engine  │────▶│   ML Models     │
+│  Scanner        │     │  (Indicators)   │     │  (Ensemble)     │
+│  (25+ pairs)    │     └─────────────────┘     └────────┬────────┘
+└─────────────────┘                                      │
+        │                                                │
+        ▼                                       ┌────────▼────────┐
+┌─────────────────┐     ┌─────────────────┐     │ Decision Engine │
+│   M1 Sniper     │◀────│  Best Setup     │◀────│  (Score: 0-100) │
+│ (Precise Entry) │     │  Selection      │     └─────────────────┘
+└────────┬────────┘     └─────────────────┘
+         │
+         ▼
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    Execution    │◀────│  Risk Manager   │◀────│ Aggressive Sizer│
+│ (Futures/Lever) │     │  (5% Fixed)     │     │ (100% Deposit)  │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
@@ -48,6 +68,32 @@ A fully autonomous trading bot with its own machine learning system, capable of 
 - **Strength Model**: Predicts movement magnitude in ATR
 - **Volatility Model**: Predicts expected future volatility
 - **Timing Model**: Determines optimal entry timing
+
+## v2.1 Trading Flow
+
+```
+1. SCAN → Scan 25+ pairs for opportunities (every 60s)
+2. SCORE → ML models score each pair (0-100)
+3. SELECT → Choose best setup (score ≥ 70)
+4. SNIPE → Wait for M1 entry trigger (max 15 candles)
+5. CALCULATE → Auto-calculate leverage (Risk 5% / Stop Distance)
+6. EXECUTE → Open position with 100% deposit
+7. MANAGE → Trail stop, move to breakeven
+8. CLOSE → Take profit at 1:3 RR or stop loss
+9. REPEAT → Immediately scan for next opportunity
+```
+
+## Leverage Calculation
+
+Leverage is auto-calculated to maintain 5% fixed risk:
+
+| Stop Distance | Leverage | Risk |
+|--------------|----------|------|
+| 0.25% | 20x (max) | 5% |
+| 0.50% | 10x | 5% |
+| 1.00% | 5x (min) | 5% |
+
+**Formula**: `Leverage = Fixed_Risk / Stop_Distance`
 
 ## Installation
 
@@ -119,34 +165,49 @@ docker-compose -f docker/docker-compose.yml up -d
 ### Main Settings (`config/settings.yaml`)
 
 ```yaml
+app:
+  version: "2.1.0"
+
 exchange:
   name: "binance"
-  testnet: true  # Use testnet for paper trading
+  testnet: true
 
 trading:
   symbol: "BTCUSDT"
-  mode: "paper"  # "paper" or "live"
-
-data:
-  primary_timeframe: "5m"
-  history_days: 30
+  mode: "paper"
+  # v2.1: New settings
+  aggressive_mode: true    # 100% deposit with leverage
+  single_position: true    # One position at a time
+  use_scanner: true        # Multi-pair scanning
 ```
 
 ### Trading Parameters (`config/trading_params.yaml`)
 
 ```yaml
+# v2.1: Aggressive Mode Settings
 risk:
-  max_risk_per_trade: 0.02  # 2%
-  max_daily_loss: 0.03      # 3%
-  max_drawdown: 0.15        # 15%
+  max_risk_per_trade: 0.05  # 5% fixed risk
+  max_position_size: 1.0    # 100% of deposit
 
-entry:
-  min_direction_probability: 0.60
-  min_expected_move_atr: 1.5
+scanner:
+  enabled: true
+  min_score: 70
+  pairs:
+    - "BTCUSDT"
+    - "ETHUSDT"
+    - "SOLUSDT"
+    # ... 25+ pairs
 
-exit:
-  stop_loss_atr_multiplier: 1.5
-  take_profit_min_rr: 2.0
+sniper:
+  max_wait_candles: 15
+  min_stop_pct: 0.002    # 0.2%
+  max_stop_pct: 0.005    # 0.5%
+
+aggressive_sizing:
+  fixed_risk_pct: 0.05   # 5%
+  min_leverage: 5
+  max_leverage: 20
+  take_profit_rr: 3.0    # 1:3 risk-reward
 ```
 
 ## Project Structure
@@ -165,6 +226,10 @@ ai-trading-bot/
 │   ├── execution/              # Order execution
 │   ├── risk/                   # Risk management
 │   ├── monitoring/             # Monitoring & alerts
+│   ├── scanner/                # v2.1: Multi-pair scanner
+│   │   ├── pair_scanner.py     # Scans all pairs
+│   │   ├── m1_sniper.py        # M1 precise entry
+│   │   └── aggressive_sizing.py # 100% deposit sizing
 │   └── utils/                  # Utilities
 ├── tests/                      # Test suite
 ├── scripts/                    # Utility scripts
@@ -205,25 +270,37 @@ mypy src/
 
 ⚠️ **WARNING**: Cryptocurrency trading involves substantial risk of loss. This software is provided for educational purposes only.
 
+- **Aggressive mode uses high leverage (up to 20x) - extreme caution required**
 - **Never trade with money you cannot afford to lose**
 - **Past performance does not guarantee future results**
 - **Always start with paper trading**
 - **Use small positions when going live**
 - **The authors are not responsible for any trading losses**
 
+## Changelog
+
+### v2.1.0 (Current)
+- ✅ Multi-pair scanner (25+ pairs)
+- ✅ M1 sniper entry system
+- ✅ Aggressive 100% deposit sizing
+- ✅ Auto leverage calculation (5x-20x)
+- ✅ Fixed 5% risk per trade
+- ✅ Single position mode
+
+### v1.0.0
+- ✅ Basic trading bot
+- ✅ ML ensemble models
+- ✅ Risk management
+- ✅ Paper trading mode
+
 ## Roadmap
 
-### Version 1.1
-- [ ] Multiple trading pairs support
-- [ ] Improved execution speed
-- [ ] Enhanced notifications
+### Version 2.2
+- [ ] Portfolio mode (multiple positions)
+- [ ] Advanced trailing stops
+- [ ] Custom pair filtering
 
-### Version 1.2
-- [ ] Portfolio management
-- [ ] Correlation analysis
-- [ ] Multi-exchange support
-
-### Version 2.0
+### Version 3.0
 - [ ] Reinforcement learning models
 - [ ] Automatic hyperparameter optimization
 - [ ] Web-based dashboard

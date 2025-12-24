@@ -1,6 +1,7 @@
 """
 AI Trading Bot - Main Entry Point
 Orchestrates all components and runs the trading bot.
+Version 2.1 - Multi-pair scanner + M1 sniper + Aggressive trading
 """
 
 import asyncio
@@ -17,6 +18,7 @@ from loguru import logger
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.utils import load_yaml_config, setup_logger
+from src.utils.constants import PositionSide
 from src.data import DataCollector, DataStorage, DataPreprocessor
 from src.features import FeatureEngine
 from src.models import EnsembleModel, ModelTrainer
@@ -24,16 +26,25 @@ from src.strategy import DecisionEngine
 from src.execution import ExchangeAPI, OrderManager, PositionManager
 from src.risk import RiskLimits, DrawdownController
 from src.monitoring import AlertManager, Dashboard, trading_logger
+from src.scanner import PairScanner, M1Sniper, AggressiveSizer
 
 
 class TradingBot:
     """
-    Main trading bot orchestrator.
+    Main trading bot orchestrator v2.1.
+    
+    New features:
+    - Multi-pair scanning
+    - M1 precise entry
+    - Aggressive 100% deposit usage with leverage
+    - Single position mode
     
     Coordinates all components:
     - Data collection
+    - Multi-pair scanning
     - Feature generation
     - Model prediction
+    - M1 sniper entry
     - Decision making
     - Order execution
     - Risk management
@@ -60,6 +71,11 @@ class TradingBot:
         self.symbol = self.config['trading']['symbol']
         self.timeframe = self.config['data']['primary_timeframe']
         
+        # v2.1: Aggressive mode settings
+        self.aggressive_mode = self.config['trading'].get('aggressive_mode', False)
+        self.single_position = self.config['trading'].get('single_position', True)
+        self.use_scanner = self.config['trading'].get('use_scanner', False)
+        
         # Component initialization flags
         self._initialized = False
         self._running = False
@@ -79,9 +95,14 @@ class TradingBot:
         self.alert_manager: Optional[AlertManager] = None
         self.dashboard: Optional[Dashboard] = None
         
+        # v2.1: New components
+        self.scanner: Optional[PairScanner] = None
+        self.sniper: Optional[M1Sniper] = None
+        self.aggressive_sizer: Optional[AggressiveSizer] = None
+        
     async def setup(self) -> None:
         """Initialize all components."""
-        logger.info("Setting up trading bot...")
+        logger.info("Setting up trading bot v2.1...")
         
         # Setup logging
         setup_logger(
@@ -98,14 +119,14 @@ class TradingBot:
         self.exchange = ExchangeAPI(
             exchange_id=exchange_config.get('name', 'binance'),
             testnet=exchange_config.get('testnet', True),
-            config={'market_type': 'spot'}
+            config={'market_type': 'future'}  # v2.1: Use futures for leverage
         )
         await self.exchange.initialize()
         
         # Initialize data collector
         self.data_collector = DataCollector(
             exchange_id=exchange_config.get('name', 'binance'),
-            symbol=self.symbol.replace('USDT', '/USDT'),  # Convert to ccxt format
+            symbol=self.symbol.replace('USDT', '/USDT'),
             testnet=exchange_config.get('testnet', True)
         )
         await self.data_collector.start()
@@ -159,34 +180,229 @@ class TradingBot:
             }
         )
         
+        # v2.1: Initialize scanner components
+        if self.use_scanner:
+            scanner_config = self.trading_params.get('scanner', {})
+            self.scanner = PairScanner(
+                model=self.model,
+                feature_engine=self.feature_engine,
+                config=scanner_config
+            )
+            logger.info(f"Scanner initialized with {len(self.scanner.pairs)} pairs")
+            
+        # v2.1: Initialize M1 sniper
+        sniper_config = self.trading_params.get('sniper', {})
+        self.sniper = M1Sniper(config=sniper_config)
+        logger.info("M1 Sniper initialized")
+        
+        # v2.1: Initialize aggressive sizer
+        if self.aggressive_mode:
+            aggressive_config = self.trading_params.get('aggressive_sizing', {})
+            self.aggressive_sizer = AggressiveSizer(config=aggressive_config)
+            logger.info("Aggressive sizer initialized (100% deposit with leverage)")
+        
         self._initialized = True
-        logger.info("Trading bot setup complete")
+        logger.info("Trading bot v2.1 setup complete")
         
     async def start(self) -> None:
         """Start the trading bot."""
         if not self._initialized:
             await self.setup()
             
-        logger.info(f"Starting trading bot for {self.symbol}")
+        logger.info(f"Starting trading bot v2.1 for {self.symbol}")
+        if self.use_scanner:
+            logger.info(f"Scanner mode: scanning {len(self.scanner.pairs)} pairs")
+        if self.aggressive_mode:
+            logger.info("Aggressive mode: 100% deposit with leverage")
+            
         self._running = True
         
         # Send startup alert
         await self.alert_manager.info(
-            "Bot Started",
-            f"Trading bot started for {self.symbol}"
+            "Bot Started v2.1",
+            f"Trading bot started - Scanner: {self.use_scanner}, Aggressive: {self.aggressive_mode}"
         )
         
         # Start main loop
         try:
-            await self._main_loop()
+            if self.use_scanner:
+                await self._scanner_loop()
+            else:
+                await self._main_loop()
         except Exception as e:
             logger.exception(f"Error in main loop: {e}")
             await self.alert_manager.critical("Bot Error", str(e))
         finally:
             await self.stop()
             
+    async def _scanner_loop(self) -> None:
+        """
+        Main trading loop with multi-pair scanner (v2.1).
+        
+        Flow:
+        1. Check if position is open -> manage it
+        2. If no position -> scan all pairs for opportunity
+        3. Find best opportunity -> use M1 sniper for entry
+        4. Execute trade with aggressive sizing
+        """
+        scan_interval = self.trading_params.get('scanner', {}).get('scan_interval', 60)
+        
+        while self._running:
+            try:
+                # Get account state
+                balance_info = await self.exchange.get_balance('USDT')
+                account_balance = balance_info.get('total', 10000)
+                
+                # Update drawdown tracking
+                self.drawdown_controller.update(account_balance)
+                self.risk_limits.update_balance(account_balance)
+                
+                # Check if trading is allowed
+                position_multiplier = self.drawdown_controller.get_position_multiplier()
+                if position_multiplier == 0:
+                    logger.warning("Trading blocked by drawdown controller")
+                    await asyncio.sleep(60)
+                    continue
+                    
+                # Check for open positions
+                all_positions = self.position_manager.get_open_positions()
+                
+                if all_positions:
+                    # v2.1: Single position mode - manage existing position
+                    position = all_positions[0]
+                    
+                    # Fetch current price for position symbol
+                    symbol_ccxt = position.symbol.replace('USDT', '/USDT')
+                    df = await self.data_collector.fetch_ohlcv(
+                        symbol=symbol_ccxt,
+                        timeframe='1m',
+                        limit=50
+                    )
+                    
+                    if not df.empty:
+                        current_price = df['close'].iloc[-1]
+                        atr = self._calculate_atr(df)
+                        
+                        await self.position_manager.update_position(
+                            position.id,
+                            current_price,
+                            atr
+                        )
+                        
+                    logger.debug(f"Managing position: {position.symbol} @ {position.entry_price:.4f}")
+                    await asyncio.sleep(10)
+                    continue
+                    
+                # No position - scan for opportunities
+                logger.info("Scanning for opportunities...")
+                
+                scan_results = await self.scanner.scan_all_pairs(
+                    self.data_collector,
+                    limit=500
+                )
+                
+                # Get best opportunity
+                best = self.scanner.get_best_opportunity()
+                
+                if best is None:
+                    logger.info("No valid opportunities found")
+                    await asyncio.sleep(scan_interval)
+                    continue
+                    
+                logger.info(f"Best opportunity: {best.symbol} score={best.score:.1f}, "
+                           f"direction={'LONG' if best.direction == 1 else 'SHORT'}, "
+                           f"prob={best.direction_probability:.1%}")
+                
+                # Use M1 sniper for precise entry
+                entry = await self.sniper.snipe_entry(
+                    symbol=best.symbol,
+                    direction=best.direction,
+                    data_collector=self.data_collector,
+                    scan_result=best,
+                    account_balance=account_balance,
+                    min_leverage=self.trading_params.get('aggressive_sizing', {}).get('min_leverage', 5),
+                    max_leverage=self.trading_params.get('aggressive_sizing', {}).get('max_leverage', 20)
+                )
+                
+                if entry is None:
+                    logger.info(f"Sniper timeout for {best.symbol} - no entry found")
+                    await asyncio.sleep(30)
+                    continue
+                    
+                # Execute trade
+                await self._execute_aggressive_trade(entry, account_balance)
+                
+                # Wait before next scan
+                await asyncio.sleep(scan_interval)
+                
+            except Exception as e:
+                logger.error(f"Error in scanner loop: {e}")
+                await asyncio.sleep(30)
+                
+    async def _execute_aggressive_trade(
+        self,
+        entry,  # SniperEntry
+        account_balance: float
+    ) -> None:
+        """Execute an aggressive trade from sniper entry."""
+        # Check risk limits
+        risk_check = self.risk_limits.check_trade_allowed(
+            account_balance=account_balance,
+            trade_risk=entry.risk_amount,
+            position_value=entry.position_value
+        )
+        
+        if not risk_check['allowed']:
+            logger.warning(f"Trade blocked by risk limits: {risk_check['reasons']}")
+            return
+            
+        # Open position
+        side = PositionSide.LONG if entry.direction == 1 else PositionSide.SHORT
+        
+        try:
+            # Log position details
+            if self.aggressive_sizer:
+                calc = self.aggressive_sizer.calculate(
+                    deposit=account_balance,
+                    entry_price=entry.entry_price,
+                    stop_loss=entry.stop_loss,
+                    direction=entry.direction
+                )
+                self.aggressive_sizer.log_position_summary(calc, entry.direction)
+            
+            position = await self.position_manager.open_position(
+                symbol=entry.symbol,
+                side=side,
+                quantity=entry.position_size,
+                entry_price=entry.entry_price,
+                stop_loss=entry.stop_loss,
+                take_profit=entry.take_profit,
+                atr=entry.metadata.get('atr', 0),
+                metadata={
+                    'leverage': entry.leverage,
+                    'entry_type': entry.entry_type,
+                    'trigger_reason': entry.trigger_reason,
+                    'risk_percent': entry.risk_percent,
+                    'sniper_entry': True
+                }
+            )
+            
+            await self.alert_manager.alert_position_opened(
+                symbol=entry.symbol,
+                side=side.value,
+                size=entry.position_size,
+                entry_price=entry.entry_price
+            )
+            
+            logger.info(f"Position opened: {entry.symbol} {side.value} @ {entry.entry_price:.4f}, "
+                       f"leverage={entry.leverage}x, size={entry.position_size:.4f}")
+            
+        except Exception as e:
+            logger.error(f"Failed to execute trade: {e}")
+            await self.alert_manager.critical("Trade Execution Failed", str(e))
+            
     async def _main_loop(self) -> None:
-        """Main trading loop."""
+        """Main trading loop (original v1.0 mode)."""
         while self._running:
             try:
                 # Fetch latest market data
@@ -276,8 +492,6 @@ class TradingBot:
             return
             
         # Open position
-        from src.utils.constants import PositionSide
-        
         side = PositionSide.LONG if decision.action == 'buy' else PositionSide.SHORT
         
         try:
