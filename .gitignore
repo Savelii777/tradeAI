@@ -49,8 +49,8 @@ htmlcov/
 *.log
 logs/
 
-# Data
-data/
+# Data files (not source code)
+/data/
 *.csv
 *.parquet
 
