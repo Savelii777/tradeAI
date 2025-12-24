@@ -1,0 +1,147 @@
+# AI Trading Bot - Trading Parameters Configuration
+# Version 1.0
+
+# Risk Management Parameters
+risk:
+  # Per-trade limits
+  max_risk_per_trade: 0.02  # 2% of deposit
+  max_position_size: 0.20  # 20% of deposit
+  
+  # Daily limits
+  max_daily_loss: 0.03  # 3% of deposit
+  max_consecutive_losses: 5
+  max_trades_per_day: 20
+  cooldown_after_losses: 7200  # 2 hours in seconds
+  
+  # Weekly limits
+  max_weekly_loss: 0.07  # 7% of deposit
+  
+  # Global limits
+  max_drawdown: 0.15  # 15% from peak
+  min_balance: 100  # Minimum balance to trade
+
+# Entry Parameters
+entry:
+  min_direction_probability: 0.60  # 60%
+  min_expected_move_atr: 1.5  # 1.5 ATR
+  min_timing_score: 0.5
+  require_model_consensus: true
+  
+  # Adaptive threshold adjustment
+  threshold_increase_after_losses: 0.05
+  threshold_decrease_after_wins: 0.02
+
+# Exit Parameters
+exit:
+  # Stop-loss settings
+  stop_loss_atr_multiplier: 1.5  # 1.5-2 ATR
+  stop_loss_min_atr: 1.0
+  stop_loss_max_atr: 3.0
+  
+  # Take-profit settings
+  take_profit_min_rr: 2.0  # Minimum risk:reward ratio
+  partial_take_profit: 0.5  # Close 50% at first target
+  
+  # Trailing stop settings
+  trailing_stop_activation_atr: 1.0  # Activate after 1 ATR profit
+  trailing_stop_distance_atr: 1.0  # Trail at 1 ATR distance
+  
+  # Break-even settings
+  move_to_breakeven_atr: 1.0  # Move to breakeven after 1 ATR
+
+# Filters
+filters:
+  volatility:
+    max_atr_multiplier: 3.0  # Don't trade when ATR > 3x average
+    min_atr_multiplier: 0.3  # Don't trade when ATR < 0.3x average
+  
+  liquidity:
+    min_volume_percentile: 20  # Don't trade in bottom 20% volume
+  
+  consistency:
+    require_timeframe_alignment: true  # All timeframes must agree
+  
+  time:
+    avoid_first_minutes: 5  # Avoid first 5 minutes of session
+    avoid_last_minutes: 5  # Avoid last 5 minutes of session
+
+# Position Sizing
+position_sizing:
+  method: "kelly"  # fixed, kelly, volatility_adjusted
+  base_size: 0.01  # 1% for fixed method
+  kelly_fraction: 0.5  # Half-Kelly for safety
+  
+  # Adjustments
+  reduce_after_losses: true
+  reduction_factor: 0.5  # Reduce by 50% after loss streak
+  recovery_trades: 3  # Trades to recover to normal size
+
+# Order Execution
+execution:
+  default_order_type: "limit"  # limit, market
+  limit_order_timeout: 10  # seconds
+  slippage_tolerance: 0.001  # 0.1%
+  min_order_value: 10  # Minimum order value in USDT
+
+# Technical Indicator Parameters
+indicators:
+  ema_periods:
+    - 9
+    - 21
+    - 50
+    - 200
+  rsi_periods:
+    - 7
+    - 14
+  atr_period: 14
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  bollinger:
+    period: 20
+    std_dev: 2
+  stochastic:
+    k_period: 14
+    d_period: 3
+    smooth_k: 3
+
+# Feature Engineering
+features:
+  lookback_periods:
+    - 5
+    - 10
+    - 20
+    - 50
+  normalization_window: 500
+  outlier_std_threshold: 3.0
+
+# Model Parameters
+model_params:
+  direction:
+    type: "lightgbm"
+    n_estimators: 500
+    max_depth: 8
+    learning_rate: 0.05
+    
+  strength:
+    type: "lightgbm"
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.05
+    
+  volatility:
+    type: "lightgbm"
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.1
+    
+  timing:
+    type: "lightgbm"
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.05
+    
+  ensemble:
+    method: "weighted_average"  # weighted_average, stacking
+    use_meta_model: true
