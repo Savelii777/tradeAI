@@ -12,10 +12,11 @@ services:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=INFO
     volumes:
-      - ../config:/app/config:ro
+      - ../config:/app/config
       - ../logs:/app/logs
       - ../models:/app/models
       - ../data:/app/data
+      - ../results:/app/results
     depends_on:
       - postgres
       - redis

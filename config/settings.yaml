@@ -89,6 +89,34 @@ overfitting_thresholds:
   max_realistic_drawdown: 0.30
   max_realistic_profit_factor: 5.0
 
+# Multi-pair trading configuration
+multi_pair:
+  enabled: true
+  pairs_source: "auto"  # auto = load from exchange, file = from pairs_list.json
+  min_volume_usd: 10000000  # $10M minimum daily volume
+  max_pairs: 100
+  quote_asset: "USDT"
+  market_type: "swap"  # futures/swap
+  
+  data:
+    days: 30
+    timeframes: ["5m", "1h", "4h"]
+    
+  training:
+    combine_pairs: true  # combine data from all pairs
+    min_samples_per_pair: 1000
+    
+  backtest:
+    max_concurrent_positions: 1
+    signal_selection: "best_score"  # best_score, first, random
+    log_skipped_signals: true
+    
+# Signal configuration
+signals:
+  min_probability: 0.55  # lowered from 0.65
+  min_score: 0.30  # lowered from 0.50
+  log_rejected_signals: true
+
 monitoring:
   dashboard:
     enabled: true

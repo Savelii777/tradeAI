@@ -98,12 +98,15 @@ class EnsembleModel:
         """
         metrics = {}
         
+        # Check if y_val is valid (not None and not empty)
+        has_y_val = y_val is not None and (not hasattr(y_val, 'empty') or not y_val.empty)
+        
         # Train direction model
         if 'direction' in y_train:
             logger.info("Training direction model...")
             metrics['direction'] = self.direction_model.train(
                 X_train, y_train['direction'],
-                X_val, y_val.get('direction') if y_val else None
+                X_val, y_val['direction'] if has_y_val and 'direction' in y_val else None
             )
             
         # Train strength model
@@ -111,7 +114,7 @@ class EnsembleModel:
             logger.info("Training strength model...")
             metrics['strength'] = self.strength_model.train(
                 X_train, y_train['strength'],
-                X_val, y_val.get('strength') if y_val else None
+                X_val, y_val['strength'] if has_y_val and 'strength' in y_val else None
             )
             
         # Train volatility model
@@ -119,7 +122,7 @@ class EnsembleModel:
             logger.info("Training volatility model...")
             metrics['volatility'] = self.volatility_model.train(
                 X_train, y_train['volatility'],
-                X_val, y_val.get('volatility') if y_val else None
+                X_val, y_val['volatility'] if has_y_val and 'volatility' in y_val else None
             )
             
         # Train timing model
@@ -127,7 +130,7 @@ class EnsembleModel:
             logger.info("Training timing model...")
             metrics['timing'] = self.timing_model.train(
                 X_train, y_train['timing'],
-                X_val, y_val.get('timing') if y_val else None
+                X_val, y_val['timing'] if has_y_val and 'timing' in y_val else None
             )
             
         # Train meta-model if requested
