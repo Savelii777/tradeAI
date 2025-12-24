@@ -1,0 +1,85 @@
+# AI Trading Bot - Docker Compose Configuration
+version: '3.8'
+
+services:
+  trading-bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ai-trading-bot
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    volumes:
+      - ../config:/app/config:ro
+      - ../logs:/app/logs
+      - ../models:/app/models
+      - ../data:/app/data
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - trading-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: trading-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=trading
+      - POSTGRES_PASSWORD=trading_password
+      - POSTGRES_DB=trading_bot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - trading-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trading -d trading_bot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: trading-cache
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - trading-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dashboard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: trading-dashboard
+    restart: unless-stopped
+    command: python -c "from src.monitoring import Dashboard; d = Dashboard(); d.run()"
+    ports:
+      - "8050:8050"
+    volumes:
+      - ../config:/app/config:ro
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - trading-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  trading-network:
+    driver: bridge

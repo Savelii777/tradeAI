@@ -1,0 +1,95 @@
+# AI Trading Bot - Git Ignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Logs
+*.log
+logs/
+
+# Data
+data/
+*.csv
+*.parquet
+
+# Models
+models/saved/
+*.joblib
+*.pkl
+*.h5
+
+# Secrets - NEVER commit these
+config/secrets.yaml
+.env
+*.key
+*.pem
+
+# Database
+*.db
+*.sqlite3
+
+# Docker
+docker/data/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Coverage
+.coverage
+coverage.xml
+
+# mypy
+.mypy_cache/

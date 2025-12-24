@@ -1,0 +1,79 @@
+# AI Trading Bot - Main Settings Configuration
+# Version 2.1
+
+app:
+  name: "AI Trading Bot"
+  version: "2.1.0"
+  environment: "development"  # development, staging, production
+  debug: true
+  log_level: "INFO"
+
+exchange:
+  name: "binance"
+  testnet: true  # Use testnet for development
+  rate_limit: 1200  # requests per minute
+  timeout: 30  # seconds
+  retry_attempts: 3
+  retry_delay: 1  # seconds
+
+trading:
+  # v2.1: Multi-pair mode enabled
+  symbol: "BTCUSDT"  # Default symbol (scanner will override)
+  base_currency: "USDT"
+  quote_currency: "BTC"
+  leverage: 10  # Default leverage (auto-calculated by aggressive sizer)
+  mode: "paper"  # paper, live
+  
+  # v2.1: Aggressive trading mode
+  aggressive_mode: true  # Use 100% deposit with leverage
+  single_position: true  # Only one position at a time
+  use_scanner: true  # Enable multi-pair scanner
+
+data:
+  primary_timeframe: "5m"
+  secondary_timeframes:
+    - "1m"
+    - "15m"
+    - "1h"
+  history_days: 30
+  order_book_depth: 20
+
+storage:
+  database:
+    type: "postgresql"
+    host: "localhost"
+    port: 5432
+    name: "trading_bot"
+    pool_size: 10
+  cache:
+    type: "redis"
+    host: "localhost"
+    port: 6379
+    db: 0
+
+models:
+  retrain_schedule: "0 0 * * 0"  # Weekly on Sunday at midnight
+  min_training_samples: 10000
+  validation_split: 0.15
+  test_split: 0.15
+  save_path: "./models/saved/"
+
+monitoring:
+  dashboard:
+    enabled: true
+    port: 8050
+  metrics:
+    enabled: true
+    port: 9090
+
+notifications:
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  email:
+    enabled: false
+    smtp_server: ""
+    smtp_port: 587
+    sender: ""
+    recipients: []

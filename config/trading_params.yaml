@@ -1,0 +1,207 @@
+# AI Trading Bot - Trading Parameters Configuration
+
+# Risk Management Parameters
+risk:
+  # v2.1: Aggressive mode - fixed 5% risk per trade
+  max_risk_per_trade: 0.05  # 5% of deposit
+  max_position_size: 1.0  # 100% of deposit (with leverage)
+  
+  # Daily limits
+  max_daily_loss: 0.15  # 15% of deposit (3 losses)
+  max_consecutive_losses: 3  # After 3 losses, pause
+  max_trades_per_day: 10
+  cooldown_after_losses: 3600  # 1 hour in seconds
+  
+  # Weekly limits
+  max_weekly_loss: 0.30  # 30% of deposit
+  
+  # Global limits
+  max_drawdown: 0.50  # 50% from peak (aggressive)
+  min_balance: 50  # Minimum balance to trade
+
+# v2.1: Scanner Parameters
+scanner:
+  enabled: true
+  pairs:
+    - "BTCUSDT"
+    - "ETHUSDT"
+    - "BNBUSDT"
+    - "SOLUSDT"
+    - "XRPUSDT"
+    - "DOGEUSDT"
+    - "ADAUSDT"
+    - "AVAXUSDT"
+    - "DOTUSDT"
+    - "MATICUSDT"
+    - "LINKUSDT"
+    - "ATOMUSDT"
+    - "LTCUSDT"
+    - "UNIUSDT"
+    - "APTUSDT"
+    - "NEARUSDT"
+    - "ARBUSDT"
+    - "OPUSDT"
+    - "FILUSDT"
+    - "INJUSDT"
+  min_score: 70  # Minimum opportunity score (0-100)
+  min_volume_ratio: 0.8  # Volume vs average
+  min_direction_probability: 0.65  # 65%
+  min_expected_move_atr: 2.0  # 2 ATR expected move
+  require_timeframe_alignment: true
+  scan_interval: 60  # Scan every 60 seconds
+
+# v2.1: M1 Sniper Parameters
+sniper:
+  enabled: true
+  max_wait_candles: 15  # Max 15 M1 candles to wait for entry
+  pullback_threshold: 0.003  # 0.3% pullback for entry
+  momentum_threshold: 0.0015  # 0.15% momentum burst
+  
+  # Stop loss parameters
+  default_stop_pct: 0.003  # 0.3%
+  min_stop_pct: 0.002  # 0.2%
+  max_stop_pct: 0.005  # 0.5%
+
+# v2.1: Aggressive Position Sizing
+aggressive_sizing:
+  enabled: true
+  fixed_risk_pct: 0.05  # 5% fixed risk per trade
+  deposit_usage: 1.0  # 100% of deposit
+  
+  # Leverage limits
+  min_leverage: 5
+  max_leverage: 20
+  
+  # Take profit
+  take_profit_rr: 3.0  # 1:3 risk-reward ratio
+  
+  # Leverage calculation examples:
+  # Risk 5%, Stop 0.5% -> Leverage 10x
+  # Risk 5%, Stop 0.25% -> Leverage 20x
+  # Risk 5%, Stop 1.0% -> Leverage 5x (minimum)
+
+# Entry Parameters
+entry:
+  min_direction_probability: 0.65  # 65% (increased for aggressive)
+  min_expected_move_atr: 2.0  # 2 ATR (increased)
+  min_timing_score: 0.6  # 0.6 (increased)
+  require_model_consensus: true
+  
+  # Adaptive threshold adjustment
+  threshold_increase_after_losses: 0.05
+  threshold_decrease_after_wins: 0.02
+
+# Exit Parameters
+exit:
+  # Stop-loss settings (auto-calculated by sniper)
+  stop_loss_atr_multiplier: 1.0  # 1 ATR base
+  stop_loss_min_atr: 0.5
+  stop_loss_max_atr: 2.0
+  
+  # Take-profit settings
+  take_profit_min_rr: 3.0  # 1:3 risk:reward ratio
+  partial_take_profit: 0.5  # Close 50% at first target
+  
+  # Trailing stop settings
+  trailing_stop_activation_pct: 0.01  # Activate after 1% profit
+  trailing_stop_distance_pct: 0.005  # Trail at 0.5% distance
+  
+  # Break-even settings
+  move_to_breakeven_pct: 0.005  # Move to breakeven after 0.5%
+
+# Filters
+filters:
+  volatility:
+    max_atr_multiplier: 3.0  # Don't trade when ATR > 3x average
+    min_atr_multiplier: 0.3  # Don't trade when ATR < 0.3x average
+  
+  liquidity:
+    min_volume_percentile: 20  # Don't trade in bottom 20% volume
+  
+  consistency:
+    require_timeframe_alignment: true  # All timeframes must agree
+  
+  time:
+    avoid_first_minutes: 5  # Avoid first 5 minutes of session
+    avoid_last_minutes: 5  # Avoid last 5 minutes of session
+
+# Position Sizing
+position_sizing:
+  method: "kelly"  # fixed, kelly, volatility_adjusted
+  base_size: 0.01  # 1% for fixed method
+  kelly_fraction: 0.5  # Half-Kelly for safety
+  
+  # Adjustments
+  reduce_after_losses: true
+  reduction_factor: 0.5  # Reduce by 50% after loss streak
+  recovery_trades: 3  # Trades to recover to normal size
+
+# Order Execution
+execution:
+  default_order_type: "limit"  # limit, market
+  limit_order_timeout: 10  # seconds
+  slippage_tolerance: 0.001  # 0.1%
+  min_order_value: 10  # Minimum order value in USDT
+
+# Technical Indicator Parameters
+indicators:
+  ema_periods:
+    - 9
+    - 21
+    - 50
+    - 200
+  rsi_periods:
+    - 7
+    - 14
+  atr_period: 14
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  bollinger:
+    period: 20
+    std_dev: 2
+  stochastic:
+    k_period: 14
+    d_period: 3
+    smooth_k: 3
+
+# Feature Engineering
+features:
+  lookback_periods:
+    - 5
+    - 10
+    - 20
+    - 50
+  normalization_window: 500
+  outlier_std_threshold: 3.0
+
+# Model Parameters
+model_params:
+  direction:
+    type: "lightgbm"
+    n_estimators: 500
+    max_depth: 8
+    learning_rate: 0.05
+    
+  strength:
+    type: "lightgbm"
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.05
+    
+  volatility:
+    type: "lightgbm"
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.1
+    
+  timing:
+    type: "lightgbm"
+    n_estimators: 300
+    max_depth: 6
+    learning_rate: 0.05
+    
+  ensemble:
+    method: "weighted_average"  # weighted_average, stacking
+    use_meta_model: true
