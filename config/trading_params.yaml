@@ -1,4 +1,10 @@
-# AI Trading Bot - Trading Parameters Configuration
+# =============================================================================
+# AI Trading Bot - Trading Parameters Configuration (V2)
+# =============================================================================
+# Updated with RR 1:3 optimization, improved thresholds, blacklist integration
+# =============================================================================
+
+version: "2.0"
 
 # Risk Management Parameters
 risk:
@@ -80,25 +86,34 @@ aggressive_sizing:
   # Risk 5%, Stop 0.25% -> Leverage 20x
   # Risk 5%, Stop 1.0% -> Leverage 5x (minimum)
 
-# Entry Parameters
+# Entry Parameters (V2: Calibrated for multi-class direction model)
+# Direction model: 3 classes (down/sideways/up), ~57% sideways
+# Timing model: regression output mean ~0.20, max ~0.35
 entry:
-  min_direction_probability: 0.65  # 65% (increased for aggressive)
-  min_expected_move_atr: 2.0  # 2 ATR (increased)
-  min_timing_score: 0.6  # 0.6 (increased)
+  min_direction_probability: 0.32  # Just above 1/3 baseline for 3-class
+  min_expected_move_atr: 1.5  # 1.5 ATR
+  min_timing_score: 0.15  # Timing model outputs 0.08-0.35, mean 0.20
+  min_strength_score: 0.20  # Strength threshold
   require_model_consensus: true
+  
+  # Dynamic threshold adjustment based on volatility
+  use_dynamic_thresholds: false  # Disabled - already calibrated
+  high_volatility_multiplier: 1.1  # Increase thresholds 10% in high vol
+  low_volatility_multiplier: 0.9  # Decrease thresholds 10% in low vol
   
   # Adaptive threshold adjustment
   threshold_increase_after_losses: 0.05
   threshold_decrease_after_wins: 0.02
 
-# Exit Parameters
+# Exit Parameters (V2: RR 1:3 optimization)
 exit:
-  # Stop-loss settings (auto-calculated by sniper)
-  stop_loss_atr_multiplier: 1.0  # 1 ATR base
-  stop_loss_min_atr: 0.5
+  # Stop-loss settings - 1.5 ATR for better RR
+  stop_loss_atr_multiplier: 1.5  # Changed from 1.0 to 1.5 ATR
+  stop_loss_min_atr: 1.0
   stop_loss_max_atr: 2.0
   
-  # Take-profit settings
+  # Take-profit settings - RR 1:3
+  take_profit_atr_multiplier: 4.5  # TP = 4.5 ATR (3x SL)
   take_profit_min_rr: 3.0  # 1:3 risk:reward ratio
   partial_take_profit: 0.5  # Close 50% at first target
   
@@ -204,4 +219,80 @@ model_params:
     
   ensemble:
     method: "weighted_average"  # weighted_average, stacking
-    use_meta_model: true
+    use_meta_model: false
+    use_v2_models: true
+
+# =============================================================================
+# Blacklist Configuration (V2)
+# =============================================================================
+blacklist:
+  enabled: true
+  persist_file: "data/blacklist.json"
+  
+  # Static blacklist - pairs that should never be traded
+  static_pairs:
+    - "ADA/USDT:USDT"  # -7.32% in backtest
+    - "PIPPIN/USDT:USDT"
+    - "BEAT/USDT:USDT"
+    - "H/USDT:USDT"
+    - "XMR/USDT:USDT"
+  
+  # Auto-blacklist thresholds
+  auto_blacklist:
+    enabled: true
+    min_win_rate: 0.45  # Auto-blacklist if WR < 45%
+    min_profit_factor: 1.0  # Auto-blacklist if PF < 1.0
+    max_consecutive_losses: 5
+    min_trades_required: 10  # Need at least 10 trades to evaluate
+  
+  # Cooldown settings
+  cooldown_hours: 24  # Temporary blacklist duration
+  max_cooldown_hours: 168  # Max 1 week
+
+# =============================================================================
+# Signal Generation Thresholds (V2)
+# =============================================================================
+signal_thresholds:
+  # Base thresholds (before dynamic adjustment)
+  direction:
+    min_probability: 0.45  # Lowered from 0.60
+    strong_probability: 0.60
+  
+  timing:
+    min_score: 0.40  # Lowered from 0.50
+    strong_score: 0.60
+  
+  strength:
+    min_score: 0.30  # Lowered from 0.40
+    strong_score: 0.50
+  
+  volatility:
+    min_score: 0.30
+    max_score: 0.80  # Avoid extremely volatile periods
+  
+  # Combined score thresholds
+  combined:
+    min_score: 0.50
+    strong_score: 0.70
+
+# =============================================================================
+# RR 1:3 Backtest Settings (V2)
+# =============================================================================
+backtest:
+  # Risk-Reward optimization
+  rr_ratio: 3.0  # Target RR 1:3
+  sl_atr_multiplier: 1.5  # SL = 1.5 ATR
+  tp_atr_multiplier: 4.5  # TP = 4.5 ATR (3x SL)
+  
+  # Expected metrics with RR 1:3
+  # WR 50%: EV = 0.50 * 3 - 0.50 * 1 = 1.0R
+  # WR 45%: EV = 0.45 * 3 - 0.55 * 1 = 0.80R
+  # WR 40%: EV = 0.40 * 3 - 0.60 * 1 = 0.60R
+  
+  # Trade filtering
+  max_trades_per_pair_per_day: 3
+  min_time_between_trades: 300  # 5 minutes
+  
+  # Costs
+  commission_pct: 0.0004  # 0.04%
+  slippage_pct: 0.0002  # 0.02%

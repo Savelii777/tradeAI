@@ -25,6 +25,7 @@ from src.models import EnsembleModel, ModelTrainer
 from src.strategy import DecisionEngine
 from src.execution import ExchangeAPI, OrderManager, PositionManager
 from src.risk import RiskLimits, DrawdownController
+from src.risk.risk_manager import RiskManager, load_risk_config
 from src.monitoring import AlertManager, Dashboard, trading_logger
 from src.scanner import PairScanner, M1Sniper, AggressiveSizer
 
@@ -92,6 +93,7 @@ class TradingBot:
         self.position_manager: Optional[PositionManager] = None
         self.risk_limits: Optional[RiskLimits] = None
         self.drawdown_controller: Optional[DrawdownController] = None
+        self.risk_manager: Optional[RiskManager] = None  # V1 + Risk Management
         self.alert_manager: Optional[AlertManager] = None
         self.dashboard: Optional[Dashboard] = None
         
@@ -145,6 +147,16 @@ class TradingBot:
         # Initialize risk components
         self.risk_limits = RiskLimits(self.trading_params.get('risk', {}))
         self.drawdown_controller = DrawdownController(self.trading_params.get('risk', {}))
+        
+        # V1 + Risk Management: Load RiskManager
+        try:
+            risk_config = load_risk_config('config/risk_management.yaml')
+            self.risk_manager = RiskManager(risk_config)
+            logger.info(f"RiskManager initialized: max_risk={self.risk_manager.max_risk_per_trade:.1%}, "
+                       f"max_dd={self.risk_manager.max_drawdown:.1%}")
+        except Exception as e:
+            logger.warning(f"RiskManager not initialized: {e}")
+            self.risk_manager = None
         
         # Initialize monitoring
         self.alert_manager = AlertManager(
@@ -480,7 +492,26 @@ class TradingBot:
         account_state: Dict
     ) -> None:
         """Execute a trading decision."""
-        # Check risk limits
+        # V1 + Risk Management: Check RiskManager first
+        if self.risk_manager:
+            symbol = decision.symbol if hasattr(decision, 'symbol') else self.symbol
+            can_trade, reason = self.risk_manager.can_trade(symbol, account_state['balance'])
+            
+            if not can_trade:
+                logger.warning(f"Trade blocked by RiskManager: {reason}")
+                return
+                
+            # Use RiskManager for position sizing
+            stop_loss_pct = abs(decision.stop_loss - decision.entry_price) / decision.entry_price
+            position_size_value = self.risk_manager.calculate_position_size(
+                capital=account_state['balance'],
+                stop_loss_pct=stop_loss_pct,
+                signal_confidence=decision.confidence if hasattr(decision, 'confidence') else 1.0
+            )
+            # Adjust decision position size based on RiskManager
+            decision.position_size = position_size_value / decision.entry_price
+        
+        # Check legacy risk limits
         risk_check = self.risk_limits.check_trade_allowed(
             account_balance=account_state['balance'],
             trade_risk=decision.risk_assessment.get('risk_amount', 0),
@@ -526,10 +557,18 @@ class TradingBot:
             )
             
             if closed:
+                # Record in legacy risk_limits
                 self.risk_limits.record_trade_result(
                     pnl=closed.realized_pnl,
                     is_win=closed.realized_pnl > 0
                 )
+                
+                # V1 + Risk Management: Record in RiskManager
+                if self.risk_manager:
+                    self.risk_manager.record_trade_result(
+                        pnl=closed.realized_pnl,
+                        is_win=closed.realized_pnl > 0
+                    )
                 
                 self.decision_engine.update_after_trade(
                     is_win=closed.realized_pnl > 0,

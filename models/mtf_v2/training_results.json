@@ -1,0 +1,50 @@
+{
+  "direction_metrics": {
+    "train": {
+      "accuracy": 0.702565248980048
+    },
+    "val": {
+      "accuracy": 0.5269741985926505
+    },
+    "train_distribution": {
+      "-1": 5113,
+      "0": 8724,
+      "1": 4056
+    },
+    "val_distribution": {
+      "-1": 777,
+      "0": 2727,
+      "1": 333
+    },
+    "test": {
+      "accuracy": 0.4421272158498436
+    },
+    "test_distribution": {
+      "-1": 498,
+      "0": 2184,
+      "1": 1154
+    }
+  },
+  "timing_metrics": {
+    "train": {
+      "correlation": 0.564178227465843,
+      "mean": 0.19560358490838772
+    },
+    "val": {
+      "correlation": 0.07886581819879357,
+      "mean": 0.17431055953990524
+    },
+    "train_pred_mean": 0.19560358490838772,
+    "train_pred_std": 0.07561092966022398,
+    "val_pred_mean": 0.17431055953990524,
+    "val_pred_std": 0.02962463108204374,
+    "test": {
+      "correlation": 0.053121825357909734
+    },
+    "test_pred_mean": 0.22009440904035316,
+    "test_pred_std": 0.04563697153711623
+  },
+  "n_samples": 76676,
+  "n_features": 133,
+  "training_time_seconds": 6.639592885971069
+}

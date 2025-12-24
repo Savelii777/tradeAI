@@ -270,41 +270,47 @@ def train_multi_pair_model(
     logger.info("Evaluating on test set...")
     test_predictions = ensemble.predict(X_test)
     
+    # Convert dict predictions to arrays for easier indexing
+    pred_direction = test_predictions.get('direction', np.array([]))
+    true_direction = y_test['direction'].values if 'direction' in y_test.columns else np.array([])
+    
     # Calculate test metrics per pair
     pair_metrics = {}
     for symbol in symbol_test.unique():
-        mask = symbol_test == symbol
+        mask = (symbol_test == symbol).values
         if mask.sum() < 10:
             continue
         
-        # Use .loc for proper DataFrame indexing with boolean mask
-        pair_preds = test_predictions.loc[mask.values]
-        pair_true = y_test.loc[mask.values]
-        
-        # Direction accuracy
-        if 'direction' in pair_preds.columns and 'direction' in pair_true.columns:
-            direction_acc = (pair_preds['direction'].values == pair_true['direction'].values).mean()
+        # Direction accuracy per pair
+        if len(pred_direction) > 0 and len(true_direction) > 0:
+            pair_pred = pred_direction[mask]
+            pair_true = true_direction[mask]
+            direction_acc = (pair_pred == pair_true).mean()
             pair_metrics[symbol] = {
                 'test_samples': int(mask.sum()),
                 'direction_accuracy': float(direction_acc)
             }
     
     # Overall test metrics
-    if 'direction' in test_predictions.columns and 'direction' in y_test.columns:
-        overall_direction_acc = (test_predictions['direction'] == y_test['direction']).mean()
+    if len(pred_direction) > 0 and len(true_direction) > 0:
+        overall_direction_acc = (pred_direction == true_direction).mean()
     else:
         overall_direction_acc = 0.0
     
     # Check for overfitting
     validator = ModelValidator()
     
-    # Get train accuracy from metrics
+    # Get train/val accuracy from metrics for overfitting check
     train_acc = train_metrics.get('direction', {}).get('train_accuracy', 0.0)
     val_acc = train_metrics.get('direction', {}).get('val_accuracy', 0.0)
     
+    # Build metrics dicts expected by check_overfitting
+    train_metrics_dict = {'accuracy': train_acc}
+    val_metrics_dict = {'accuracy': val_acc}
+    
     is_overfit, overfit_metrics = validator.check_overfitting(
-        train_score=train_acc,
-        val_score=val_acc
+        train_metrics=train_metrics_dict,
+        val_metrics=val_metrics_dict
     )
     
     # Save model

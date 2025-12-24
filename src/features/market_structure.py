@@ -343,6 +343,9 @@ class MarketStructure:
         # One-hot encode regime
         for r in MarketRegime:
             regime[f'regime_{r.value}'] = (regime['regime'] == r.value).astype(int)
+        
+        # Drop string column - LightGBM requires numeric types only
+        regime = regime.drop(columns=['regime'])
             
         return regime
         

@@ -38,20 +38,25 @@ class TimingModel:
         self._is_trained = False
         
     def _default_params(self) -> Dict:
-        """Get default model parameters."""
+        """Get default model parameters with strong regularization."""
         if self.model_type == "lightgbm":
             return {
                 'objective': 'binary',
                 'metric': 'auc',
-                'n_estimators': 300,
-                'max_depth': 6,
-                'learning_rate': 0.05,
-                'num_leaves': 31,
-                'min_child_samples': 20,
-                'subsample': 0.8,
-                'colsample_bytree': 0.8,
+                'boosting_type': 'gbdt',
+                'n_estimators': 500,
+                'max_depth': 4,              # Ограничено
+                'num_leaves': 15,            # Меньше
+                'min_child_samples': 200,    # Увеличено
+                'learning_rate': 0.02,       # Медленнее
+                'subsample': 0.7,
+                'subsample_freq': 3,
+                'colsample_bytree': 0.5,
+                'reg_alpha': 0.5,
+                'reg_lambda': 0.5,
                 'random_state': 42,
-                'verbosity': -1
+                'verbosity': -1,
+                'force_row_wise': True
             }
         else:
             return {}
@@ -137,9 +142,14 @@ class TimingModel:
         
         if X_val is not None and y_val is not None:
             if self.model_type == "lightgbm":
+                import lightgbm as lgb
                 self.model.fit(
                     X_train, y_train,
-                    eval_set=[(X_val, y_val)]
+                    eval_set=[(X_val, y_val)],
+                    callbacks=[
+                        lgb.early_stopping(stopping_rounds=50, verbose=False),
+                        lgb.log_evaluation(period=100)
+                    ]
                 )
             else:
                 self.model.fit(X_train, y_train, eval_set=(X_val, y_val))

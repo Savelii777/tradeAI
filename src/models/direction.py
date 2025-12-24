@@ -39,23 +39,26 @@ class DirectionModel:
         self._is_trained = False
         
     def _default_params(self) -> Dict:
-        """Get default model parameters."""
+        """Get default model parameters with strong regularization to prevent overfitting."""
         if self.model_type == "lightgbm":
             return {
                 'objective': 'multiclass',
                 'num_class': 3,
                 'metric': 'multi_logloss',
+                'boosting_type': 'gbdt',
                 'n_estimators': 500,
-                'max_depth': 8,
-                'learning_rate': 0.05,
-                'num_leaves': 63,
-                'min_child_samples': 20,
-                'subsample': 0.8,
-                'colsample_bytree': 0.8,
-                'reg_alpha': 0.1,
-                'reg_lambda': 0.1,
+                'max_depth': 4,              # ОГРАНИЧЕНО (было 8)
+                'num_leaves': 15,            # Меньше (было 63)
+                'min_child_samples': 200,    # УВЕЛИЧЕНО (было 20)
+                'learning_rate': 0.02,       # Медленнее (было 0.05)
+                'subsample': 0.7,            # Bagging
+                'subsample_freq': 3,
+                'colsample_bytree': 0.5,     # Feature fraction
+                'reg_alpha': 0.5,            # L1 регуляризация (было 0.1)
+                'reg_lambda': 0.5,           # L2 регуляризация (было 0.1)
                 'random_state': 42,
-                'verbosity': -1
+                'verbosity': -1,
+                'force_row_wise': True
             }
         elif self.model_type == "catboost":
             return {
@@ -114,10 +117,15 @@ class DirectionModel:
             y_val_mapped = y_val.map({-1: 0, 0: 1, 1: 2})
             
             if self.model_type == "lightgbm":
+                import lightgbm as lgb
                 self.model.fit(
                     X_train, y_train_mapped,
                     eval_set=[(X_val, y_val_mapped)],
-                    sample_weight=sample_weight
+                    sample_weight=sample_weight,
+                    callbacks=[
+                        lgb.early_stopping(stopping_rounds=50, verbose=False),
+                        lgb.log_evaluation(period=100)
+                    ]
                 )
             elif self.model_type == "catboost":
                 self.model.fit(

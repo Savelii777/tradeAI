@@ -17,6 +17,8 @@ services:
       - ../models:/app/models
       - ../data:/app/data
       - ../results:/app/results
+      - ../scripts:/app/scripts
+      - ../src:/app/src
     depends_on:
       - postgres
       - redis

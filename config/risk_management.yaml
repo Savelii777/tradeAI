@@ -1,0 +1,57 @@
+# =============================================================================
+# AI Trading Bot - Risk Management Configuration (V1 + Risk)
+# =============================================================================
+# Risk limits ONLY - does not change model parameters
+# =============================================================================
+
+version: "1.1"
+
+risk:
+  # Per-trade limits
+  max_risk_per_trade: 0.02          # 2% instead of 5% (conservative)
+  max_position_size_pct: 0.10       # Max 10% of capital in single position
+  
+  # Daily limits
+  max_daily_loss: 0.05              # -5% daily = stop trading
+  max_daily_trades: 20              # Max trades per day
+  
+  # Drawdown limits
+  max_drawdown: 0.20                # -20% from peak = full stop
+  drawdown_reduce_size: 0.10        # At -10% DD reduce position size by 50%
+  
+  # Consecutive losses
+  max_consecutive_losses: 4         # After 4 losses in a row = pause
+  cooldown_after_losses: 60         # Minutes to pause after max losses
+  
+  # Pair blacklist (underperforming pairs)
+  blacklist:
+    - "ADA/USDT:USDT"               # Only losing pair in V1 backtest
+
+# Position sizing rules
+position_sizing:
+  # Fixed risk approach
+  method: "fixed_risk"              # fixed_risk | kelly | fixed_size
+  
+  # Drawdown-based scaling
+  scale_on_drawdown: true
+  drawdown_10_multiplier: 0.50      # At 10% DD: 50% of normal size
+  drawdown_15_multiplier: 0.25      # At 15% DD: 25% of normal size
+  
+  # Confidence-based scaling (optional)
+  scale_on_confidence: false        # Don't change - keep V1 logic
+  min_confidence_scale: 0.50        # Minimum scale at low confidence
+
+# Trading session limits
+sessions:
+  # Optional: only trade during high-liquidity sessions
+  restrict_by_session: false
+  allowed_sessions:
+    - "london"                      # 08:00-16:00 UTC
+    - "new_york"                    # 13:00-21:00 UTC
+    - "asia"                        # 00:00-08:00 UTC
+
+# Alert thresholds
+alerts:
+  daily_loss_warning: 0.03          # Warn at 3% daily loss
+  drawdown_warning: 0.10            # Warn at 10% drawdown
+  consecutive_loss_warning: 3       # Warn at 3 consecutive losses

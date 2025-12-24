@@ -1,0 +1,484 @@
+{
+  "training_pairs": 53,
+  "pair_stats": {
+    "BTC/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "ETH/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "SOL/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "XRP/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "DOGE/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "ZEC/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "LINK/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "ADA/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "SUI/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "AVAX/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "HYPE/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "BCH/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "AAVE/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "LTC/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "TAO/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "ASTER/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "UNI/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "PIPPIN/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "PEPE/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:00:00"
+    },
+    "NEAR/USDT:USDT": {
+      "samples": 8641,
+      "start": "2025-11-24T06:05:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "BNB/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "DOT/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "XLM/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "SHIB/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "TONCOIN/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "BEAT/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "HBAR/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "H/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "XAUT/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "FARTCOIN/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "ENA/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "TRUMPOFFICIAL/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "ETC/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "WLD/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "ICP/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "WIF/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "WLFI/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "PUMPFUN/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "CHZ/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "APT/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "JELLYJELLY/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "FOLKS/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "PENGU/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "ARB/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "XMR/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "INJ/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "KAS/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "TIA/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "D/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "ONDO/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "ICNT/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "OP/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    },
+    "ETHFI/USDT:USDT": {
+      "samples": 8640,
+      "start": "2025-11-24T06:10:00",
+      "end": "2025-12-24T06:05:00"
+    }
+  },
+  "pair_test_metrics": {
+    "BTC/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.8279320987654321
+    },
+    "ETH/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.7391975308641975
+    },
+    "SOL/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6859567901234568
+    },
+    "XRP/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.7268518518518519
+    },
+    "DOGE/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6651234567901234
+    },
+    "ZEC/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.49459876543209874
+    },
+    "LINK/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6350308641975309
+    },
+    "ADA/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6057098765432098
+    },
+    "SUI/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6095679012345679
+    },
+    "AVAX/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6435185185185185
+    },
+    "HYPE/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5077160493827161
+    },
+    "BCH/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6126543209876543
+    },
+    "AAVE/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5817901234567902
+    },
+    "LTC/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6859567901234568
+    },
+    "TAO/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5154320987654321
+    },
+    "ASTER/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5007716049382716
+    },
+    "UNI/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5046296296296297
+    },
+    "PIPPIN/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.4575617283950617
+    },
+    "PEPE/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5648148148148148
+    },
+    "NEAR/USDT:USDT": {
+      "test_samples": 1297,
+      "direction_accuracy": 0.5427910562837317
+    },
+    "BNB/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.7986111111111112
+    },
+    "DOT/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6049382716049383
+    },
+    "XLM/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6643518518518519
+    },
+    "SHIB/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6813271604938271
+    },
+    "TONCOIN/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.7600308641975309
+    },
+    "BEAT/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.4575617283950617
+    },
+    "HBAR/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5925925925925926
+    },
+    "H/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.4537037037037037
+    },
+    "XAUT/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.9398148148148148
+    },
+    "FARTCOIN/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.46219135802469136
+    },
+    "ENA/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6118827160493827
+    },
+    "TRUMPOFFICIAL/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.7716049382716049
+    },
+    "ETC/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.6944444444444444
+    },
+    "WLD/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5748456790123457
+    },
+    "ICP/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5069444444444444
+    },
+    "WIF/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5671296296296297
+    },
+    "WLFI/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.654320987654321
+    },
+    "PUMPFUN/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.4861111111111111
+    },
+    "CHZ/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5200617283950617
+    },
+    "APT/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.4699074074074074
+    },
+    "JELLYJELLY/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5169753086419753
+    },
+    "FOLKS/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.4699074074074074
+    },
+    "PENGU/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5208333333333334
+    },
+    "ARB/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5609567901234568
+    },
+    "XMR/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.44907407407407407
+    },
+    "INJ/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5771604938271605
+    },
+    "KAS/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5138888888888888
+    },
+    "TIA/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5231481481481481
+    },
+    "D/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5771604938271605
+    },
+    "ONDO/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5879629629629629
+    },
+    "ICNT/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.44135802469135804
+    },
+    "OP/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5655864197530864
+    },
+    "ETHFI/USDT:USDT": {
+      "test_samples": 1296,
+      "direction_accuracy": 0.5609567901234568
+    }
+  }
+}

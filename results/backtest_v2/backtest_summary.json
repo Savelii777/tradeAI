@@ -1,0 +1,59 @@
+{
+  "initial_capital": 10000,
+  "final_capital": 8821.285164077248,
+  "total_return_pct": -11.787148359227517,
+  "total_trades": 126,
+  "win_rate": 28.57142857142857,
+  "profit_factor": 0.8736375609628556,
+  "sharpe_ratio": 26.953742164424234,
+  "max_drawdown_pct": 84.33706556429324,
+  "avg_win_r": 0.03051550020814759,
+  "avg_loss_r": 0.010387161560311128,
+  "expectancy_r": 0.0012993132306770763,
+  "pair_results": {
+    "BTC/USDT:USDT": {
+      "n_trades": 42,
+      "win_rate": 26.190476190476193,
+      "profit_factor": 0.743086699105989,
+      "total_return_pct": -25.62097044721362
+    },
+    "ETH/USDT:USDT": {
+      "n_trades": 42,
+      "win_rate": 30.952380952380953,
+      "profit_factor": 0.9847356651704833,
+      "total_return_pct": -1.472597919126279
+    },
+    "SOL/USDT:USDT": {
+      "n_trades": 42,
+      "win_rate": 28.57142857142857,
+      "profit_factor": 0.9011518225343955,
+      "total_return_pct": -8.26787671134265
+    }
+  },
+  "config": {
+    "pairs": [
+      "BTC/USDT:USDT",
+      "ETH/USDT:USDT",
+      "SOL/USDT:USDT"
+    ],
+    "days": 14,
+    "timeframe": "5m",
+    "initial_capital": 10000,
+    "risk_per_trade": 0.05,
+    "max_trades_per_pair_per_day": 3,
+    "min_time_between_trades": 300,
+    "rr_ratio": 3.0,
+    "sl_atr_mult": 1.5,
+    "tp_atr_mult": 4.5,
+    "min_direction_prob": 0.32,
+    "min_timing_score": 0.15,
+    "min_strength_score": 0.2,
+    "use_dynamic_thresholds": false,
+    "commission_pct": 0.0004,
+    "slippage_pct": 0.0002,
+    "test_only": false,
+    "test_ratio": 0.15,
+    "use_blacklist": true,
+    "output_dir": "results/backtest_v2"
+  }
+}

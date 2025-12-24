@@ -1,0 +1,213 @@
+# =============================================================================
+# MTF Trading Bot - Model Configuration V2
+# =============================================================================
+# This file contains all model hyperparameters and training settings.
+# Updated with fixes for sideways bias and timing model issues.
+# =============================================================================
+
+version: "2.0"
+
+# =============================================================================
+# Direction Model (V2)
+# =============================================================================
+direction:
+  model_type: "lightgbm"
+  
+  # Use V2 features
+  use_class_weights: true
+  use_calibration: true
+  calibration_method: "sigmoid"  # 'sigmoid' (Platt) or 'isotonic'
+  sideways_penalty: 1.5  # Penalty multiplier for sideways class
+  
+  # Target creation
+  target:
+    method: "fixed_threshold"  # 'fixed_threshold', 'adaptive_threshold', 'rr_based'
+    threshold_pct: 0.002  # 0.2% for fixed threshold (lower = less sideways)
+    lookahead_bars: 5
+    rr_ratio: 3.0  # For RR-based targets
+    sl_atr_mult: 1.5
+    tp_atr_mult: 4.5
+  
+  # LightGBM parameters (anti-overfitting tuned)
+  params:
+    objective: "multiclass"
+    num_class: 3
+    metric: "multi_logloss"
+    boosting_type: "gbdt"
+    n_estimators: 500
+    max_depth: 5
+    num_leaves: 20
+    min_child_samples: 150
+    learning_rate: 0.03
+    subsample: 0.8
+    subsample_freq: 2
+    colsample_bytree: 0.6
+    reg_alpha: 0.3
+    reg_lambda: 0.3
+    random_state: 42
+    is_unbalance: true
+    force_row_wise: true
+    verbosity: -1
+
+# =============================================================================
+# Timing Model (V2)
+# =============================================================================
+timing:
+  model_type: "lightgbm"
+  
+  # Use regression instead of classification
+  output_type: "regression"
+  normalize_output: true
+  
+  # Target creation
+  target:
+    method: "ratio"  # 'ratio', 'percentile', 'relative', 'rr_based'
+    lookahead_bars: 15  # Increased from 5
+    atr_period: 14
+  
+  # LightGBM parameters
+  params:
+    objective: "regression"
+    metric: "mae"
+    boosting_type: "gbdt"
+    n_estimators: 500
+    max_depth: 5
+    num_leaves: 20
+    min_child_samples: 150
+    learning_rate: 0.03
+    subsample: 0.8
+    subsample_freq: 2
+    colsample_bytree: 0.6
+    reg_alpha: 0.3
+    reg_lambda: 0.3
+    random_state: 42
+    force_row_wise: true
+    verbosity: -1
+
+# =============================================================================
+# Strength Model
+# =============================================================================
+strength:
+  model_type: "lightgbm"
+  
+  target:
+    lookahead_bars: 5
+    atr_period: 14
+  
+  params:
+    objective: "regression"
+    metric: "mae"
+    boosting_type: "gbdt"
+    n_estimators: 500
+    max_depth: 4
+    num_leaves: 15
+    min_child_samples: 200
+    learning_rate: 0.02
+    subsample: 0.7
+    subsample_freq: 3
+    colsample_bytree: 0.5
+    reg_alpha: 0.5
+    reg_lambda: 0.5
+    random_state: 42
+    force_row_wise: true
+    verbosity: -1
+
+# =============================================================================
+# Volatility Model
+# =============================================================================
+volatility:
+  model_type: "lightgbm"
+  
+  target:
+    lookahead_bars: 5
+    method: "rolling_std"
+  
+  params:
+    objective: "regression"
+    metric: "mae"
+    boosting_type: "gbdt"
+    n_estimators: 500
+    max_depth: 4
+    num_leaves: 15
+    min_child_samples: 200
+    learning_rate: 0.02
+    subsample: 0.7
+    subsample_freq: 3
+    colsample_bytree: 0.5
+    reg_alpha: 0.5
+    reg_lambda: 0.5
+    random_state: 42
+    force_row_wise: true
+    verbosity: -1
+
+# =============================================================================
+# Ensemble Configuration
+# =============================================================================
+ensemble:
+  use_v2_models: true
+  use_meta_model: false
+  
+  # Model weights for signal generation
+  weights:
+    direction: 0.40
+    strength: 0.20
+    timing: 0.25
+    volatility: 0.15
+  
+  # Risk:Reward ratio
+  rr_ratio: 3.0
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+training:
+  # Data split
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  split_method: "chronological"  # 'chronological' or 'random'
+  
+  # Early stopping
+  early_stopping_rounds: 50
+  
+  # Feature engineering
+  features:
+    use_mtf: true
+    timeframes:
+      - "1m"
+      - "5m"
+      - "15m"
+    base_timeframe: "5m"
+  
+  # Data requirements
+  min_samples_per_pair: 500
+  
+  # Pairs
+  excluded_pairs:
+    - "PIPPIN/USDT:USDT"
+    - "BEAT/USDT:USDT"
+    - "H/USDT:USDT"
+    - "XMR/USDT:USDT"
+    - "ICNT/USDT:USDT"
+    - "NIGHT/USDT:USDT"
+    - "RAVE/USDT:USDT"
+
+# =============================================================================
+# Walk-Forward Validation
+# =============================================================================
+walk_forward:
+  enabled: true
+  train_days: 60
+  test_days: 7
+  step_days: 7
+  min_folds: 3
+
+# =============================================================================
+# Feature Selection
+# =============================================================================
+feature_selection:
+  enabled: false
+  method: "importance"  # 'importance', 'rfe', 'fast_rfe', 'correlation'
+  target_features: 50
+  min_importance: 0.0
+  correlation_threshold: 0.95

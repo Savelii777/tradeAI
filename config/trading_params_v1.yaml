@@ -1,0 +1,219 @@
+# =============================================================================
+# AI Trading Bot - Trading Parameters Configuration (V1 Restored)
+# =============================================================================
+# RESTORED TO V1 WORKING VALUES - DO NOT MODIFY ML PARAMETERS!
+# Only risk management added via separate config file
+# =============================================================================
+
+version: "1.1"
+
+# Risk Management Parameters (V1 Conservative)
+risk:
+  # V1: Conservative risk per trade
+  max_risk_per_trade: 0.02  # 2% of deposit (was 5% in V2)
+  max_position_size: 0.10   # 10% of deposit max
+  
+  # Daily limits
+  max_daily_loss: 0.05      # 5% daily limit (reduced from 15%)
+  max_consecutive_losses: 4
+  max_trades_per_day: 20
+  cooldown_after_losses: 3600  # 1 hour in seconds
+  
+  # Weekly limits
+  max_weekly_loss: 0.15     # 15% of deposit
+  
+  # Global limits
+  max_drawdown: 0.20        # 20% from peak (was 50% in V2!)
+  min_balance: 50           # Minimum balance to trade
+
+# Scanner Parameters (V1 pairs)
+scanner:
+  enabled: true
+  pairs:
+    - "BTCUSDT"
+    - "ETHUSDT"
+    - "BNBUSDT"
+    - "SOLUSDT"
+    - "XRPUSDT"
+    - "DOGEUSDT"
+    # ADA removed - was only losing pair in V1
+    - "AVAXUSDT"
+    - "DOTUSDT"
+    - "MATICUSDT"
+    - "LINKUSDT"
+    - "ATOMUSDT"
+    - "LTCUSDT"
+    - "UNIUSDT"
+    - "APTUSDT"
+    - "NEARUSDT"
+    - "ARBUSDT"
+    - "OPUSDT"
+    - "FILUSDT"
+    - "INJUSDT"
+  min_score: 70
+  min_volume_ratio: 0.8
+  min_direction_probability: 0.60  # V1 value (was 0.32 in V2)
+  min_expected_move_atr: 2.0
+  require_timeframe_alignment: true
+  scan_interval: 60
+
+# M1 Sniper Parameters (V1 values)
+sniper:
+  enabled: true
+  max_wait_candles: 15
+  pullback_threshold: 0.003
+  momentum_threshold: 0.0015
+  default_stop_pct: 0.003
+  min_stop_pct: 0.002
+  max_stop_pct: 0.005
+
+# Position Sizing (V1: Conservative)
+aggressive_sizing:
+  enabled: false  # Disabled for V1!
+  fixed_risk_pct: 0.02
+  deposit_usage: 0.5  # 50% max
+  min_leverage: 5
+  max_leverage: 10  # Reduced from 20
+  take_profit_rr: 2.0  # RR 1:2 (V1 working value)
+
+# Entry Parameters (V1 RESTORED!)
+entry:
+  min_direction_probability: 0.50  # V1: 50% (was 0.32 in V2)
+  min_expected_move_atr: 1.5
+  min_timing_score: 0.01          # V1: 0.01 (was 0.15 in V2)
+  min_strength_score: 0.30        # V1: 0.30 (was 0.20 in V2)
+  require_model_consensus: true
+  
+  # Dynamic thresholds disabled
+  use_dynamic_thresholds: false
+  high_volatility_multiplier: 1.1
+  low_volatility_multiplier: 0.9
+  threshold_increase_after_losses: 0.05
+  threshold_decrease_after_wins: 0.02
+
+# Exit Parameters (V1: RR 1:2)
+exit:
+  # Stop-loss settings
+  stop_loss_atr_multiplier: 1.5
+  stop_loss_min_atr: 1.0
+  stop_loss_max_atr: 2.0
+  
+  # Take-profit settings - RR 1:2 (V1!)
+  take_profit_atr_multiplier: 3.0  # V1: 3.0 (was 4.5 in V2)
+  take_profit_min_rr: 2.0          # V1: 1:2 (was 1:3 in V2)
+  partial_take_profit: 0.5
+  
+  # Trailing stop settings
+  trailing_stop_activation_pct: 0.01
+  trailing_stop_distance_pct: 0.005
+  
+  # Break-even settings
+  move_to_breakeven_pct: 0.005
+
+# Filters
+filters:
+  volatility:
+    max_atr_multiplier: 3.0
+    min_atr_multiplier: 0.3
+  liquidity:
+    min_volume_percentile: 20
+  consistency:
+    require_timeframe_alignment: true
+  time:
+    avoid_first_minutes: 5
+    avoid_last_minutes: 5
+
+# Position Sizing
+position_sizing:
+  method: "fixed"  # V1: fixed (was kelly in V2)
+  base_size: 0.02  # 2%
+  kelly_fraction: 0.5
+  reduce_after_losses: true
+  reduction_factor: 0.5
+  recovery_trades: 3
+
+# Order Execution
+execution:
+  default_order_type: "limit"
+  limit_order_timeout: 10
+  slippage_tolerance: 0.001
+  min_order_value: 10
+
+# Technical Indicator Parameters
+indicators:
+  ema_periods:
+    - 9
+    - 21
+    - 50
+    - 200
+  rsi_periods:
+    - 7
+    - 14
+  atr_period: 14
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  bollinger:
+    period: 20
+    std_dev: 2
+  stochastic:
+    k_period: 14
+    d_period: 3
+    smooth_k: 3
+
+# Feature Engineering
+features:
+  lookback_periods:
+    - 5
+    - 10
+    - 20
+    - 50
+  normalization_window: 500
+  outlier_std_threshold: 3.0
+
+# Model Parameters (V1 - DO NOT CHANGE!)
+model_params:
+  direction:
+    type: "lightgbm"
+    n_estimators: 500
+    max_depth: 4       # V1 value
+    num_leaves: 15     # V1 value
+    learning_rate: 0.02
+    min_child_samples: 200
+    subsample: 0.7
+    colsample_bytree: 0.5
+    reg_alpha: 0.5
+    reg_lambda: 0.5
+    # NO class_weight - V1 didn't use aggressive weights!
+  
+  timing:
+    type: "lightgbm"
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.02
+  
+  strength:
+    type: "lightgbm"
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.02
+  
+  volatility:
+    type: "lightgbm"
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.02
+
+# Multi-timeframe settings
+timeframes:
+  primary: "5m"      # Main trading timeframe
+  secondary: "15m"   # Trend confirmation
+  tertiary: "1h"     # Higher timeframe bias
+
+# Logging
+logging:
+  level: "INFO"
+  log_signals: true
+  log_trades: true
+  log_performance: true
