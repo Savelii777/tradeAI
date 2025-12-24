@@ -99,14 +99,14 @@ class DrawdownController:
         if self._current_drawdown > 0 and self._drawdown_start_time is None:
             self._drawdown_start_time = timestamp
             
-        # Determine status level
-        status = self._get_status_level()
-        
-        # Check for emergency stop
+        # Check for emergency stop (before getting status)
         if self._current_drawdown >= self.max_threshold:
             self._emergency_stop_triggered = True
             logger.error(f"EMERGENCY STOP: Drawdown {self._current_drawdown:.2%} "
                         f"exceeded max threshold {self.max_threshold:.2%}")
+                        
+        # Determine status level
+        status = self._get_status_level()
                         
         return status
         

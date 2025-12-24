@@ -354,9 +354,10 @@ def setup_logger(
     """
     logger.remove()  # Remove default handler
     
-    # Console handler
+    # Console handler using sys.stderr for production-ready logging
+    import sys
     logger.add(
-        sink=lambda msg: print(msg, end=''),
+        sink=sys.stderr,
         level=log_level,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
                "<level>{level: <8}</level> | "

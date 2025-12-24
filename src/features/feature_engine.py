@@ -215,14 +215,21 @@ class FeatureEngine:
         """
         normalized = pd.DataFrame(index=features.index)
         
-        # Columns to normalize (exclude binary/categorical)
-        binary_cols = [col for col in features.columns if 
-                      features[col].nunique() <= 3 or 
-                      col.startswith('session_') or
-                      col.startswith('regime_')]
+        # Columns to skip (non-numeric or categorical)
+        skip_cols = []
+        for col in features.columns:
+            # Skip non-numeric columns
+            if features[col].dtype == 'object' or features[col].dtype.name == 'category':
+                skip_cols.append(col)
+            # Skip binary/categorical columns
+            elif features[col].nunique() <= 3:
+                skip_cols.append(col)
+            # Skip session and regime columns
+            elif col.startswith('session_') or col.startswith('regime_') or col == 'regime':
+                skip_cols.append(col)
                       
         for col in features.columns:
-            if col in binary_cols:
+            if col in skip_cols:
                 normalized[col] = features[col]
             else:
                 # Rolling normalization

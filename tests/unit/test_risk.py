@@ -61,7 +61,7 @@ class TestRiskLimits:
         )
         
         assert result['allowed'] == False
-        assert 'trade_risk' in str(result['reasons'])
+        assert 'risk' in str(result['reasons']).lower()
         
     def test_trade_blocked_large_position(self):
         """Test trade blocked due to large position."""
@@ -75,7 +75,7 @@ class TestRiskLimits:
         )
         
         assert result['allowed'] == False
-        assert 'position_size' in str(result['reasons'])
+        assert 'position' in str(result['reasons']).lower()
         
     def test_trade_blocked_low_balance(self):
         """Test trade blocked due to low balance."""

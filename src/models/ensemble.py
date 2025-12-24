@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 import joblib
+import lightgbm as lgb
 
 from .direction import DirectionModel
 from .strength import StrengthModel
@@ -153,8 +154,6 @@ class EnsembleModel:
         meta_features = pd.DataFrame(base_preds, index=X_train.index)
         
         # Train meta-model (simple gradient boosting)
-        import lightgbm as lgb
-        
         self.meta_model = lgb.LGBMClassifier(
             n_estimators=100,
             max_depth=4,
