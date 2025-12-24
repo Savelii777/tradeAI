@@ -8,6 +8,7 @@ from .volatility import VolatilityModel
 from .timing import TimingModel
 from .ensemble import EnsembleModel
 from .training import ModelTrainer
+from .validator import ModelValidator
 
 __all__ = [
     'DirectionModel',
@@ -16,4 +17,5 @@ __all__ = [
     'TimingModel',
     'EnsembleModel',
     'ModelTrainer',
+    'ModelValidator',
 ]

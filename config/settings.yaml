@@ -58,6 +58,37 @@ models:
   test_split: 0.15
   save_path: "./models/saved/"
 
+# Validation settings to prevent overfitting
+validation:
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  walk_forward_train_months: 6
+  walk_forward_test_months: 1
+  min_folds: 6
+  use_walk_forward: true
+  
+# Regularization to prevent overfitting
+regularization:
+  max_tree_depth: 6
+  min_samples_leaf: 100
+  l1_regularization: 0.1
+  l2_regularization: 0.1
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  dropout_rate: 0.3
+  early_stopping_patience: 15
+  early_stopping_rounds: 50
+  
+# Thresholds for detecting overfitting/unrealistic results
+overfitting_thresholds:
+  max_train_val_gap: 0.20
+  max_realistic_winrate: 0.70
+  max_realistic_monthly_return: 2.0
+  min_realistic_sharpe: 1.0
+  max_realistic_drawdown: 0.30
+  max_realistic_profit_factor: 5.0
+
 monitoring:
   dashboard:
     enabled: true

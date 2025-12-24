@@ -1,6 +1,6 @@
 """
 AI Trading Bot - Model Training Pipeline
-Orchestrates training of all ML models.
+Orchestrates training of all ML models with overfitting prevention.
 """
 
 from datetime import datetime
@@ -13,6 +13,7 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import accuracy_score, f1_score, mean_absolute_error
 
 from .ensemble import EnsembleModel
+from .validator import ModelValidator
 
 
 class ModelTrainer:
@@ -20,11 +21,23 @@ class ModelTrainer:
     Manages training, validation, and evaluation of trading models.
     
     Features:
-    - Time-series cross-validation
-    - Walk-forward analysis
-    - Hyperparameter optimization
-    - Model versioning
+    - Chronological data splitting (no leakage)
+    - Walk-forward validation
+    - Overfitting detection
+    - Regularization support
+    - Early stopping
     """
+    
+    # Default regularization parameters
+    DEFAULT_REGULARIZATION = {
+        'max_depth': 6,
+        'min_samples_leaf': 100,
+        'reg_alpha': 0.1,  # L1
+        'reg_lambda': 0.1,  # L2
+        'feature_fraction': 0.8,
+        'bagging_fraction': 0.8,
+        'early_stopping_rounds': 50,
+    }
     
     def __init__(
         self,
@@ -40,6 +53,17 @@ class ModelTrainer:
         self.train_ratio = self.config.get('train_ratio', 0.7)
         self.val_ratio = self.config.get('val_ratio', 0.15)
         self.n_splits = self.config.get('n_splits', 5)
+        
+        # Regularization settings
+        self.regularization = {
+            **self.DEFAULT_REGULARIZATION,
+            **self.config.get('regularization', {})
+        }
+        
+        # Validator for overfitting detection
+        self.validator = ModelValidator(
+            thresholds=self.config.get('overfitting_thresholds')
+        )
         
         self.training_history: List[Dict] = []
         self.best_model: Optional[EnsembleModel] = None
@@ -157,7 +181,7 @@ class ModelTrainer:
         model_config: Optional[Dict] = None
     ) -> Tuple[EnsembleModel, Dict[str, Any]]:
         """
-        Train the full ensemble model.
+        Train the full ensemble model with overfitting prevention.
         
         Args:
             features: Feature DataFrame.
@@ -170,8 +194,13 @@ class ModelTrainer:
         # Clean data
         features, labels = self._clean_data(features, labels)
         
-        # Split data
+        # Split data CHRONOLOGICALLY (no shuffling!)
         train_data, val_data, test_data = self.split_data(features, labels)
+        
+        # Merge regularization into model config
+        if model_config is None:
+            model_config = {}
+        model_config['regularization'] = self.regularization
         
         # Create and train ensemble
         ensemble = EnsembleModel(model_config=model_config)
@@ -181,7 +210,24 @@ class ModelTrainer:
             val_data['X'], val_data['y']
         )
         
-        # Evaluate on test set
+        # Evaluate on validation set for overfitting check
+        val_metrics = self.evaluate_model(
+            ensemble,
+            val_data['X'],
+            val_data['y']
+        )
+        
+        # Check for overfitting
+        is_overfitting, warnings = self.validator.check_overfitting(
+            train_metrics, val_metrics
+        )
+        
+        if is_overfitting:
+            logger.warning("⚠️ MODEL SHOWS SIGNS OF OVERFITTING!")
+            for w in warnings:
+                logger.warning(w)
+        
+        # Evaluate on test set (model never saw this data)
         test_metrics = self.evaluate_model(
             ensemble,
             test_data['X'],
@@ -192,7 +238,10 @@ class ModelTrainer:
         training_record = {
             'timestamp': datetime.now().isoformat(),
             'train_metrics': train_metrics,
+            'val_metrics': val_metrics,
             'test_metrics': test_metrics,
+            'is_overfitting': is_overfitting,
+            'overfitting_warnings': warnings,
             'data_size': len(features),
             'train_size': len(train_data['X']),
             'val_size': len(val_data['X']),
@@ -200,17 +249,25 @@ class ModelTrainer:
         }
         self.training_history.append(training_record)
         
-        # Update best model if improved
-        composite_score = test_metrics.get('direction_accuracy', 0) * 0.5 + \
-                         test_metrics.get('timing_auc', 0) * 0.3 + \
-                         (1 - test_metrics.get('strength_mae', 1)) * 0.2
-                         
-        if composite_score > self.best_score:
-            self.best_score = composite_score
+        # Update best model only if validation metrics improved
+        # and there's no severe overfitting
+        val_score = val_metrics.get('direction_accuracy', 0) * 0.5 + \
+                   val_metrics.get('timing_auc', 0) * 0.3 + \
+                   (1 - val_metrics.get('strength_mae', 1)) * 0.2
+                   
+        if val_score > self.best_score and not is_overfitting:
+            self.best_score = val_score
             self.best_model = ensemble
-            logger.info(f"New best model with score: {composite_score:.4f}")
+            logger.info(f"New best model with score: {val_score:.4f}")
+        elif is_overfitting:
+            logger.warning("Model not saved due to overfitting")
             
-        return ensemble, {**train_metrics, 'test': test_metrics}
+        return ensemble, {
+            'train': train_metrics, 
+            'val': val_metrics,
+            'test': test_metrics,
+            'is_overfitting': is_overfitting
+        }
         
     def _clean_data(
         self,

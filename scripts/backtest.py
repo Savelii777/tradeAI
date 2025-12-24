@@ -290,18 +290,35 @@ class Backtester:
 
 async def fetch_data(symbol: str, timeframe: str, days: int):
     """Fetch historical data."""
-    collector = DataCollector(
-        exchange_id="binance",
-        symbol=symbol.replace('USDT', '/USDT'),
-        testnet=False
-    )
+    import ccxt.async_support as ccxt
+    from datetime import datetime, timedelta
     
-    await collector.start()
+    exchange = ccxt.binance({'enableRateLimit': True})
     
     try:
-        return await collector.fetch_historical_ohlcv(timeframe, days)
+        formatted_symbol = symbol.replace('USDT', '/USDT')
+        end_time = datetime.now()
+        start_time = end_time - timedelta(days=days)
+        since = int(start_time.timestamp() * 1000)
+        
+        all_ohlcv = []
+        while True:
+            ohlcv = await exchange.fetch_ohlcv(formatted_symbol, timeframe, since=since, limit=1000)
+            if not ohlcv:
+                break
+            all_ohlcv.extend(ohlcv)
+            since = ohlcv[-1][0] + 1
+            if since > int(end_time.timestamp() * 1000):
+                break
+            await asyncio.sleep(0.1)
+        
+        df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+        
+        return df
     finally:
-        await collector.stop()
+        await exchange.close()
 
 
 def main():
@@ -312,6 +329,7 @@ def main():
     parser.add_argument("--capital", type=float, default=10000)
     parser.add_argument("--model-path", type=str, default="./models/saved")
     parser.add_argument("--config", type=str, default="./config/trading_params.yaml")
+    parser.add_argument("--test-only", action="store_true", help="Run only on test data split")
     
     args = parser.parse_args()
     
@@ -327,6 +345,15 @@ def main():
     # Load config
     config = load_yaml_config(args.config)
     
+    # Load settings for validation thresholds
+    try:
+        settings = load_yaml_config('./config/settings.yaml')
+        validation_config = settings.get('validation', {})
+        overfitting_thresholds = settings.get('overfitting_thresholds', {})
+    except:
+        validation_config = {}
+        overfitting_thresholds = {}
+    
     # Fetch data
     logger.info(f"Fetching {args.days} days of data...")
     df = asyncio.run(fetch_data(args.symbol, args.timeframe, args.days))
@@ -334,14 +361,25 @@ def main():
     if df is None or df.empty:
         logger.error("Failed to fetch data")
         return 1
+    
+    # If test-only mode, use only the last 15% of data
+    if args.test_only:
+        test_ratio = validation_config.get('test_ratio', 0.15)
+        test_start_idx = int(len(df) * (1 - test_ratio))
+        df = df.iloc[test_start_idx:]
+        logger.info(f"Using only TEST data: {len(df)} candles (last {test_ratio:.0%})")
         
     # Generate features
     logger.info("Generating features...")
-    preprocessor = DataPreprocessor()
-    df = preprocessor.clean_ohlcv(df)
+    df = df.dropna()  # Clean data
     
     feature_engine = FeatureEngine(config.get('features', {}))
     features = feature_engine.generate_all_features(df, normalize=True)
+    
+    # Convert categorical columns to numeric
+    for col in features.columns:
+        if features[col].dtype == 'object':
+            features[col] = pd.Categorical(features[col]).codes
     
     # Run backtest
     backtester = Backtester(
@@ -356,12 +394,17 @@ def main():
         risk_per_trade=config.get('risk', {}).get('max_risk_per_trade', 0.02)
     )
     
+    # Validate results for realism
+    from src.models import ModelValidator
+    validator = ModelValidator(thresholds=overfitting_thresholds)
+    is_realistic, warnings = validator.validate_results(results)
+    
     # Print results
-    print("\n" + "="*50)
-    print("BACKTEST RESULTS")
-    print("="*50)
+    print("\n" + "="*60)
+    print("BACKTEST RESULTS" + (" (TEST DATA ONLY)" if args.test_only else ""))
+    print("="*60)
     print(f"Symbol: {args.symbol}")
-    print(f"Period: {args.days} days")
+    print(f"Period: {args.days} days" + (f" (test split: {len(df)} candles)" if args.test_only else ""))
     print(f"Initial Capital: ${results['initial_capital']:.2f}")
     print(f"Final Capital: ${results['final_capital']:.2f}")
     print(f"Total Return: {results['total_return']:.2f}%")
@@ -370,7 +413,19 @@ def main():
     print(f"Profit Factor: {results['profit_factor']:.2f}")
     print(f"Sharpe Ratio: {results['sharpe_ratio']:.2f}")
     print(f"Max Drawdown: {results['max_drawdown']:.2f}%")
-    print("="*50)
+    
+    # Print validation warnings
+    if not is_realistic:
+        print("\n" + "="*60)
+        print("⚠️  VALIDATION WARNINGS (possible overfitting)")
+        print("="*60)
+        for warning in warnings:
+            print(warning)
+        print("\nThese results may not be achievable in live trading!")
+    else:
+        print("\n✓ Results appear realistic")
+    
+    print("="*60)
     
     return 0
 

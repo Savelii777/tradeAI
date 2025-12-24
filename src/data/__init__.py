@@ -25,6 +25,7 @@ from .multi_collector import MultiPairCollector
 from .websocket_manager import WebSocketManager
 from .storage import DataStorage
 from .preprocessor import DataPreprocessor, Scaler
+from .splitter import DataSplitter
 from .exceptions import (
     DataCollectionError,
     ExchangeConnectionError,
@@ -59,6 +60,8 @@ __all__ = [
     # Preprocessor
     'DataPreprocessor',
     'Scaler',
+    # Splitter
+    'DataSplitter',
     # Exceptions
     'DataCollectionError',
     'ExchangeConnectionError',
