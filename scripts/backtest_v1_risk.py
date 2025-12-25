@@ -233,31 +233,45 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 
 # ============================================================
-# V1 BACKTESTER WITH RISK MANAGEMENT
+# V1 BACKTESTER WITH RISK MANAGEMENT + LEVERAGE
 # ============================================================
+
+# MEXC Futures Fees
+MEXC_MAKER_FEE = 0.0       # 0%
+MEXC_TAKER_FEE = 0.0002    # 0.02%
+# We use taker for entry/exit = 0.02% * 2 = 0.04% round trip
 
 class V1BacktesterWithRisk:
     """
     Backtester for V1 model WITH integrated risk management.
     
-    Key differences from regular backtest:
-    - Uses RiskManager for position sizing
+    Key features:
+    - Leverage calculation based on SL distance and risk %
+    - MEXC futures commissions (taker 0.05%)
+    - Compound interest (capital grows/shrinks each trade)
     - Respects daily loss limits
     - Respects drawdown limits
     - Respects consecutive loss cooldowns
-    - Tracks per-day statistics
     """
     
     def __init__(
         self,
         initial_capital: float = 10000,
-        commission: float = 0.0004,  # 0.04% taker fee
-        slippage: float = 0.0002,    # 0.02% slippage
-        risk_config: Optional[Dict] = None
+        risk_per_trade: float = 0.02,  # 2% risk per trade
+        max_leverage: float = 20.0,     # Max leverage allowed
+        slippage: float = 0.0001,       # 0.01% slippage
+        risk_config: Optional[Dict] = None,
+        max_positions: int = 999        # Max simultaneous positions
     ):
         self.initial_capital = initial_capital
-        self.commission = commission
+        self.risk_per_trade = risk_per_trade
+        self.max_leverage = max_leverage
         self.slippage = slippage
+        self.max_positions = max_positions
+        
+        # MEXC fees
+        self.entry_fee = MEXC_TAKER_FEE  # 0.05%
+        self.exit_fee = MEXC_TAKER_FEE   # 0.05%
         
         # Initialize risk manager
         self.risk_manager = RiskManager(risk_config or {})
@@ -267,10 +281,79 @@ class V1BacktesterWithRisk:
         self.trades: List[Dict] = []
         self.equity_curve: List[Dict] = []
         self.daily_results: List[Dict] = []
+        self.open_positions: List[Dict] = []  # Track multiple positions
         
         # Statistics
         self.blocked_by_risk: Dict[str, int] = {}
         self.current_day: Optional[datetime] = None
+        self.total_fees_paid: float = 0.0
+        self.leverage_used: List[float] = []
+    
+    def calculate_leverage(self, stop_loss_pct: float) -> float:
+        """
+        Calculate leverage based on risk % and stop loss distance.
+        
+        Formula: Leverage = Risk% / StopLoss%
+        
+        Example:
+        - Risk = 2%, SL = 1% → Leverage = 2x
+        - Risk = 2%, SL = 0.5% → Leverage = 4x
+        - Risk = 2%, SL = 2% → Leverage = 1x
+        """
+        if stop_loss_pct <= 0:
+            return 1.0
+        
+        leverage = self.risk_per_trade / stop_loss_pct
+        
+        # Cap at max leverage
+        leverage = min(leverage, self.max_leverage)
+        
+        # Min leverage = 1x
+        leverage = max(leverage, 1.0)
+        
+        return leverage
+    
+    def calculate_position_with_leverage(
+        self,
+        capital: float,
+        entry_price: float,
+        stop_loss_pct: float,
+        leverage: float
+    ) -> Tuple[float, float, float, float]:
+        """
+        Calculate position size with leverage and fees.
+        
+        FORMULA (100% capital as margin):
+        - Margin = 100% of capital
+        - Position value = Margin × Leverage
+        - Leverage = Risk% / SL%
+        
+        Example with $100 capital, 2% risk, 0.5% SL:
+        - Leverage = 2% / 0.5% = 4x
+        - Margin = $100 (100% capital)
+        - Position value = $100 × 4 = $400
+        - On SL hit: loss = 0.5% × $400 = $2 = 2% of capital ✓
+        - On TP hit (RR=2): profit = 1.0% × $400 = $4 = 4% of capital ✓
+        
+        Returns:
+            - margin: Amount of capital used as margin (100% of capital)
+            - position_value: Total position value (margin * leverage)
+            - size: Position size in units (contracts)
+            - entry_fee: Fee for opening position
+        """
+        # Use 100% of capital as margin
+        margin = capital
+        
+        # Position value = margin × leverage
+        position_value = margin * leverage
+        
+        # Position size in units
+        size = position_value / entry_price
+        
+        # Entry fee (applied to full position value!)
+        entry_fee_amount = position_value * self.entry_fee
+        
+        return margin, position_value, size, entry_fee_amount
     
     def run(
         self,
@@ -365,18 +448,38 @@ class V1BacktesterWithRisk:
                 )
                 
                 if should_exit:
-                    pnl = self._close_position(position, current_price, exit_reason, timestamp)
+                    # Use actual SL/TP price, not current_price!
+                    if exit_reason == 'stop_loss':
+                        exit_price = position['stop_loss']
+                    elif exit_reason == 'take_profit':
+                        exit_price = position['take_profit']
+                    else:
+                        exit_price = current_price  # time_exit uses market price
+                    
+                    pnl = self._close_position(position, exit_price, exit_reason, timestamp)
                     capital += pnl
                     
                     # Record in risk manager
                     is_win = pnl > 0
                     self.risk_manager.record_trade_result(pnl, is_win)
                     
+                    # Remove from open_positions
+                    if position in self.open_positions:
+                        self.open_positions.remove(position)
+                    
                     position = None
                     continue
             
             # Check for new entry
             if not position:
+                # Check max positions limit
+                if len(self.open_positions) >= self.max_positions:
+                    reason = f"Max positions limit ({self.max_positions}) reached"
+                    if reason not in self.blocked_by_risk:
+                        self.blocked_by_risk[reason] = 0
+                    self.blocked_by_risk[reason] += 1
+                    continue
+                    
                 # Check risk limits BEFORE getting signal
                 can_trade, reason = self.risk_manager.can_trade(pair, capital)
                 
@@ -408,15 +511,9 @@ class V1BacktesterWithRisk:
                         
                         stop_loss_pct = stop_distance / current_price
                         
-                        # Use risk manager for position sizing!
-                        position_size = self.risk_manager.calculate_position_size(
-                            capital=capital,
-                            stop_loss_pct=stop_loss_pct,
-                            signal_confidence=signal.get('confidence', 1.0)
-                        )
-                        
-                        if position_size <= 0:
-                            continue
+                        # Calculate leverage based on 2% risk and SL distance
+                        leverage = self.calculate_leverage(stop_loss_pct)
+                        self.leverage_used.append(leverage)
                         
                         # Entry with slippage
                         if signal['signal'] == 'buy':
@@ -430,11 +527,20 @@ class V1BacktesterWithRisk:
                             take_profit = entry_price - stop_distance * take_profit_rr
                             side = 'short'
                         
-                        # Calculate actual position size in units
-                        size = position_size / entry_price
+                        # Calculate position with leverage (compound - uses current capital!)
+                        margin, position_value, size, entry_fee = self.calculate_position_with_leverage(
+                            capital=capital,
+                            entry_price=entry_price,
+                            stop_loss_pct=stop_loss_pct,
+                            leverage=leverage
+                        )
                         
-                        # Deduct commission
-                        capital -= entry_price * size * self.commission
+                        if margin <= 0 or margin > capital:
+                            continue
+                        
+                        # Deduct entry fee from capital (fee on full position value!)
+                        capital -= entry_fee
+                        self.total_fees_paid += entry_fee
                         
                         position = {
                             'entry': entry_price,
@@ -446,8 +552,27 @@ class V1BacktesterWithRisk:
                             'entry_idx': i,
                             'confidence': signal['confidence'],
                             'direction_proba': signal.get('direction_proba', [0.33, 0.34, 0.33]),
-                            'pair': pair
+                            'pair': pair,
+                            'margin': margin,
+                            'position_value': position_value,
+                            'leverage': leverage,
+                            'entry_fee': entry_fee,
+                            'stop_distance': stop_distance,
+                            'stop_loss_pct': stop_loss_pct
                         }
+                        
+                        # DEBUG: Log first few trades
+                        if len(self.trades) < 3:
+                            logger.info(f"TRADE OPEN: {pair} {side}")
+                            logger.info(f"  Entry: ${entry_price:.2f}, SL: ${stop_loss:.2f}, TP: ${take_profit:.2f}")
+                            logger.info(f"  SL distance: ${stop_distance:.2f} ({stop_loss_pct:.4%})")
+                            logger.info(f"  TP distance: ${stop_distance * take_profit_rr:.2f} ({stop_loss_pct * take_profit_rr:.4%})")
+                            logger.info(f"  Position: ${position_value:.2f}, Leverage: {leverage:.1f}x")
+                            logger.info(f"  Expected SL PnL: ${-self.risk_per_trade * capital:.2f}")
+                            logger.info(f"  Expected TP PnL: ${self.risk_per_trade * take_profit_rr * capital:.2f}")
+                        
+                        # Track in open_positions list
+                        self.open_positions.append(position)
                         
                 except Exception as e:
                     logger.debug(f"Signal error at {timestamp}: {e}")
@@ -501,17 +626,53 @@ class V1BacktesterWithRisk:
         reason: str,
         timestamp
     ) -> float:
-        """Close position and return PnL."""
+        """
+        Close position and return PnL with leverage.
+        
+        PnL calculation with leverage:
+        - Raw PnL = (Exit - Entry) * Size * Direction
+        - Exit Fee = Position Value * 0.05%
+        - Net PnL = Raw PnL - Exit Fee
+        
+        With 2% risk and SL hit: lose ~2% of capital
+        With 2% risk and TP hit at RR 2:1: gain ~4% of capital
+        """
+        leverage = position.get('leverage', 1.0)
+        position_value = position.get('position_value', position['entry'] * position['size'])
+        margin = position.get('margin', position_value / leverage)
+        
         # Apply slippage
         if position['side'] == 'long':
             actual_exit = exit_price * (1 - self.slippage)
-            pnl = (actual_exit - position['entry']) * position['size']
+            price_change_pct = (actual_exit - position['entry']) / position['entry']
         else:
             actual_exit = exit_price * (1 + self.slippage)
-            pnl = (position['entry'] - actual_exit) * position['size']
+            price_change_pct = (position['entry'] - actual_exit) / position['entry']
         
-        # Deduct exit commission
-        pnl -= actual_exit * position['size'] * self.commission
+        # PnL = price_change * position_value (NOT margin!)
+        # Example: 0.5% price move × $400 position = $2 PnL
+        raw_pnl = price_change_pct * position_value
+        
+        # Exit fee on full position value (not just margin!)
+        exit_position_value = actual_exit * position['size']
+        exit_fee = exit_position_value * self.exit_fee
+        self.total_fees_paid += exit_fee
+        
+        # Net PnL after exit fee
+        pnl = raw_pnl - exit_fee
+        
+        # DEBUG: Log first few trades close
+        if len(self.trades) < 3:
+            stop_loss_pct = position.get('stop_loss_pct', 0)
+            logger.info(f"TRADE CLOSE: {position.get('pair')} {position['side']} via {reason}")
+            logger.info(f"  Entry: ${position['entry']:.2f}, Exit: ${actual_exit:.2f}")
+            logger.info(f"  SL: ${position['stop_loss']:.2f}, TP: ${position['take_profit']:.2f}")
+            logger.info(f"  Price change: {price_change_pct:.4%}")
+            logger.info(f"  Position value: ${position_value:.2f}")
+            logger.info(f"  Raw PnL: ${raw_pnl:.2f}, Exit fee: ${exit_fee:.2f}, Net PnL: ${pnl:.2f}")
+        
+        # Calculate PnL as % of margin (for stats)
+        pnl_pct_margin = (pnl / margin) * 100 if margin > 0 else 0
         
         self.trades.append({
             'pair': position.get('pair', 'Unknown'),
@@ -521,10 +682,16 @@ class V1BacktesterWithRisk:
             'exit_price': actual_exit,
             'side': position['side'],
             'size': position['size'],
+            'leverage': leverage,
+            'margin': margin,
+            'position_value': position_value,
             'pnl': pnl,
-            'pnl_percent': (pnl / (position['entry'] * position['size'])) * 100,
+            'pnl_percent': pnl_pct_margin,
             'exit_reason': reason,
-            'confidence': position['confidence']
+            'confidence': position['confidence'],
+            'entry_fee': position.get('entry_fee', 0),
+            'exit_fee': exit_fee,
+            'total_fees': position.get('entry_fee', 0) + exit_fee
         })
         
         return pnl
@@ -610,7 +777,14 @@ class V1BacktesterWithRisk:
             'blocked_by_risk': self.blocked_by_risk,
             'daily_results': self.daily_results,
             'trades': self.trades,
-            'equity_curve': self.equity_curve
+            'equity_curve': self.equity_curve,
+            # Leverage stats
+            'avg_leverage': np.mean(self.leverage_used) if self.leverage_used else 1.0,
+            'max_leverage_used': max(self.leverage_used) if self.leverage_used else 1.0,
+            'min_leverage_used': min(self.leverage_used) if self.leverage_used else 1.0,
+            # Fee stats
+            'total_fees': self.total_fees_paid,
+            'fees_pct_of_pnl': (self.total_fees_paid / abs(total_pnl) * 100) if total_pnl != 0 else 0
         }
 
 
@@ -642,16 +816,30 @@ def main():
     parser.add_argument("--tp-rr", type=float, default=2.0,
                        help="V1: Take profit RR ratio (2.0)")
     
+    # Position limits
+    parser.add_argument("--max-positions", type=int, default=999,
+                       help="Max simultaneous positions (1 = one at a time)")
+    
+    # Leverage settings
+    parser.add_argument("--risk-pct", type=float, default=0.05,
+                       help="Risk per trade (0.05 = 5%)")
+    parser.add_argument("--max-leverage", type=float, default=20.0,
+                       help="Max leverage allowed (default 20x)")
+    
     args = parser.parse_args()
     
     print("="*70)
-    print("V1 MODEL BACKTEST WITH RISK MANAGEMENT")
+    print("V1 MODEL BACKTEST WITH LEVERAGE + MEXC FEES")
     print("="*70)
     print(f"Model Path: {args.model_path}")
     print(f"Test Days: {args.days}")
     print(f"Initial Capital: ${args.capital}")
+    print(f"Risk per Trade: {args.risk_pct*100:.1f}%")
+    print(f"Max Leverage: {args.max_leverage}x")
+    print(f"MEXC Fees: Entry {MEXC_TAKER_FEE*100:.2f}% + Exit {MEXC_TAKER_FEE*100:.2f}% = {MEXC_TAKER_FEE*200:.2f}% round-trip")
     print(f"V1 Thresholds: direction={args.min_conf}, timing={args.min_timing}, strength={args.min_strength}")
     print(f"V1 Exit: SL={args.sl_atr} ATR, TP RR={args.tp_rr}")
+    print(f"Max Positions: {args.max_positions}")
     print("="*70)
     
     # Load risk configuration
@@ -662,10 +850,11 @@ def main():
     print(f"  Max drawdown: {risk_config.get('max_drawdown', 0.20):.1%}")
     print(f"  Blacklist: {risk_config.get('blacklist', [])}")
     
-    # Load V1 model (use V1FreshModel for v1_fresh, EnsembleModel for saved_mtf)
+    # Load V1 model (use V1FreshModel for v1_fresh/v1_xxx models, EnsembleModel for saved_mtf)
     logger.info(f"Loading V1 model from {args.model_path}")
     
-    if 'v1_fresh' in args.model_path:
+    # Check if it's a V1 model (v1_fresh, v1_365d, v1_180d, etc.)
+    if 'v1_' in args.model_path or 'v1_fresh' in args.model_path:
         # Use V1FreshModel for newly trained models
         model = V1FreshModel(args.model_path)
         try:
@@ -732,12 +921,14 @@ def main():
         
         logger.info(f"Features: {features.shape[1]} columns, {len(features)} rows")
         
-        # Run backtest with risk management
+        # Run backtest with leverage and MEXC fees
         backtester = V1BacktesterWithRisk(
             initial_capital=args.capital,
-            commission=0.0004,
-            slippage=0.0002,
-            risk_config=risk_config
+            risk_per_trade=args.risk_pct,
+            max_leverage=args.max_leverage,
+            slippage=0.0001,  # 0.01% slippage
+            risk_config=risk_config,
+            max_positions=args.max_positions
         )
         
         results = backtester.run(
@@ -799,6 +990,16 @@ def main():
     avg_pf = np.mean([r['profit_factor'] for r in valid_results])
     max_dd = max(r['max_drawdown'] for r in valid_results)
     
+    # Calculate total PnL in $
+    total_pnl = sum(final_capitals) - args.capital * len(valid_results)
+    avg_pnl_per_pair = total_pnl / len(valid_results)
+    
+    # Monthly projection (extrapolate from test days)
+    days_tested = args.days
+    monthly_multiplier = 30 / days_tested
+    monthly_pnl_projection = total_pnl * monthly_multiplier
+    monthly_roi_projection = (monthly_pnl_projection / (args.capital * len(valid_results))) * 100
+    
     print(f"\nPairs tested: {len(valid_results)}/{len(V1_TOP_PAIRS[:args.pairs])}")
     print(f"Total trades: {total_trades}")
     print(f"Overall win rate: {(total_wins / total_trades * 100):.1f}%")
@@ -806,6 +1007,35 @@ def main():
     print(f"Average Sharpe: {avg_sharpe:.2f}")
     print(f"Average Profit Factor: {avg_pf:.2f}")
     print(f"Max Drawdown (worst pair): {max_dd:.2f}%")
+    
+    # PnL and ROI Summary
+    print(f"\n{'='*40}")
+    print("💰 PnL & ROI SUMMARY")
+    print('='*40)
+    print(f"Initial Capital: ${args.capital:.2f}")
+    print(f"Test Period: {days_tested} days")
+    print(f"Max Positions: {args.max_positions}")
+    print(f"\n📊 Actual Results ({days_tested} days):")
+    print(f"  Total PnL: ${total_pnl:.2f}")
+    print(f"  Avg PnL per pair: ${avg_pnl_per_pair:.2f}")
+    print(f"  ROI: {total_return:.2f}%")
+    print(f"\n📈 Monthly Projection (30 days):")
+    print(f"  Projected Monthly PnL: ${monthly_pnl_projection:.2f}")
+    print(f"  Projected Monthly ROI: {monthly_roi_projection:.2f}%")
+    print(f"  Final Capital (projected): ${args.capital + monthly_pnl_projection:.2f}")
+    
+    # Leverage & Fees stats
+    print(f"\n{'='*40}")
+    print("⚡ LEVERAGE & FEES")
+    print('='*40)
+    avg_lev = np.mean([r.get('avg_leverage', 1.0) for r in valid_results])
+    max_lev = max([r.get('max_leverage_used', 1.0) for r in valid_results])
+    total_fees = sum([r.get('total_fees', 0) for r in valid_results])
+    print(f"Risk per Trade: {args.risk_pct*100:.1f}%")
+    print(f"Average Leverage: {avg_lev:.1f}x")
+    print(f"Max Leverage Used: {max_lev:.1f}x")
+    print(f"Total Fees Paid: ${total_fees:.2f}")
+    print(f"Fees % of Gross PnL: {(total_fees / (abs(total_pnl) + total_fees) * 100):.1f}%" if total_pnl != 0 else "N/A")
     
     # Risk management impact
     print(f"\n{'='*40}")

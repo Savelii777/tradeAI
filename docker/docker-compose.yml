@@ -8,9 +8,13 @@ services:
       dockerfile: docker/Dockerfile
     container_name: ai-trading-bot
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 12G
     environment:
       - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=DEBUG
     volumes:
       - ../config:/app/config
       - ../logs:/app/logs

@@ -33,6 +33,8 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 import joblib
+from tqdm import tqdm
+import gc
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -341,7 +343,7 @@ def main():
     
     mtf_engine = MTFFeatureEngine()
     
-    for pair in pairs:
+    for pair in tqdm(pairs, desc="Processing pairs", unit="pair"):
         logger.info(f"Processing {pair}...")
         
         mtf_data = load_mtf_data(pair, args.data_dir)
@@ -413,6 +415,11 @@ def main():
         all_targets['volatility'].append(volatility)
         
         logger.info(f"  Added {len(features)} samples")
+        
+        # Освобождаем память
+        del m1_df, m5_df, m15_df, mtf_data, features
+        del direction, timing, strength, volatility
+        gc.collect()
     
     # Combine all data
     if not all_features:
