@@ -3,13 +3,18 @@
 Paper Trading with Telegram Notifications
 
 Runs V1 model in real-time paper trading mode with Telegram alerts.
+Supports both single model and multi-period ensemble.
 
 Usage:
+    # Single model:
     python scripts/paper_trading.py --model-path ./models/v1_fresh --capital 100
+    
+    # Ensemble (recommended):
+    python scripts/paper_trading.py --ensemble --capital 100
     
     # Or in Docker:
     docker-compose -f docker/docker-compose.yml run --rm trading-bot \
-        python scripts/paper_trading.py --model-path ./models/v1_fresh --capital 100
+        python scripts/paper_trading.py --ensemble --capital 100
 """
 
 import sys
@@ -36,9 +41,63 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.features.feature_engine import FeatureEngine
 from src.risk.risk_manager import RiskManager, load_risk_config
+from src.models.multi_period_ensemble import MultiPeriodEnsemble, EnsembleSignal
 
 # Import MTF feature generator from train_mtf
 from train_mtf import MTFFeatureEngine
+
+
+def generate_live_features(
+    mtf_engine: MTFFeatureEngine,
+    df_1m: pd.DataFrame,
+    df_5m: pd.DataFrame,
+    df_15m: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Generate features for live trading.
+    
+    Unlike align_timeframes, this doesn't rely on perfect timestamp alignment.
+    It takes the latest available data from each timeframe.
+    """
+    # Generate features for each TF
+    m15_features = mtf_engine.generate_m15_trend_features(df_15m)
+    m5_features = mtf_engine.generate_m5_signal_features(df_5m)
+    m1_features = mtf_engine.generate_m1_timing_features(df_1m)
+    
+    # Take only the last row from each
+    if m5_features.empty or m15_features.empty or m1_features.empty:
+        return pd.DataFrame()
+    
+    # Start with M5 features (last row)
+    result = m5_features.iloc[[-1]].copy()
+    
+    # Add M15 features (last available)
+    m15_last = m15_features.iloc[-1]
+    for col in m15_features.columns:
+        result[col] = m15_last[col]
+    
+    # Add M1 features - aggregate last 5 candles
+    m1_last_5 = m1_features.iloc[-5:] if len(m1_features) >= 5 else m1_features
+    
+    for col in m1_features.columns:
+        if 'momentum' in col or 'rsi' in col:
+            # For momentum/RSI: add last, mean, std
+            result[f'{col}_last'] = m1_last_5[col].iloc[-1]
+            result[f'{col}_mean'] = m1_last_5[col].mean()
+            result[f'{col}_std'] = m1_last_5[col].std()
+        else:
+            # For other features: just last
+            result[f'{col}_last'] = m1_last_5[col].iloc[-1]
+    
+    # Fill any NaN values
+    result = result.fillna(0)
+    
+    # Convert object columns to numeric
+    for col in result.columns:
+        if result[col].dtype == 'object':
+            result[col] = pd.Categorical(result[col]).codes
+    
+    return result
 
 
 # ============================================================
@@ -232,7 +291,8 @@ class PaperTrader:
         risk_pct: float = 0.05,
         rr_ratio: float = 2.0,
         max_hold_candles: int = 60,
-        pairs: List[str] = None
+        pairs: List[str] = None,
+        use_ensemble: bool = False
     ):
         self.model_path = model_path
         self.capital = capital
@@ -240,6 +300,7 @@ class PaperTrader:
         self.risk_pct = risk_pct
         self.rr_ratio = rr_ratio
         self.max_hold_candles = max_hold_candles
+        self.use_ensemble = use_ensemble
         
         # Default pairs
         self.pairs = pairs or [
@@ -253,6 +314,7 @@ class PaperTrader:
         
         # Components
         self.model: Optional[V1FreshModel] = None
+        self.ensemble: Optional[MultiPeriodEnsemble] = None
         self.feature_engine: Optional[MTFFeatureEngine] = None
         self.exchange: Optional[ccxt.binance] = None
         self.telegram: Optional[TelegramNotifier] = None
@@ -270,9 +332,21 @@ class PaperTrader:
         """Initialize all components."""
         logger.info("Initializing Paper Trader...")
         
-        # Load model
-        self.model = V1FreshModel(self.model_path)
-        self.model.load()
+        # Load model or ensemble
+        if self.use_ensemble:
+            logger.info("🔀 Using Multi-Period Ensemble (30d + 90d + 365d)")
+            self.ensemble = MultiPeriodEnsemble()
+            model_paths = {
+                '30d': './models/v1_fresh',
+                '90d': './models/v1_90d',
+                '365d': './models/v1_365d'
+            }
+            if not self.ensemble.load(model_paths):
+                raise RuntimeError("Failed to load ensemble models")
+        else:
+            logger.info(f"Using single model: {self.model_path}")
+            self.model = V1FreshModel(self.model_path)
+            self.model.load()
         
         # Feature engine
         self.feature_engine = MTFFeatureEngine()
@@ -301,13 +375,14 @@ class PaperTrader:
             logger.warning("No chat_id found. Telegram notifications disabled.")
         else:
             # Send startup message
+            mode = "🔀 Ensemble (30d+90d+365d)" if self.use_ensemble else f"📅 {self.model_path}"
             await self.telegram.send_message(
                 "🤖 <b>Paper Trading Started</b>\n\n"
                 f"💰 Capital: ${self.capital:.2f}\n"
                 f"📊 Risk per trade: {self.risk_pct*100:.1f}%\n"
                 f"📈 RR Ratio: 1:{self.rr_ratio:.1f}\n"
                 f"🔢 Pairs: {len(self.pairs)}\n"
-                f"📅 Model: {self.model_path}\n\n"
+                f"{mode}\n\n"
                 "Scanning for opportunities..."
             )
         
@@ -353,12 +428,13 @@ class PaperTrader:
         
         return margin, position_value, size, entry_fee
     
-    async def scan_for_signals(self) -> Optional[Tuple[str, Dict, pd.DataFrame]]:
+    async def scan_for_signals(self) -> Optional[Tuple[str, Dict, pd.DataFrame, float]]:
         """Scan all pairs for trading signals."""
         best_signal = None
         best_pair = None
         best_df = None
         best_score = 0
+        best_position_mult = 1.0
         
         for pair in self.pairs:
             try:
@@ -367,40 +443,95 @@ class PaperTrader:
                 df_5m = await self.fetch_ohlcv(pair, '5m', 100)
                 df_15m = await self.fetch_ohlcv(pair, '15m', 100)
                 
-                if df_5m.empty:
+                if df_5m.empty or df_1m.empty or df_15m.empty:
                     continue
                 
-                # Generate features
-                features = self.feature_engine.generate_features(
-                    df_1m, df_5m, df_15m
+                # Generate features using live feature generator
+                features = generate_live_features(
+                    self.feature_engine, df_1m, df_5m, df_15m
                 )
                 
                 if features.empty:
                     continue
                 
-                # Get signal
-                X = features.iloc[[-1]]
-                signal = self.model.get_trading_signal(X)
+                # Get expected features (from ensemble or single model)
+                if self.use_ensemble:
+                    expected_features = self.ensemble.feature_names
+                else:
+                    expected_features = self.model.direction_model.feature_name_
                 
-                # Score = direction_prob * timing_prob
-                score = max(signal['direction_proba']) * signal['timing_proba']
+                # Add missing features as 0
+                for feat in expected_features:
+                    if feat not in features.columns:
+                        features[feat] = 0
+                
+                # Select only expected features in correct order
+                X = features[expected_features]
+                
+                # Get signal (ensemble or single model)
+                if self.use_ensemble:
+                    ensemble_signal = self.ensemble.get_trading_signal(X)
+                    
+                    # Skip if protected (no consensus)
+                    if ensemble_signal.is_protected:
+                        logger.debug(f"{pair}: Protected - {ensemble_signal.protection_reason}")
+                        continue
+                    
+                    signal = {
+                        'signal': ensemble_signal.signal,
+                        'direction_proba': ensemble_signal.direction_proba,
+                        'timing_proba': ensemble_signal.timing_proba,
+                        'confidence': ensemble_signal.confidence,
+                        'strength': ensemble_signal.strength,
+                        'volatility': ensemble_signal.volatility,
+                        'agreement_level': ensemble_signal.agreement_level,
+                        'individual_signals': ensemble_signal.individual_signals
+                    }
+                    position_mult = ensemble_signal.position_size_multiplier
+                    score = ensemble_signal.confidence
+                else:
+                    signal = self.model.get_trading_signal(X)
+                    position_mult = 1.0
+                    score = max(signal['direction_proba']) * signal['timing_proba']
                 
                 if signal['signal'] != 0 and score > best_score:
                     best_score = score
                     best_signal = signal
                     best_pair = pair
                     best_df = df_5m
+                    best_position_mult = position_mult
                     
             except Exception as e:
                 logger.debug(f"Error scanning {pair}: {e}")
                 continue
         
         if best_signal:
-            return best_pair, best_signal, best_df
+            if self.use_ensemble:
+                agreement = best_signal.get('agreement_level', 0)
+                indiv = best_signal.get('individual_signals', {})
+                logger.info(
+                    f"🎯 Ensemble signal for {best_pair}: {best_signal['signal']}, "
+                    f"score={best_score:.3f}, agreement={agreement}/3, "
+                    f"votes={indiv}"
+                )
+            else:
+                logger.info(f"🎯 Found signal for {best_pair}: {best_signal['signal']}, score={best_score:.3f}")
+            return best_pair, best_signal, best_df, best_position_mult
+        
+        # Log scan summary every minute
+        logger.info(f"📊 Scan complete: No signals found. Best score={best_score:.3f}")
         return None
     
-    async def open_position(self, pair: str, signal: Dict, df: pd.DataFrame):
-        """Open a paper position."""
+    async def open_position(self, pair: str, signal: Dict, df: pd.DataFrame, 
+                             position_mult: float = 1.0):
+        """Open a paper position.
+        
+        Args:
+            pair: Trading pair symbol
+            signal: Signal dictionary
+            df: OHLCV dataframe
+            position_mult: Position size multiplier (0.7 for 2/3 consensus, 1.0 for full)
+        """
         current_price = df['close'].iloc[-1]
         atr = self._calculate_atr(df)
         
@@ -417,10 +548,15 @@ class PaperTrader:
             stop_loss = current_price + stop_distance
             take_profit = current_price - (stop_distance * self.rr_ratio)
         
-        # Calculate position size
+        # Calculate position size (apply multiplier for reduced consensus)
         margin, position_value, size, entry_fee = self.calculate_position(
             current_price, stop_loss_pct
         )
+        # Apply position multiplier (e.g., 0.7x for 2/3 consensus)
+        margin *= position_mult
+        size *= position_mult
+        entry_fee *= position_mult
+        
         leverage = self.calculate_leverage(stop_loss_pct)
         
         # Create position
@@ -442,14 +578,29 @@ class PaperTrader:
         
         # Log
         side = "LONG" if direction == 1 else "SHORT"
+        
+        # Build consensus info for ensemble
+        consensus_info = ""
+        if self.use_ensemble and 'agreement_level' in signal:
+            agreement = signal['agreement_level']
+            indiv = signal.get('individual_signals', {})
+            consensus_info = f"\n🗳 Consensus: {agreement}/3 ({position_mult*100:.0f}% size)"
+            if indiv:
+                votes = ", ".join([f"{k}:{v}" for k, v in indiv.items()])
+                consensus_info += f"\n📊 Votes: {votes}"
+        
         logger.info(
             f"📈 OPENED {side} {pair} @ ${current_price:.4f}\n"
             f"   SL: ${stop_loss:.4f} | TP: ${take_profit:.4f}\n"
-            f"   Leverage: {leverage:.1f}x | Size: {size:.4f}"
+            f"   Leverage: {leverage:.1f}x | Size: {size:.4f}{consensus_info}"
         )
         
         # Telegram
         if self.telegram:
+            tg_consensus = ""
+            if self.use_ensemble and 'agreement_level' in signal:
+                tg_consensus = f"\n🗳 Ensemble: {signal['agreement_level']}/3 ({position_mult*100:.0f}% pos)"
+            
             await self.telegram.send_message(
                 f"{'🟢' if direction == 1 else '🔴'} <b>{side} {pair}</b>\n\n"
                 f"💵 Entry: ${current_price:.4f}\n"
@@ -458,7 +609,7 @@ class PaperTrader:
                 f"⚡️ Leverage: {leverage:.1f}x\n"
                 f"📊 Size: {size:.4f}\n"
                 f"💰 Margin: ${margin:.2f}\n\n"
-                f"📈 Confidence: {signal['confidence']*100:.1f}%\n"
+                f"📈 Confidence: {signal['confidence']*100:.1f}%{tg_consensus}\n"
                 f"⏰ {datetime.utcnow().strftime('%H:%M:%S UTC')}"
             )
     
@@ -621,8 +772,8 @@ class PaperTrader:
                     if now - last_scan >= scan_interval:
                         result = await self.scan_for_signals()
                         if result:
-                            pair, signal, df = result
-                            await self.open_position(pair, signal, df)
+                            pair, signal, df, position_mult = result
+                            await self.open_position(pair, signal, df, position_mult)
                         last_scan = now
                     await asyncio.sleep(5)
                     
@@ -687,6 +838,8 @@ async def main():
     parser.add_argument('--telegram-token', type=str, 
                         default='8270168075:AAHkJ_bbJGgk4fV3r0_Gc8NQb07O_zUMBJc',
                         help='Telegram bot token')
+    parser.add_argument('--ensemble', action='store_true',
+                        help='Use multi-period ensemble (30d + 90d + 365d models)')
     
     args = parser.parse_args()
     
@@ -695,7 +848,8 @@ async def main():
         telegram_token=args.telegram_token,
         capital=args.capital,
         risk_pct=args.risk_pct,
-        rr_ratio=args.rr_ratio
+        rr_ratio=args.rr_ratio,
+        use_ensemble=args.ensemble
     )
     
     try:
