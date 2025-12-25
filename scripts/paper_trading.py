@@ -408,10 +408,15 @@ class PaperTrader:
             return pd.DataFrame()
     
     def calculate_leverage(self, stop_loss_pct: float) -> float:
-        """Calculate leverage: leverage = risk_pct / stop_loss_pct."""
+        """Calculate leverage: leverage = risk_pct / stop_loss_pct.
+        
+        Rounds to integer for better compatibility with exchanges.
+        """
         if stop_loss_pct <= 0:
             return 1.0
         leverage = self.risk_pct / stop_loss_pct
+        # Round to nearest integer for exchange compatibility
+        leverage = round(leverage)
         return min(max(leverage, 1.0), 20.0)  # Clamp 1x-20x
     
     def calculate_position(
@@ -601,15 +606,23 @@ class PaperTrader:
             if self.use_ensemble and 'agreement_level' in signal:
                 tg_consensus = f"\n🗳 Ensemble: {signal['agreement_level']}/3 ({position_mult*100:.0f}% pos)"
             
+            # Calculate potential PnL for display
+            sl_pct = abs(stop_loss - current_price) / current_price * 100
+            tp_pct = abs(take_profit - current_price) / current_price * 100
+            risk_usd = margin * sl_pct / 100 * leverage
+            reward_usd = margin * tp_pct / 100 * leverage
+            
             await self.telegram.send_message(
-                f"{'🟢' if direction == 1 else '🔴'} <b>{side} {pair}</b>\n\n"
+                f"{'🟢' if direction == 1 else '🔴'} <b>{side} {pair.split(':')[0]}</b>\n\n"
                 f"💵 Entry: ${current_price:.4f}\n"
-                f"🛡 Stop Loss: ${stop_loss:.4f}\n"
-                f"🎯 Take Profit: ${take_profit:.4f}\n"
+                f"🛡 SL: ${stop_loss:.4f} ({sl_pct:.2f}%)\n"
+                f"🎯 TP: ${take_profit:.4f} ({tp_pct:.2f}%)\n\n"
                 f"⚡️ Leverage: {leverage:.1f}x\n"
-                f"📊 Size: {size:.4f}\n"
-                f"💰 Margin: ${margin:.2f}\n\n"
-                f"📈 Confidence: {signal['confidence']*100:.1f}%{tg_consensus}\n"
+                f"💰 Margin: ${margin:.2f}\n"
+                f"📊 Position: ${margin * leverage:.2f}\n\n"
+                f"⚠️ Risk: -${risk_usd:.2f}\n"
+                f"✅ Reward: +${reward_usd:.2f}\n"
+                f"📈 R:R = 1:{self.rr_ratio:.1f}{tg_consensus}\n"
                 f"⏰ {datetime.utcnow().strftime('%H:%M:%S UTC')}"
             )
     
@@ -712,22 +725,22 @@ class PaperTrader:
             wr = wins / total * 100 if total > 0 else 0
             
             reason_emoji = {
-                'stop_loss': '🛑',
-                'take_profit': '🎯',
-                'time_exit': '⏰'
-            }.get(reason, '📊')
+                'stop_loss': '🛑 Stop Loss',
+                'take_profit': '🎯 Take Profit',
+                'time_exit': '⏰ Timeout'
+            }.get(reason, reason)
             
             await self.telegram.send_message(
                 f"{emoji} <b>Position Closed</b>\n\n"
-                f"{'🟢' if pos.direction == 1 else '🔴'} {side} {pos.symbol}\n"
-                f"{reason_emoji} Reason: {reason}\n"
+                f"{'🟢' if pos.direction == 1 else '🔴'} {side} {pos.symbol.split(':')[0]}\n"
+                f"📍 {reason_emoji}\n\n"
                 f"💵 Entry: ${pos.entry_price:.4f}\n"
                 f"💵 Exit: ${exit_price:.4f}\n"
-                f"{'📈' if pnl_usd > 0 else '📉'} PnL: ${pnl_usd:+.2f} ({pnl_pct:+.2f}%)\n\n"
-                f"<b>Session Stats:</b>\n"
+                f"{'📈' if pnl_usd > 0 else '📉'} <b>PnL: ${pnl_usd:+.2f} ({pnl_pct:+.1f}%)</b>\n\n"
+                f"━━━━━━━━━━━━━━━━\n"
                 f"💰 Capital: ${self.capital:.2f}\n"
-                f"📊 Total PnL: ${total_pnl:+.2f} ({total_pnl_pct:+.2f}%)\n"
-                f"🎯 Win Rate: {wr:.1f}% ({wins}/{total})\n"
+                f"📊 Session: ${total_pnl:+.2f} ({total_pnl_pct:+.1f}%)\n"
+                f"🎯 W/L: {wins}/{total-wins} ({wr:.0f}%)\n"
                 f"⏰ {datetime.utcnow().strftime('%H:%M:%S UTC')}"
             )
         

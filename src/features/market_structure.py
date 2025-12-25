@@ -196,27 +196,30 @@ class MarketStructure:
         Returns:
             DataFrame with S/R features.
         """
-        features = pd.DataFrame(index=df.index)
+        close = df['close']
         
         # Rolling S/R calculation (approximate)
         rolling_high = df['high'].rolling(window=self.sr_lookback).max()
         rolling_low = df['low'].rolling(window=self.sr_lookback).min()
         
         # Distance to rolling extremes
-        features['dist_to_resistance'] = (rolling_high - df['close']) / df['close'] * 100
-        features['dist_to_support'] = (df['close'] - rolling_low) / df['close'] * 100
+        dist_to_resistance = (rolling_high - close) / close * 100
+        dist_to_support = (close - rolling_low) / close * 100
         
         # Position in range
         price_range = rolling_high - rolling_low
-        features['range_position'] = (df['close'] - rolling_low) / price_range.replace(0, np.nan)
         
-        # Breakout indicators
-        features['at_resistance'] = features['dist_to_resistance'] < 0.5
-        features['at_support'] = features['dist_to_support'] < 0.5
-        features['breakout_up'] = df['close'] > rolling_high.shift(1)
-        features['breakout_down'] = df['close'] < rolling_low.shift(1)
+        feature_dict = {
+            'dist_to_resistance': dist_to_resistance,
+            'dist_to_support': dist_to_support,
+            'range_position': (close - rolling_low) / price_range.replace(0, np.nan),
+            'at_resistance': dist_to_resistance < 0.5,
+            'at_support': dist_to_support < 0.5,
+            'breakout_up': close > rolling_high.shift(1),
+            'breakout_down': close < rolling_low.shift(1)
+        }
         
-        return features
+        return pd.DataFrame(feature_dict, index=df.index)
         
     def identify_trend(self, df: pd.DataFrame) -> pd.DataFrame:
         """

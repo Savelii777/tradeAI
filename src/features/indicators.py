@@ -76,30 +76,32 @@ class TechnicalIndicators:
         Returns:
             DataFrame with EMA features.
         """
-        features = pd.DataFrame(index=df.index)
         close = df['close']
+        feature_dict = {}
+        ema_values = {}  # Store for crossover calculations
         
         for period in periods:
             ema = self.ema(close, period)
-            features[f'ema_{period}'] = ema
-            features[f'ema_{period}_dist'] = (close - ema) / ema * 100  # Distance in %
-            features[f'ema_{period}_slope'] = ema.diff(5) / ema * 100  # 5-period slope
-            features[f'price_above_ema_{period}'] = (close > ema).astype(int)
+            ema_values[period] = ema
+            feature_dict[f'ema_{period}'] = ema
+            feature_dict[f'ema_{period}_dist'] = (close - ema) / ema * 100  # Distance in %
+            feature_dict[f'ema_{period}_slope'] = ema.diff(5) / ema * 100  # 5-period slope
+            feature_dict[f'price_above_ema_{period}'] = (close > ema).astype(int)
             
         # EMA crossovers
         if 9 in periods and 21 in periods:
-            features['ema_9_21_cross'] = (
-                (features['ema_9'] > features['ema_21']).astype(int) -
-                (features['ema_9'] < features['ema_21']).astype(int)
+            feature_dict['ema_9_21_cross'] = (
+                (ema_values[9] > ema_values[21]).astype(int) -
+                (ema_values[9] < ema_values[21]).astype(int)
             )
             
         if 50 in periods and 200 in periods:
-            features['ema_50_200_cross'] = (
-                (features['ema_50'] > features['ema_200']).astype(int) -
-                (features['ema_50'] < features['ema_200']).astype(int)
+            feature_dict['ema_50_200_cross'] = (
+                (ema_values[50] > ema_values[200]).astype(int) -
+                (ema_values[50] < ema_values[200]).astype(int)
             )
             
-        return features
+        return pd.DataFrame(feature_dict, index=df.index)
         
     # -------------------- Momentum Indicators --------------------
     
@@ -145,22 +147,22 @@ class TechnicalIndicators:
         Returns:
             DataFrame with RSI features.
         """
-        features = pd.DataFrame(index=df.index)
         close = df['close']
+        feature_dict = {}
         
         for period in periods:
             rsi = self.rsi(close, period)
-            features[f'rsi_{period}'] = rsi
-            features[f'rsi_{period}_change'] = rsi.diff(5)  # Rate of change
-            features[f'rsi_{period}_overbought'] = (rsi > 70).astype(int)
-            features[f'rsi_{period}_oversold'] = (rsi < 30).astype(int)
+            feature_dict[f'rsi_{period}'] = rsi
+            feature_dict[f'rsi_{period}_change'] = rsi.diff(5)  # Rate of change
+            feature_dict[f'rsi_{period}_overbought'] = (rsi > 70).astype(int)
+            feature_dict[f'rsi_{period}_oversold'] = (rsi < 30).astype(int)
             
             # RSI divergence (simplified)
             price_change = close.diff(10)
             rsi_change = rsi.diff(10)
-            features[f'rsi_{period}_divergence'] = np.sign(price_change) != np.sign(rsi_change)
+            feature_dict[f'rsi_{period}_divergence'] = np.sign(price_change) != np.sign(rsi_change)
             
-        return features
+        return pd.DataFrame(feature_dict, index=df.index)
         
     def macd(
         self,
@@ -209,21 +211,21 @@ class TechnicalIndicators:
         Returns:
             DataFrame with MACD features.
         """
-        features = pd.DataFrame(index=df.index)
-        
         macd_line, signal_line, histogram = self.macd(df['close'], fast, slow, signal)
         
-        features['macd'] = macd_line
-        features['macd_signal'] = signal_line
-        features['macd_histogram'] = histogram
-        features['macd_histogram_change'] = histogram.diff()
-        features['macd_cross'] = (
-            (macd_line > signal_line).astype(int) -
-            (macd_line < signal_line).astype(int)
-        )
-        features['macd_above_zero'] = (macd_line > 0).astype(int)
+        feature_dict = {
+            'macd': macd_line,
+            'macd_signal': signal_line,
+            'macd_histogram': histogram,
+            'macd_histogram_change': histogram.diff(),
+            'macd_cross': (
+                (macd_line > signal_line).astype(int) -
+                (macd_line < signal_line).astype(int)
+            ),
+            'macd_above_zero': (macd_line > 0).astype(int)
+        }
         
-        return features
+        return pd.DataFrame(feature_dict, index=df.index)
         
     def stochastic(
         self,
@@ -272,20 +274,20 @@ class TechnicalIndicators:
         Returns:
             DataFrame with Stochastic features.
         """
-        features = pd.DataFrame(index=df.index)
-        
         stoch_k, stoch_d = self.stochastic(df, k_period, d_period, smooth_k)
         
-        features['stoch_k'] = stoch_k
-        features['stoch_d'] = stoch_d
-        features['stoch_cross'] = (
-            (stoch_k > stoch_d).astype(int) -
-            (stoch_k < stoch_d).astype(int)
-        )
-        features['stoch_overbought'] = (stoch_k > 80).astype(int)
-        features['stoch_oversold'] = (stoch_k < 20).astype(int)
+        feature_dict = {
+            'stoch_k': stoch_k,
+            'stoch_d': stoch_d,
+            'stoch_cross': (
+                (stoch_k > stoch_d).astype(int) -
+                (stoch_k < stoch_d).astype(int)
+            ),
+            'stoch_overbought': (stoch_k > 80).astype(int),
+            'stoch_oversold': (stoch_k < 20).astype(int)
+        }
         
-        return features
+        return pd.DataFrame(feature_dict, index=df.index)
         
     # -------------------- Volatility Indicators --------------------
     
@@ -332,22 +334,29 @@ class TechnicalIndicators:
         Returns:
             DataFrame with ATR features.
         """
-        features = pd.DataFrame(index=df.index)
+        feature_dict = {}
+        atr_values = {}  # Store for ratio calculations
         
         for period in periods:
             atr = self.atr(df, period)
-            features[f'atr_{period}'] = atr
-            features[f'atr_{period}_pct'] = atr / df['close'] * 100  # ATR as % of price
+            atr_values[period] = atr
+            feature_dict[f'atr_{period}'] = atr
+            feature_dict[f'atr_{period}_pct'] = atr / df['close'] * 100  # ATR as % of price
             
         # ATR ratio (short-term vs long-term)
         if 7 in periods and 21 in periods:
-            features['atr_ratio'] = features['atr_7'] / features['atr_21']
+            feature_dict['atr_ratio'] = atr_values[7] / atr_values[21]
             
         # Historical ATR comparison
-        features['atr_14_ma'] = features['atr_14'].rolling(window=50).mean() if 14 in periods else np.nan
-        features['atr_vs_avg'] = features['atr_14'] / features['atr_14_ma']
+        if 14 in periods:
+            atr_14_ma = atr_values[14].rolling(window=50).mean()
+            feature_dict['atr_14_ma'] = atr_14_ma
+            feature_dict['atr_vs_avg'] = atr_values[14] / atr_14_ma
+        else:
+            feature_dict['atr_14_ma'] = np.nan
+            feature_dict['atr_vs_avg'] = np.nan
         
-        return features
+        return pd.DataFrame(feature_dict, index=df.index)
         
     def bollinger_bands(
         self,
@@ -391,19 +400,21 @@ class TechnicalIndicators:
         Returns:
             DataFrame with Bollinger features.
         """
-        features = pd.DataFrame(index=df.index)
         close = df['close']
-        
         upper, middle, lower = self.bollinger_bands(close, period, std_dev)
         
-        features['bb_upper'] = upper
-        features['bb_middle'] = middle
-        features['bb_lower'] = lower
-        features['bb_width'] = (upper - lower) / middle * 100  # Width as %
-        features['bb_position'] = (close - lower) / (upper - lower)  # 0-1 position
-        features['bb_squeeze'] = features['bb_width'] < features['bb_width'].rolling(window=50).quantile(0.2)
+        bb_width = (upper - lower) / middle * 100  # Width as %
         
-        return features
+        feature_dict = {
+            'bb_upper': upper,
+            'bb_middle': middle,
+            'bb_lower': lower,
+            'bb_width': bb_width,
+            'bb_position': (close - lower) / (upper - lower),  # 0-1 position
+            'bb_squeeze': bb_width < bb_width.rolling(window=50).quantile(0.2)
+        }
+        
+        return pd.DataFrame(feature_dict, index=df.index)
         
     # -------------------- Volume Indicators --------------------
     
@@ -422,31 +433,33 @@ class TechnicalIndicators:
         Returns:
             DataFrame with volume features.
         """
-        features = pd.DataFrame(index=df.index)
         volume = df['volume']
         close = df['close']
+        feature_dict = {}
         
         # Volume moving averages and ratios
         for period in periods:
             vol_ma = volume.rolling(window=period).mean()
-            features[f'volume_ma_{period}'] = vol_ma
-            features[f'volume_ratio_{period}'] = volume / vol_ma
+            feature_dict[f'volume_ma_{period}'] = vol_ma
+            feature_dict[f'volume_ratio_{period}'] = volume / vol_ma
             
         # Volume delta (buy vs sell volume - simplified)
         price_change = close.diff()
-        features['volume_delta'] = np.where(price_change > 0, volume, -volume)
-        features['volume_delta_cumsum'] = features['volume_delta'].rolling(window=20).sum()
+        volume_delta = np.where(price_change > 0, volume, -volume)
+        feature_dict['volume_delta'] = volume_delta
+        feature_dict['volume_delta_cumsum'] = pd.Series(volume_delta, index=df.index).rolling(window=20).sum()
         
         # On-Balance Volume (OBV)
-        features['obv'] = (np.sign(price_change) * volume).cumsum()
-        features['obv_ema'] = self.ema(features['obv'], 20)
+        obv = (np.sign(price_change) * volume).cumsum()
+        feature_dict['obv'] = obv
+        feature_dict['obv_ema'] = self.ema(obv, 20)
         
         # Volume trend
-        features['volume_trend'] = volume.rolling(window=20).apply(
+        feature_dict['volume_trend'] = volume.rolling(window=20).apply(
             lambda x: np.polyfit(range(len(x)), x, 1)[0]
         )
         
-        return features
+        return pd.DataFrame(feature_dict, index=df.index)
         
     # -------------------- Combined Features --------------------
     

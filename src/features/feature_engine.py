@@ -69,34 +69,40 @@ class FeatureEngine:
         Returns:
             DataFrame with OHLCV features.
         """
-        features = pd.DataFrame(index=df.index)
+        close = df['close']
+        high = df['high']
+        low = df['low']
+        open_price = df['open']
         
-        # Price changes
-        features['return_1'] = df['close'].pct_change(1)
-        features['return_5'] = df['close'].pct_change(5)
-        features['return_10'] = df['close'].pct_change(10)
-        features['return_20'] = df['close'].pct_change(20)
-        
-        # Log returns
-        features['log_return_1'] = np.log(df['close'] / df['close'].shift(1))
-        
-        # High-low range
-        features['hl_range'] = (df['high'] - df['low']) / df['close']
-        features['hl_range_ma'] = features['hl_range'].rolling(20).mean()
-        features['hl_range_ratio'] = features['hl_range'] / features['hl_range_ma']
-        
-        # Close position in range
-        features['close_position'] = (df['close'] - df['low']) / (df['high'] - df['low']).replace(0, np.nan)
-        
-        # Gap
-        features['gap'] = (df['open'] - df['close'].shift(1)) / df['close'].shift(1)
+        # High-low range (calculate first for reuse)
+        hl_range = (high - low) / close
+        hl_range_ma = hl_range.rolling(20).mean()
         
         # Consecutive candle direction
-        direction = (df['close'] > df['open']).astype(int) * 2 - 1
-        features['consecutive_up'] = (direction == 1).groupby((direction != 1).cumsum()).cumsum()
-        features['consecutive_down'] = (direction == -1).groupby((direction != -1).cumsum()).cumsum()
+        direction = (close > open_price).astype(int) * 2 - 1
         
-        return features
+        feature_dict = {
+            # Price changes
+            'return_1': close.pct_change(1),
+            'return_5': close.pct_change(5),
+            'return_10': close.pct_change(10),
+            'return_20': close.pct_change(20),
+            # Log returns
+            'log_return_1': np.log(close / close.shift(1)),
+            # High-low range
+            'hl_range': hl_range,
+            'hl_range_ma': hl_range_ma,
+            'hl_range_ratio': hl_range / hl_range_ma,
+            # Close position in range
+            'close_position': (close - low) / (high - low).replace(0, np.nan),
+            # Gap
+            'gap': (open_price - close.shift(1)) / close.shift(1),
+            # Consecutive candle direction
+            'consecutive_up': (direction == 1).groupby((direction != 1).cumsum()).cumsum(),
+            'consecutive_down': (direction == -1).groupby((direction != -1).cumsum()).cumsum()
+        }
+        
+        return pd.DataFrame(feature_dict, index=df.index)
         
     def generate_time_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -213,35 +219,36 @@ class FeatureEngine:
         Returns:
             Normalized DataFrame.
         """
-        normalized = pd.DataFrame(index=features.index)
-        
         # Columns to skip (non-numeric or categorical)
-        skip_cols = []
+        skip_cols = set()
         for col in features.columns:
             # Skip non-numeric columns
             if features[col].dtype == 'object' or features[col].dtype.name == 'category':
-                skip_cols.append(col)
+                skip_cols.add(col)
             # Skip binary/categorical columns
             elif features[col].nunique() <= 3:
-                skip_cols.append(col)
+                skip_cols.add(col)
             # Skip session and regime columns
             elif col.startswith('session_') or col.startswith('regime_') or col == 'regime':
-                skip_cols.append(col)
-                      
+                skip_cols.add(col)
+        
+        # Build normalized columns as dict for efficiency
+        normalized_cols = {}
         for col in features.columns:
             if col in skip_cols:
-                normalized[col] = features[col]
+                normalized_cols[col] = features[col]
             else:
                 # Rolling normalization
-                normalized[col] = normalize_series(
+                norm_col = normalize_series(
                     features[col],
                     window=self.normalization_window,
                     method=method
                 )
                 # Clip outliers
-                normalized[col] = clip_outliers(normalized[col], self.outlier_threshold)
-                
-        return normalized
+                normalized_cols[col] = clip_outliers(norm_col, self.outlier_threshold)
+        
+        # Create DataFrame from dict in one operation (avoids fragmentation)
+        return pd.DataFrame(normalized_cols, index=features.index)
         
     def select_features(
         self,
