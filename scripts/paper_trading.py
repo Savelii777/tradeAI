@@ -56,48 +56,40 @@ def generate_live_features(
     """
     Generate features for live trading.
     
-    Unlike align_timeframes, this doesn't rely on perfect timestamp alignment.
-    It takes the latest available data from each timeframe.
+    EXACT SAME LOGIC AS BACKTEST - uses align_timeframes().
+    This ensures paper trading predictions match backtest results.
     """
-    # Generate features for each TF
-    m15_features = mtf_engine.generate_m15_trend_features(df_15m)
-    m5_features = mtf_engine.generate_m5_signal_features(df_5m)
-    m1_features = mtf_engine.generate_m1_timing_features(df_1m)
+    # Convert to DatetimeIndex if needed (backtest uses DatetimeIndex)
+    if 'timestamp' in df_1m.columns:
+        df_1m = df_1m.copy()
+        df_1m['timestamp'] = pd.to_datetime(df_1m['timestamp'])
+        df_1m = df_1m.set_index('timestamp')
     
-    # Take only the last row from each
-    if m5_features.empty or m15_features.empty or m1_features.empty:
+    if 'timestamp' in df_5m.columns:
+        df_5m = df_5m.copy()
+        df_5m['timestamp'] = pd.to_datetime(df_5m['timestamp'])
+        df_5m = df_5m.set_index('timestamp')
+    
+    if 'timestamp' in df_15m.columns:
+        df_15m = df_15m.copy()
+        df_15m['timestamp'] = pd.to_datetime(df_15m['timestamp'])
+        df_15m = df_15m.set_index('timestamp')
+    
+    # Generate features EXACTLY like backtest_v1_risk.py
+    features = mtf_engine.align_timeframes(df_1m, df_5m, df_15m)
+    
+    # Convert object columns to numeric (same as backtest)
+    for col in features.columns:
+        if features[col].dtype == 'object':
+            features[col] = pd.Categorical(features[col]).codes
+    
+    features = features.fillna(0)
+    
+    # Return only the last row for live trading
+    if features.empty:
         return pd.DataFrame()
     
-    # Start with M5 features (last row)
-    result = m5_features.iloc[[-1]].copy()
-    
-    # Add M15 features (last available)
-    m15_last = m15_features.iloc[-1]
-    for col in m15_features.columns:
-        result[col] = m15_last[col]
-    
-    # Add M1 features - aggregate last 5 candles
-    m1_last_5 = m1_features.iloc[-5:] if len(m1_features) >= 5 else m1_features
-    
-    for col in m1_features.columns:
-        if 'momentum' in col or 'rsi' in col:
-            # For momentum/RSI: add last, mean, std
-            result[f'{col}_last'] = m1_last_5[col].iloc[-1]
-            result[f'{col}_mean'] = m1_last_5[col].mean()
-            result[f'{col}_std'] = m1_last_5[col].std()
-        else:
-            # For other features: just last
-            result[f'{col}_last'] = m1_last_5[col].iloc[-1]
-    
-    # Fill any NaN values
-    result = result.fillna(0)
-    
-    # Convert object columns to numeric
-    for col in result.columns:
-        if result[col].dtype == 'object':
-            result[col] = pd.Categorical(result[col]).codes
-    
-    return result
+    return features.iloc[[-1]]
 
 
 # ============================================================
@@ -202,49 +194,59 @@ class V1FreshModel:
         min_strength: float = 0.30,
         min_timing: float = 0.01
     ) -> Dict:
-        """Generate trading signal from features."""
+        """
+        Generate trading signal from features.
+        
+        EXACT SAME LOGIC AS BACKTEST_V1_RISK.PY!
+        """
         if not self._is_trained:
             raise RuntimeError("Models not loaded")
         
         # Get direction prediction
-        direction_proba = self.direction_model.predict_proba(X)[0]
-        direction_pred = np.argmax(direction_proba)
+        direction_proba = self.direction_model.predict_proba(X)[0]  # [p_down, p_sideways, p_up]
         
-        # Get timing prediction
-        timing_proba = self.timing_model.predict_proba(X)[0]
-        is_good_timing = timing_proba[1] > min_timing
+        # Get timing prediction (probability of good entry)
+        timing_proba = self.timing_model.predict_proba(X)[0][1]  # Probability of class 1
         
         # Get strength prediction
-        strength_pred = self.strength_model.predict(X)[0]
+        try:
+            strength = self.strength_model.predict(X)[0]
+        except:
+            strength = 1.0
         
         # Get volatility prediction
-        volatility_pred = self.volatility_model.predict(X)[0]
+        try:
+            volatility = self.volatility_model.predict(X)[0]
+        except:
+            volatility = 1.0
         
-        # Map direction
-        direction_map = {0: -1, 1: 0, 2: 1}  # down, sideways, up
-        direction = direction_map.get(direction_pred, 0)
+        # Build signal - EXACT SAME LOGIC AS BACKTEST!
+        signal = 0  # 0 = hold, 1 = buy/long, -1 = sell/short
+        confidence = 0.0
         
-        # Calculate confidence
-        max_prob = max(direction_proba)
-        confidence = max_prob * timing_proba[1]
+        p_down, p_sideways, p_up = direction_proba
         
-        # Generate signal
-        signal = 0
-        if is_good_timing and max_prob >= min_direction_prob:
-            if direction == 1:  # up
-                signal = 1
-            elif direction == -1:  # down
-                signal = -1
+        # Long signal conditions - EXACT SAME AS BACKTEST_V1_RISK.PY
+        if p_up >= min_direction_prob and p_up > p_down and p_up > p_sideways:
+            if timing_proba >= min_timing:
+                signal = 1  # buy/long
+                confidence = p_up
+                
+        # Short signal conditions - EXACT SAME AS BACKTEST_V1_RISK.PY
+        elif p_down >= min_direction_prob and p_down > p_up and p_down > p_sideways:
+            if timing_proba >= min_timing:
+                signal = -1  # sell/short
+                confidence = p_down
         
         return {
             'signal': signal,
-            'direction': direction,
+            'direction': 1 if signal == 1 else (-1 if signal == -1 else 0),
             'direction_proba': direction_proba.tolist(),
-            'timing_proba': timing_proba[1],
-            'strength': strength_pred,
-            'volatility': volatility_pred,
+            'timing_proba': timing_proba,
+            'strength': strength,
+            'volatility': volatility,
             'confidence': confidence,
-            'is_good_timing': is_good_timing
+            'is_good_timing': timing_proba >= min_timing
         }
 
 
@@ -290,7 +292,7 @@ class PaperTrader:
         capital: float = 100.0,
         risk_pct: float = 0.05,
         rr_ratio: float = 2.0,
-        max_hold_candles: int = 60,
+        max_hold_candles: int = 250,  # 50 M5 bars = 250 M1 bars (как в бэктесте)
         pairs: List[str] = None,
         use_ensemble: bool = False
     ):
@@ -444,9 +446,12 @@ class PaperTrader:
         for pair in self.pairs:
             try:
                 # Fetch data for multiple timeframes
-                df_1m = await self.fetch_ohlcv(pair, '1m', 100)
-                df_5m = await self.fetch_ohlcv(pair, '5m', 100)
-                df_15m = await self.fetch_ohlcv(pair, '15m', 100)
+                # Need enough history for indicators to match backtest exactly
+                # Market structure uses 100+ periods, some indicators need warmup
+                # More data = more accurate match with backtest predictions
+                df_1m = await self.fetch_ohlcv(pair, '1m', 1000)
+                df_5m = await self.fetch_ohlcv(pair, '5m', 1000)
+                df_15m = await self.fetch_ohlcv(pair, '15m', 500)
                 
                 if df_5m.empty or df_1m.empty or df_15m.empty:
                     continue
@@ -578,8 +583,8 @@ class PaperTrader:
         )
         self.position_candles = 0
         
-        # Deduct entry fee from capital
-        self.capital -= entry_fee
+        # Deduct margin AND entry fee from capital (margin is locked in position)
+        self.capital -= margin + entry_fee
         
         # Log
         side = "LONG" if direction == 1 else "SHORT"
@@ -766,29 +771,47 @@ class PaperTrader:
     async def run(self):
         """Main trading loop."""
         logger.info("Starting paper trading loop...")
+        logger.info("⚙️ Mode: Backtest-compatible (M5 signal check, 250 candle hold)")
         self._running = True
         
-        scan_interval = 60  # seconds
-        position_check_interval = 10  # seconds
-        last_scan = 0
+        position_check_interval = 60  # 1 minute - проверка позиции
+        last_scanned_candle = None  # Track which M5 candle we last scanned
         
         while self._running:
             try:
-                now = time.time()
+                now = datetime.utcnow()
                 
                 if self.position:
-                    # Check position every 10 seconds
+                    # Check position every minute
                     await self.check_position()
                     await asyncio.sleep(position_check_interval)
                 else:
-                    # Scan for signals every minute
-                    if now - last_scan >= scan_interval:
+                    # Calculate current M5 candle close time (e.g., 04:45:00 for any time 04:40:00-04:44:59)
+                    current_m5_close = now.replace(second=0, microsecond=0)
+                    current_m5_close = current_m5_close.replace(minute=(now.minute // 5) * 5)
+                    
+                    # Check if we're in first 10 seconds AFTER M5 candle close
+                    seconds_after_close = now.second + (now.minute % 5) * 60
+                    is_just_after_close = (now.minute % 5 == 0) and (now.second <= 10)
+                    
+                    if is_just_after_close and last_scanned_candle != current_m5_close:
+                        # New M5 candle just closed - scan now!
+                        last_scanned_candle = current_m5_close
+                        logger.info(f"🔍 M5 candle {current_m5_close.strftime('%H:%M')} closed. Scanning {len(self.pairs)} pairs...")
                         result = await self.scan_for_signals()
                         if result:
                             pair, signal, df, position_mult = result
                             await self.open_position(pair, signal, df, position_mult)
-                        last_scan = now
-                    await asyncio.sleep(5)
+                        else:
+                            next_scan = current_m5_close + timedelta(minutes=5)
+                            logger.info(f"⏳ No signal. Next scan at {next_scan.strftime('%H:%M')} UTC")
+                        await asyncio.sleep(10)  # Small delay after scan
+                    else:
+                        # Wait until next M5 close
+                        next_m5_close = current_m5_close + timedelta(minutes=5)
+                        wait_seconds = (next_m5_close - now).total_seconds() + 2  # +2 sec buffer
+                        wait_seconds = min(wait_seconds, 60)  # Max 60 sec sleep
+                        await asyncio.sleep(wait_seconds)
                     
             except KeyboardInterrupt:
                 logger.info("Interrupted by user")
