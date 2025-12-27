@@ -352,12 +352,12 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 exit_time = bar.name
                 break
             
-            # 2. Smart Exit (RSI) - V8 Feature
-            if bar['rsi'] > RSI_EXIT_LONG:
-                outcome = 'smart_exit_rsi'
-                exit_price = bar['close']
-                exit_time = bar.name
-                break
+            # 2. Smart Exit (RSI) - V8 Feature (DISABLED to match V7 Trend Following)
+            # if bar['rsi'] > RSI_EXIT_LONG:
+            #     outcome = 'smart_exit_rsi'
+            #     exit_price = bar['close']
+            #     exit_time = bar.name
+            #     break
             
             # 3. Breakeven Logic
             if not breakeven_active and bar['high'] >= be_trigger_price:
@@ -378,12 +378,12 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 exit_time = bar.name
                 break
             
-            # 2. Smart Exit (RSI) - V8 Feature
-            if bar['rsi'] < RSI_EXIT_SHORT:
-                outcome = 'smart_exit_rsi'
-                exit_price = bar['close']
-                exit_time = bar.name
-                break
+            # 2. Smart Exit (RSI) - V8 Feature (DISABLED to match V7 Trend Following)
+            # if bar['rsi'] < RSI_EXIT_SHORT:
+            #     outcome = 'smart_exit_rsi'
+            #     exit_price = bar['close']
+            #     exit_time = bar.name
+            #     break
             
             # 3. Breakeven Logic
             if not breakeven_active and bar['low'] <= be_trigger_price:

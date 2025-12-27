@@ -350,9 +350,13 @@ def main():
     last_processed = {}
     
     while True:
-        logger.info(f"Scanning... {datetime.now().strftime('%H:%M:%S')}")
+        print("\n" + "="*60)
+        print(f"SCANNING MARKET - {datetime.now().strftime('%H:%M:%S')}")
+        print("="*60)
+        print(f"{'PAIR':<15} | {'DIR':<8} | {'CONF':<6} | {'TIMING':<6} | {'STR':<5} | {'STATUS'}")
+        print("-" * 75)
+
         current_prices = {}
-        best_candidate = None
         
         for pair in pairs:
             try:
@@ -364,41 +368,62 @@ def main():
                 current_prices[pair] = current_price
                 
                 df = prepare_features(data, mtf_fe)
-                signal, stats = check_signal(df, models, pair)
                 
-                # Logging logic
-                if stats:
-                    is_directional = stats['dir'] != 1
-                    if best_candidate is None:
-                        best_candidate = stats
+                # --- INLINE SIGNAL CHECK FOR PRINTING ---
+                row = df.iloc[[-1]]
+                X = row[models['features']].values
+                
+                # 1. Direction
+                dir_proba = models['direction'].predict_proba(X)
+                dir_pred = np.argmax(dir_proba, axis=1)[0]
+                dir_conf = np.max(dir_proba, axis=1)[0]
+                
+                dir_map = {0: 'SHORT', 1: 'SIDE', 2: 'LONG'}
+                direction = dir_map.get(dir_pred, 'UNK')
+                
+                # 2. Timing
+                timing_prob = models['timing'].predict_proba(X)[:, 1][0]
+                
+                # 3. Strength
+                strength_pred = models['strength'].predict(X)[0]
+                
+                # Status
+                status = "WAIT"
+                if direction != "SIDE":
+                    if dir_conf >= MIN_CONF and timing_prob >= MIN_TIMING and strength_pred >= MIN_STRENGTH:
+                        status = "SIGNAL 🚀"
+                        
+                        # Execute Signal
+                        signal = {
+                            'timestamp': row.index[0],
+                            'pair': pair,
+                            'direction': 'LONG' if dir_pred == 2 else 'SHORT',
+                            'price': current_price,
+                            'atr': row['atr'].values[0]
+                        }
+                        
+                        last_time = last_processed.get(pair)
+                        current_time = signal['timestamp']
+                        if last_time != current_time:
+                            portfolio.open_position(signal)
+                            last_processed[pair] = current_time
                     else:
-                        best_is_directional = best_candidate['dir'] != 1
-                        if is_directional and not best_is_directional:
-                            best_candidate = stats
-                        elif is_directional == best_is_directional:
-                            if stats['conf'] > best_candidate['conf']:
-                                best_candidate = stats
+                        reasons = []
+                        if dir_conf < MIN_CONF: reasons.append("LowConf")
+                        if timing_prob < MIN_TIMING: reasons.append("BadTime")
+                        if strength_pred < MIN_STRENGTH: reasons.append("Weak")
+                        status = f"SKIP ({','.join(reasons)})"
                 
-                # Trading logic
-                if signal:
-                    last_time = last_processed.get(pair)
-                    current_time = signal['timestamp']
-                    if last_time != current_time:
-                        portfolio.open_position(signal)
-                        last_processed[pair] = current_time
+                # Print Table Row
+                print(f"{pair:<15} | {direction:<8} | {dir_conf:.2f} | {timing_prob:.2f}   | {strength_pred:.2f}  | {status}")
                     
             except Exception as e:
                 logger.error(f"Error processing {pair}: {e}")
         
+        print("="*60 + "\n")
+        
         # Update active positions
         portfolio.update(current_prices)
-        
-        if best_candidate:
-            dir_map = {0: 'SHORT', 1: 'SIDEWAYS', 2: 'LONG'}
-            d_str = dir_map.get(best_candidate['dir'], 'UNKNOWN')
-            logger.info(f"Best: {best_candidate['pair']} [{d_str}] (Conf: {best_candidate['conf']:.1%}, Timing: {best_candidate['timing']:.1%}, Str: {best_candidate['strength']:.2f})")
-        else:
-            logger.info("No data fetched.")
             
         time.sleep(60)
 
