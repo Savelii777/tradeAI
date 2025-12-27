@@ -462,14 +462,29 @@ def print_results(trades, final_balance, initial_balance=10000.0):
         count = len([t for t in trades if t['outcome'] == o])
         print(f"  {o}: {count}")
         
-    print("\nRecent Trades (Dec 25):")
-    dec25_trades = [t for t in trades if t['timestamp'].day == 25 and t['timestamp'].month == 12]
-    if dec25_trades:
-        for t in dec25_trades:
-            print(f"  {t['timestamp']} {t['pair']} {t['direction']} -> ${t['net_profit']:.2f} ({t['outcome']})")
-    else:
-        print("  No trades on Dec 25.")
     print("="*50)
+
+def print_trade_list(trades):
+    """Print trades in the user-requested format for verification."""
+    print("\n" + "="*50)
+    print("DETAILED TRADE LIST (For Chart Verification)")
+    print("="*50)
+    
+    # Sort by time
+    trades.sort(key=lambda x: x['timestamp'])
+    
+    for t in trades:
+        # Format: PIPPIN (LONG) 00:45 — Profit: +$1,138.92 (+11.3%)
+        time_str = t['timestamp'].strftime("%H:%M")
+        pair_clean = t['pair'].replace('_', '/').replace(':USDT', '')
+        
+        # Add emoji based on result
+        emoji = "🚀" if t['pnl_pct'] > 20 else "✅" if t['net_profit'] > 0 else "❌"
+        if t['net_profit'] > 0 and t['pnl_pct'] < 1: emoji = "🛡️" # Breakeven/Small profit
+        
+        print(f"{pair_clean} ({t['direction']}) {time_str} — Profit: ${t['net_profit']:+,.2f} ({t['pnl_pct']:+.1f}%) {emoji}")
+        print(f"   Entry: {t['entry_price']:.5f} | Exit: {t['exit_price']:.5f} | Reason: {t['outcome']}")
+        print("-" * 30)
 
 
 # ============================================================
@@ -482,6 +497,7 @@ def main():
     parser.add_argument("--test_days", type=int, default=14)
     parser.add_argument("--pairs", type=int, default=20)
     parser.add_argument("--output", type=str, default="./models/v7_sniper")
+    parser.add_argument("--initial_balance", type=float, default=10000.0, help="Initial portfolio balance")
     parser.add_argument("--check-dec25", action="store_true", help="Fetch and test specifically for Dec 25, 2025")
     args = parser.parse_args()
     
@@ -505,16 +521,8 @@ def main():
     test_dfs = {} 
     test_features = {} 
     
-    # ---------------------------------------------------------
-    # DEC 25 SPECIAL MODE
-    # ---------------------------------------------------------
-    if args.check_dec25:
-        print("\n[MODE] Checking Dec 25, 2025...")
-        # We still need to train the model first.
-        # We will use the local data for training.
-        
     # 1. LOAD TRAINING DATA (Local)
-    print("\nLoading Training Data...")
+    print("\nLoading Training Data & 14-Day Test Data...")
     for pair in pairs:
         print(f"Processing {pair}...", end='\r')
         pair_name = pair.replace('/', '_').replace(':', '_')
@@ -543,19 +551,18 @@ def main():
         ft_train['pair'] = pair
         all_train.append(ft_train)
         
-        # If NOT checking Dec 25, load local test data
-        if not args.check_dec25:
-            m1_test = m1[m1.index >= test_start]
-            m5_test = m5[m5.index >= test_start]
-            m15_test = m15[m15.index >= test_start]
-            
-            ft_test = mtf_fe.align_timeframes(m1_test, m5_test, m15_test)
-            ft_test = ft_test.join(m5_test[['open', 'high', 'low', 'close', 'volume']])
-            ft_test = add_volume_features(ft_test)
-            ft_test = create_targets_v1(ft_test)
-            ft_test['pair'] = pair
-            test_features[pair] = ft_test
-            test_dfs[pair] = ft_test
+        # Always load local test data for the 14-day stats
+        m1_test = m1[m1.index >= test_start]
+        m5_test = m5[m5.index >= test_start]
+        m15_test = m15[m15.index >= test_start]
+        
+        ft_test = mtf_fe.align_timeframes(m1_test, m5_test, m15_test)
+        ft_test = ft_test.join(m5_test[['open', 'high', 'low', 'close', 'volume']])
+        ft_test = add_volume_features(ft_test)
+        ft_test = create_targets_v1(ft_test)
+        ft_test['pair'] = pair
+        test_features[pair] = ft_test
+        test_dfs[pair] = ft_test
 
     print(f"\nData loaded. Training on {len(all_train)} pairs.")
     
@@ -581,16 +588,44 @@ def main():
     models = train_models(X_t, y_t, X_v, y_v)
     
     # ---------------------------------------------------------
-    # FETCH DEC 25 DATA IF REQUESTED
+    # 1. STANDARD 14-DAY BACKTEST
+    # ---------------------------------------------------------
+    print("\n" + "="*70)
+    print(f"RUNNING 14-DAY BACKTEST (Last {args.test_days} Days)")
+    print("="*70)
+    
+    all_signals = []
+    for pair, df in test_features.items():
+        df_clean = df.dropna()
+        if len(df_clean) == 0: continue
+        sigs = generate_signals(df_clean, features, models, pair)
+        all_signals.extend(sigs)
+        
+    trades, final_bal = run_portfolio_backtest(all_signals, test_dfs, initial_balance=args.initial_balance)
+    print_trade_list(trades)
+    print_results(trades, final_bal, initial_balance=args.initial_balance)
+    
+    # Save 14-day trades
+    out = Path(args.output)
+    out.mkdir(parents=True, exist_ok=True)
+    if trades:
+        pd.DataFrame(trades).to_csv(out / 'backtest_trades_14d.csv', index=False)
+
+    # ---------------------------------------------------------
+    # 2. FETCH DEC 25 DATA IF REQUESTED
     # ---------------------------------------------------------
     if args.check_dec25:
-        print("\nFetching Dec 25 Data from Binance...")
+        print("\n" + "="*70)
+        print("RUNNING DEC 25 SPECIAL CHECK")
+        print("="*70)
+        print("Fetching Dec 25 Data from Binance...")
+        
         # Fetch from Dec 23 to Dec 26 to ensure we have history for indicators
         fetch_start = datetime(2025, 12, 23)
         fetch_end = datetime(2025, 12, 26)
         
-        test_features = {}
-        test_dfs = {}
+        dec25_features = {}
+        dec25_dfs = {}
         
         for pair in pairs:
             print(f"Fetching {pair}...", end='\r')
@@ -599,7 +634,7 @@ def main():
             m15 = fetch_binance_data(pair, '15m', fetch_start, fetch_end)
             
             if len(m5) < 100:
-                print(f"Skipping {pair} (Insufficient data)")
+                # print(f"Skipping {pair} (Insufficient data)")
                 continue
                 
             ft = mtf_fe.align_timeframes(m1, m5, m15)
@@ -609,45 +644,28 @@ def main():
             ft['pair'] = pair
             
             # Filter for Dec 25 ONLY for the backtest part
-            # But keep history for feature calc
             dec25_mask = (ft.index >= datetime(2025, 12, 25)) & (ft.index < datetime(2025, 12, 26))
-            
-            # We need to pass the FULL dataframe to generate_signals so it can calculate features correctly,
-            # but we will only collect signals for Dec 25.
-            # Actually, generate_signals iterates the whole DF. 
-            # Let's just pass the whole DF and filter signals later or slice the DF carefully.
-            
-            # Better: Slice the DF to start at Dec 25 00:00 but ensure features are calculated.
-            # The features are already calculated in `ft`.
-            # So we can just slice `ft` to Dec 25.
             ft_dec25 = ft[dec25_mask]
             
             if len(ft_dec25) > 0:
-                test_features[pair] = ft_dec25
-                test_dfs[pair] = ft_dec25
+                dec25_features[pair] = ft_dec25
+                dec25_dfs[pair] = ft_dec25
         print("\nFetch complete.")
-
-    # Backtest
-    print("\n" + "="*70)
-    print("OUT-OF-SAMPLE PORTFOLIO BACKTEST (V7 Sniper)")
-    print("="*70)
-    
-    all_signals = []
-    for pair, df in test_features.items():
-        df_clean = df.dropna()
-        if len(df_clean) == 0: continue
         
-        sigs = generate_signals(df_clean, features, models, pair)
-        all_signals.extend(sigs)
+        # Run Dec 25 Backtest
+        dec25_signals = []
+        for pair, df in dec25_features.items():
+            df_clean = df.dropna()
+            if len(df_clean) == 0: continue
+            sigs = generate_signals(df_clean, features, models, pair)
+            dec25_signals.extend(sigs)
+            
+        d25_trades, d25_bal = run_portfolio_backtest(dec25_signals, dec25_dfs, initial_balance=args.initial_balance)
+        print_results(d25_trades, d25_bal, initial_balance=args.initial_balance)
+        print_trade_list(d25_trades)
         
-    trades, final_bal = run_portfolio_backtest(all_signals, test_dfs, initial_balance=10000.0)
-    print_results(trades, final_bal, initial_balance=10000.0)
-    
-    # Save trades
-    out = Path(args.output)
-    out.mkdir(parents=True, exist_ok=True)
-    if trades:
-        pd.DataFrame(trades).to_csv(out / 'backtest_trades.csv', index=False)
+        if d25_trades:
+            pd.DataFrame(d25_trades).to_csv(out / 'backtest_trades_dec25.csv', index=False)
 
 
 if __name__ == '__main__':
