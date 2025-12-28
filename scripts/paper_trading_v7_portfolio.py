@@ -28,7 +28,7 @@ from train_mtf import MTFFeatureEngine
 # ============================================================
 # CONFIG
 # ============================================================
-MODEL_DIR = Path("models/v7_sniper_final")
+MODEL_DIR = Path("models/v7_sniper")
 PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades.json")
 TIMEFRAMES = ['1m', '5m', '15m']
@@ -36,14 +36,14 @@ LOOKBACK = 1000 # Candles to fetch
 
 # Thresholds (Must match training)
 # ORIGINAL (SAFE) VALUES:
-MIN_CONF = 0.55
-MIN_TIMING = 0.60
-MIN_STRENGTH = 2.0
+# MIN_CONF = 0.55
+# MIN_TIMING = 0.60
+# MIN_STRENGTH = 2.0
 
 # TEST VALUES (AGGRESSIVE):
-# MIN_CONF = 0.40
-# MIN_TIMING = 0.40
-# MIN_STRENGTH = 1.0
+MIN_CONF = 0.55      # > 33% (random)
+MIN_TIMING = 0.60    # > 50% (neutral)
+MIN_STRENGTH = 2   # > 1.5 ATR
 
 # Risk Management (From Backtest)
 RISK_PCT = 0.05          # 5% risk per trade
@@ -232,10 +232,10 @@ def load_models():
     logger.info(f"Loading models from {MODEL_DIR}...")
     try:
         models = {
-            'direction': joblib.load(MODEL_DIR / 'direction_model.pkl'),
-            'timing': joblib.load(MODEL_DIR / 'timing_model.pkl'),
-            'strength': joblib.load(MODEL_DIR / 'strength_model.pkl'),
-            'features': joblib.load(MODEL_DIR / 'features.pkl')
+            'direction': joblib.load(MODEL_DIR / 'direction_model.joblib'),
+            'timing': joblib.load(MODEL_DIR / 'timing_model.joblib'),
+            'strength': joblib.load(MODEL_DIR / 'strength_model.joblib'),
+            'features': joblib.load(MODEL_DIR / 'feature_names.joblib')
         }
         return models
     except Exception as e:

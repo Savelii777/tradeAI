@@ -240,6 +240,7 @@ def train_models(X_train, y_train, X_val, y_val):
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
                     min_conf: float = 0.55, min_timing: float = 0.60, min_strength: float = 2.0) -> list:
+                    
     """Generate all valid signals for a single pair."""
     signals = []
     
@@ -499,6 +500,7 @@ def main():
     parser.add_argument("--output", type=str, default="./models/v7_sniper")
     parser.add_argument("--initial_balance", type=float, default=10000.0, help="Initial portfolio balance")
     parser.add_argument("--check-dec25", action="store_true", help="Fetch and test specifically for Dec 25, 2025")
+    parser.add_argument("--check-dec26", action="store_true", help="Fetch and test specifically for Dec 26, 2025")
     args = parser.parse_args()
     
     print("=" * 70)
@@ -666,6 +668,61 @@ def main():
         
         if d25_trades:
             pd.DataFrame(d25_trades).to_csv(out / 'backtest_trades_dec25.csv', index=False)
+
+    # ---------------------------------------------------------
+    # 3. FETCH DEC 26 DATA IF REQUESTED
+    # ---------------------------------------------------------
+    if args.check_dec26:
+        print("\n" + "="*70)
+        print("RUNNING DEC 26 SPECIAL CHECK")
+        print("="*70)
+        print("Fetching Dec 26 Data from Binance...")
+        
+        # Fetch from Dec 24 to Dec 27 to ensure we have history for indicators
+        fetch_start = datetime(2025, 12, 24)
+        fetch_end = datetime(2025, 12, 27)
+        
+        dec26_features = {}
+        dec26_dfs = {}
+        
+        for pair in pairs:
+            print(f"Fetching {pair}...", end='\r')
+            m1 = fetch_binance_data(pair, '1m', fetch_start, fetch_end)
+            m5 = fetch_binance_data(pair, '5m', fetch_start, fetch_end)
+            m15 = fetch_binance_data(pair, '15m', fetch_start, fetch_end)
+            
+            if len(m5) < 100:
+                continue
+                
+            ft = mtf_fe.align_timeframes(m1, m5, m15)
+            ft = ft.join(m5[['open', 'high', 'low', 'close', 'volume']])
+            ft = add_volume_features(ft)
+            ft['atr'] = calculate_atr(ft) # Ensure ATR is present
+            ft['pair'] = pair
+            
+            # Filter for Dec 26 ONLY for the backtest part
+            dec26_mask = (ft.index >= datetime(2025, 12, 26)) & (ft.index < datetime(2025, 12, 27))
+            ft_dec26 = ft[dec26_mask]
+            
+            if len(ft_dec26) > 0:
+                dec26_features[pair] = ft_dec26
+                dec26_dfs[pair] = ft_dec26
+        print("\nFetch complete.")
+        
+        # Run Dec 26 Backtest
+        dec26_signals = []
+        for pair, df in dec26_features.items():
+            df_clean = df.dropna()
+            if len(df_clean) == 0: continue
+            sigs = generate_signals(df_clean, features, models, pair)
+            dec26_signals.extend(sigs)
+            
+        d26_trades, d26_bal = run_portfolio_backtest(dec26_signals, dec26_dfs, initial_balance=args.initial_balance)
+        print_results(d26_trades, d26_bal, initial_balance=args.initial_balance)
+        print_trade_list(d26_trades)
+        
+        if d26_trades:
+            pd.DataFrame(d26_trades).to_csv(out / 'backtest_trades_dec26.csv', index=False)
 
 
 if __name__ == '__main__':
