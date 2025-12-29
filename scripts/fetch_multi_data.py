@@ -7,7 +7,7 @@ Downloads OHLCV data and saves to data/candles/ directory.
 import asyncio
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Dict, Optional
 import time
@@ -46,10 +46,10 @@ class MultiPairDataFetcher:
     
     async def init_exchange(self):
         """Initialize exchange connection."""
-        self.exchange = ccxt.mexc({
+        self.exchange = ccxt.binance({
             'enableRateLimit': True,
             'options': {
-                'defaultType': 'swap',
+                'defaultType': 'future',
             }
         })
         await self.exchange.load_markets()
@@ -79,7 +79,7 @@ class MultiPairDataFetcher:
         async with self.semaphore:
             try:
                 # Calculate timestamps
-                end_time = datetime.utcnow()
+                end_time = datetime.now(timezone.utc)
                 start_time = end_time - timedelta(days=days)
                 since = int(start_time.timestamp() * 1000)
                 
@@ -93,10 +93,13 @@ class MultiPairDataFetcher:
                     '1d': 86400000
                 }
                 
-                limit = 1000  # MEXC limit per request
+                limit = 1000  # Limit per request
                 all_ohlcv = []
                 current_since = since
+                req_count = 0
                 
+                logger.info(f"  → {symbol} {timeframe}: Starting download...")
+
                 while True:
                     ohlcv = await self.exchange.fetch_ohlcv(
                         symbol,
@@ -109,7 +112,12 @@ class MultiPairDataFetcher:
                         break
                     
                     all_ohlcv.extend(ohlcv)
+                    req_count += 1
                     
+                    # Log progress every 10 requests (approx every 10k candles)
+                    if req_count % 10 == 0:
+                        logger.info(f"  → {symbol} {timeframe}: Fetched {len(all_ohlcv)} candles...")
+
                     # Check if we got all data
                     last_ts = ohlcv[-1][0]
                     if last_ts >= end_time.timestamp() * 1000:
@@ -120,12 +128,14 @@ class MultiPairDataFetcher:
                     
                     current_since = last_ts + tf_ms.get(timeframe, 300000)
                     
-                    # Small delay between requests
-                    await asyncio.sleep(0.1)
+                    # No explicit sleep needed with enableRateLimit=True
+                    # await asyncio.sleep(0.1)
                 
                 if not all_ohlcv:
                     return None
                 
+                logger.info(f"  ✓ {symbol} {timeframe}: Done ({len(all_ohlcv)} candles)")
+
                 # Convert to DataFrame
                 df = pd.DataFrame(all_ohlcv, columns=[
                     'timestamp', 'open', 'high', 'low', 'close', 'volume'
@@ -180,7 +190,7 @@ class MultiPairDataFetcher:
         timeframes: List[str] = ['5m', '1h', '4h']
     ) -> Dict[str, Dict[str, pd.DataFrame]]:
         """
-        Fetch data for all pairs.
+        Fetch data for all pairs in parallel.
         
         Args:
             symbols: List of trading pair symbols
@@ -195,13 +205,29 @@ class MultiPairDataFetcher:
         try:
             all_data = {}
             total = len(symbols)
-            
-            for i, symbol in enumerate(symbols, 1):
-                logger.info(f"[{i}/{total}] Fetching {symbol}...")
-                
+            tasks = []
+
+            # Create a wrapper to handle the result and symbol association
+            async def fetch_wrapper(sym):
                 try:
-                    data = await self.fetch_pair(symbol, days, timeframes)
-                    
+                    return sym, await self.fetch_pair(sym, days, timeframes)
+                except Exception as e:
+                    logger.error(f"Error in fetch_wrapper for {sym}: {e}")
+                    return sym, None
+
+            # Create tasks for all pairs
+            for symbol in symbols:
+                tasks.append(fetch_wrapper(symbol))
+            
+            logger.info(f"Starting parallel download for {total} pairs (max_concurrent={self.semaphore._value})")
+            
+            # Process as they complete
+            completed = 0
+            for task in asyncio.as_completed(tasks):
+                symbol, data = await task
+                completed += 1
+                
+                if data:
                     # Check results
                     main_tf = timeframes[0]
                     if data.get(main_tf) is not None:
@@ -209,21 +235,16 @@ class MultiPairDataFetcher:
                         candles = len(data[main_tf])
                         self.stats['success'] += 1
                         self.stats['total_candles'] += candles
-                        logger.info(f"  ✓ {symbol}: {candles} candles")
+                        logger.info(f"[{completed}/{total}]  ✓ {symbol}: {candles} candles")
                     else:
                         self.stats['failed'] += 1
                         self.stats['errors'].append(f"{symbol}: No data")
-                        logger.warning(f"  ✗ {symbol}: No data received")
-                        
-                except Exception as e:
+                        logger.warning(f"[{completed}/{total}]  ✗ {symbol}: No data received")
+                else:
                     self.stats['failed'] += 1
-                    self.stats['errors'].append(f"{symbol}: {str(e)}")
-                    logger.error(f"  ✗ {symbol}: {e}")
-                
-                # Progress every 10 pairs
-                if i % 10 == 0:
-                    logger.info(f"Progress: {i}/{total} pairs ({i/total*100:.0f}%)")
-            
+                    self.stats['errors'].append(f"{symbol}: Failed to fetch")
+                    logger.error(f"[{completed}/{total}]  ✗ {symbol}: Failed")
+
             return all_data
             
         finally:
@@ -253,6 +274,12 @@ def load_pairs_list(path: str = 'config/pairs_list.json') -> List[str]:
     """Load pairs list from JSON file."""
     with open(path) as f:
         data = json.load(f)
+    
+    # Handle new format (list of objects)
+    if 'pairs' in data:
+        return [p['symbol'] for p in data['pairs']]
+    
+    # Handle old format (list of strings)
     return data.get('symbols', [])
 
 
@@ -271,12 +298,16 @@ def main():
                         help='Max concurrent requests (default: 5)')
     parser.add_argument('--output-dir', type=str, default='data/candles',
                         help='Output directory for CSV files')
+    parser.add_argument('--limit', type=int, default=None,
+                        help='Limit number of pairs to fetch')
     
     args = parser.parse_args()
     
     # Load pairs
     try:
         symbols = load_pairs_list(args.pairs_file)
+        if args.limit:
+            symbols = symbols[:args.limit]
         logger.info(f"Loaded {len(symbols)} pairs from {args.pairs_file}")
     except FileNotFoundError:
         logger.error(f"Pairs file not found: {args.pairs_file}")

@@ -41,15 +41,15 @@ LOOKBACK = 1000 # Candles to fetch
 # MIN_STRENGTH = 2.0
 
 # TEST VALUES (AGGRESSIVE):
-MIN_CONF = 0.55      # > 33% (random)
-MIN_TIMING = 0.60    # > 50% (neutral)
-MIN_STRENGTH = 2   # > 1.5 ATR
+MIN_CONF = 0.50      
+MIN_TIMING = 0.55    
+MIN_STRENGTH = 1.4  
 
 # Risk Management (From Backtest)
 RISK_PCT = 0.05          # 5% risk per trade
 MAX_LEVERAGE = 20.0      # Max leverage
 SL_ATR = 1.5             # Stop Loss = 1.5 * ATR
-TP_RR = 2.0              # Take Profit = 2.0 * Risk (Reward/Risk)
+TP_RR = 5.0              # Take Profit = 5.0 * Risk (Increased to let profits run)
 MAX_HOLDING_BARS = 50    # Max holding time (5m bars)
 ENTRY_FEE = 0.0002       # 0.02%
 EXIT_FEE = 0.0002        # 0.02%
@@ -128,6 +128,7 @@ class PortfolioManager:
             'entry_time': datetime.now().isoformat(),
             'stop_loss': stop_loss,
             'take_profit': take_profit,
+            'stop_distance': stop_distance, # Saved for Trailing Stop
             'size': size,
             'leverage': leverage,
             'position_value': position_value,
@@ -150,6 +151,62 @@ class PortfolioManager:
         current_price = current_prices[pair]
         self.position['bars_held'] += 1
         
+        # --- TRAILING STOP LOGIC (PUMP CATCHER) ---
+        pos = self.position
+        entry_price = pos['entry_price']
+        sl_dist = pos['stop_distance']
+        atr = sl_dist / SL_ATR # Reverse calc ATR from stored distance
+        
+        # 1. Breakeven Trigger (1.5 ATR)
+        be_trigger_dist = atr * 1.5
+        
+        if pos['direction'] == 'LONG':
+            current_profit = current_price - entry_price
+            
+            # Check Breakeven
+            if current_profit >= be_trigger_dist:
+                 new_sl = entry_price + (atr * 0.1)
+                 if new_sl > pos['stop_loss']:
+                     pos['stop_loss'] = new_sl
+                     logger.info(f"Moved to Breakeven: {pos['stop_loss']:.4f}")
+            
+            # Dynamic Trail
+            # Only trail if we are at least at breakeven or better (protected)
+            if pos['stop_loss'] > entry_price:
+                r_multiple = current_profit / sl_dist
+                
+                trail_mult = 2.0 # Default
+                if r_multiple > 5.0: trail_mult = 0.5
+                elif r_multiple > 3.0: trail_mult = 1.5
+                
+                new_sl = current_price - (atr * trail_mult)
+                if new_sl > pos['stop_loss']:
+                    pos['stop_loss'] = new_sl
+                    logger.info(f"Trailing Stop Updated (R={r_multiple:.1f}): {pos['stop_loss']:.4f}")
+                    
+        else: # SHORT
+            current_profit = entry_price - current_price
+            
+            # Check Breakeven
+            if current_profit >= be_trigger_dist:
+                 new_sl = entry_price - (atr * 0.1)
+                 if new_sl < pos['stop_loss']:
+                     pos['stop_loss'] = new_sl
+                     logger.info(f"Moved to Breakeven: {pos['stop_loss']:.4f}")
+            
+            # Dynamic Trail
+            if pos['stop_loss'] < entry_price:
+                r_multiple = current_profit / sl_dist
+                
+                trail_mult = 2.0 # Default
+                if r_multiple > 5.0: trail_mult = 0.5
+                elif r_multiple > 3.0: trail_mult = 1.5
+                
+                new_sl = current_price + (atr * trail_mult)
+                if new_sl < pos['stop_loss']:
+                    pos['stop_loss'] = new_sl
+                    logger.info(f"Trailing Stop Updated (R={r_multiple:.1f}): {pos['stop_loss']:.4f}")
+
         # Check Exit Conditions
         should_exit = False
         reason = ""
@@ -159,21 +216,15 @@ class PortfolioManager:
             should_exit = True
             reason = "Time Limit"
             
-        # 2. Stop Loss / Take Profit
+        # 2. Stop Loss (No Fixed TP)
         if self.position['direction'] == 'LONG':
             if current_price <= self.position['stop_loss']:
                 should_exit = True
-                reason = "Stop Loss"
-            elif current_price >= self.position['take_profit']:
-                should_exit = True
-                reason = "Take Profit"
+                reason = "Stop Loss" if current_price < entry_price else "Trailing Stop"
         else: # SHORT
             if current_price >= self.position['stop_loss']:
                 should_exit = True
-                reason = "Stop Loss"
-            elif current_price <= self.position['take_profit']:
-                should_exit = True
-                reason = "Take Profit"
+                reason = "Stop Loss" if current_price > entry_price else "Trailing Stop"
                 
         if should_exit:
             self.close_position(current_price, reason)
@@ -370,7 +421,9 @@ def main():
                 df = prepare_features(data, mtf_fe)
                 
                 # --- INLINE SIGNAL CHECK FOR PRINTING ---
-                row = df.iloc[[-1]]
+                # Use [-2] (Last Completed Candle) to avoid repainting
+                if len(df) < 2: continue
+                row = df.iloc[[-2]]
                 X = row[models['features']].values
                 
                 # 1. Direction

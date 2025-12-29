@@ -239,7 +239,7 @@ def train_models(X_train, y_train, X_val, y_val):
 # PORTFOLIO BACKTEST (V7 Sniper)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.55, min_timing: float = 0.60, min_strength: float = 2.0) -> list:
+                    min_conf: float = 0.50, min_timing: float = 0.55, min_strength: float = 1.4) -> list:
                     
     """Generate all valid signals for a single pair."""
     signals = []
@@ -293,7 +293,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     direction = signal['direction']
     
     sl_dist = atr * SL_ATR_MULT
-    be_trigger_dist = atr * 1.2
+    be_trigger_dist = atr * 1.5
     
     if direction == 'LONG':
         sl_price = entry_price - sl_dist
@@ -323,8 +323,21 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 breakeven_active = True
                 sl_price = entry_price + (atr * 0.1)
             
+            # 4. Progressive Trailing Stop (Catch Pumps)
             if breakeven_active:
-                new_sl = bar['high'] - (atr * 2.5)
+                # Calculate current R-multiple (How many risks are we up?)
+                current_profit = bar['high'] - entry_price
+                r_multiple = current_profit / sl_dist
+                
+                # Dynamic Trail Distance
+                trail_mult = 2.0  # Default loose trail (allow volatility)
+                
+                if r_multiple > 5.0:    # Super Pump (>7.5 ATR): Tighten hard
+                    trail_mult = 0.5
+                elif r_multiple > 3.0:  # Good Trend (>4.5 ATR): Tighten
+                    trail_mult = 1.5
+                
+                new_sl = bar['high'] - (atr * trail_mult)
                 if new_sl > sl_price:
                     sl_price = new_sl
                     
@@ -339,8 +352,21 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 breakeven_active = True
                 sl_price = entry_price - (atr * 0.1)
             
+            # 4. Progressive Trailing Stop (Catch Pumps)
             if breakeven_active:
-                new_sl = bar['low'] + (atr * 2.5)
+                # Calculate current R-multiple
+                current_profit = entry_price - bar['low']
+                r_multiple = current_profit / sl_dist
+                
+                # Dynamic Trail Distance
+                trail_mult = 2.0  # Default loose trail
+                
+                if r_multiple > 5.0:    # Super Pump
+                    trail_mult = 0.5
+                elif r_multiple > 3.0:  # Good Trend
+                    trail_mult = 1.5
+                
+                new_sl = bar['low'] + (atr * trail_mult)
                 if new_sl < sl_price:
                     sl_price = new_sl
                     
@@ -501,6 +527,7 @@ def main():
     parser.add_argument("--initial_balance", type=float, default=10000.0, help="Initial portfolio balance")
     parser.add_argument("--check-dec25", action="store_true", help="Fetch and test specifically for Dec 25, 2025")
     parser.add_argument("--check-dec26", action="store_true", help="Fetch and test specifically for Dec 26, 2025")
+    parser.add_argument("--reverse", action="store_true", help="Train on Recent 30d, Test on Previous 30d (For Paper Trading Prep)")
     args = parser.parse_args()
     
     print("=" * 70)
@@ -509,11 +536,14 @@ def main():
     
     # Load pairs
     import json
-    pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_list.json'
+    pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_20.json'
+    if not pairs_file.exists():
+        pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_list.json'
+        
     with open(pairs_file) as f:
         pairs_data = json.load(f)
     pairs = [p['symbol'] for p in pairs_data['pairs'][:args.pairs]]
-    print(f"Loaded {len(pairs)} pairs.")
+    print(f"Loaded {len(pairs)} pairs from {pairs_file.name}")
     
     # Load data
     data_dir = Path(__file__).parent.parent / 'data' / 'candles'
@@ -524,7 +554,7 @@ def main():
     test_features = {} 
     
     # 1. LOAD TRAINING DATA (Local)
-    print("\nLoading Training Data & 14-Day Test Data...")
+    print(f"\nLoading Data (Reverse={args.reverse})...")
     for pair in pairs:
         print(f"Processing {pair}...", end='\r')
         pair_name = pair.replace('/', '_').replace(':', '_')
@@ -536,13 +566,27 @@ def main():
         except FileNotFoundError:
             continue
         
-        # Use all available data up to test_days ago for training
-        test_start = datetime.now() - timedelta(days=args.test_days)
-        train_start = test_start - timedelta(days=args.days)
+        # SPLIT LOGIC
+        now = datetime.now()
+        if args.reverse:
+            # Train on LAST 30 days (Recent)
+            # Test on PREVIOUS 30 days (Older)
+            train_end = now
+            train_start = now - timedelta(days=args.days)
+            
+            test_end = train_start
+            test_start = test_end - timedelta(days=args.test_days)
+        else:
+            # Standard: Train on Old, Test on Recent
+            test_start = now - timedelta(days=args.test_days)
+            train_start = test_start - timedelta(days=args.days)
+            train_end = test_start
+            test_end = now
         
-        m1_train = m1[(m1.index >= train_start) & (m1.index < test_start)]
-        m5_train = m5[(m5.index >= train_start) & (m5.index < test_start)]
-        m15_train = m15[(m15.index >= train_start) & (m15.index < test_start)]
+        # Filter Train
+        m1_train = m1[(m1.index >= train_start) & (m1.index < train_end)]
+        m5_train = m5[(m5.index >= train_start) & (m5.index < train_end)]
+        m15_train = m15[(m15.index >= train_start) & (m15.index < train_end)]
         
         if len(m5_train) < 500: continue
         
@@ -553,10 +597,10 @@ def main():
         ft_train['pair'] = pair
         all_train.append(ft_train)
         
-        # Always load local test data for the 14-day stats
-        m1_test = m1[m1.index >= test_start]
-        m5_test = m5[m5.index >= test_start]
-        m15_test = m15[m15.index >= test_start]
+        # Filter Test
+        m1_test = m1[(m1.index >= test_start) & (m1.index < test_end)]
+        m5_test = m5[(m5.index >= test_start) & (m5.index < test_end)]
+        m15_test = m15[(m15.index >= test_start) & (m15.index < test_end)]
         
         ft_test = mtf_fe.align_timeframes(m1_test, m5_test, m15_test)
         ft_test = ft_test.join(m5_test[['open', 'high', 'low', 'close', 'volume']])
@@ -590,10 +634,10 @@ def main():
     models = train_models(X_t, y_t, X_v, y_v)
     
     # ---------------------------------------------------------
-    # 1. STANDARD 14-DAY BACKTEST
+    # 1. STANDARD BACKTEST
     # ---------------------------------------------------------
     print("\n" + "="*70)
-    print(f"RUNNING 14-DAY BACKTEST (Last {args.test_days} Days)")
+    print(f"RUNNING BACKTEST (Test Days: {args.test_days})")
     print("="*70)
     
     all_signals = []
@@ -607,11 +651,11 @@ def main():
     print_trade_list(trades)
     print_results(trades, final_bal, initial_balance=args.initial_balance)
     
-    # Save 14-day trades
+    # Save trades
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     if trades:
-        pd.DataFrame(trades).to_csv(out / 'backtest_trades_14d.csv', index=False)
+        pd.DataFrame(trades).to_csv(out / f'backtest_trades_{args.test_days}d.csv', index=False)
 
     # ---------------------------------------------------------
     # 2. FETCH DEC 25 DATA IF REQUESTED
@@ -635,7 +679,7 @@ def main():
             m5 = fetch_binance_data(pair, '5m', fetch_start, fetch_end)
             m15 = fetch_binance_data(pair, '15m', fetch_start, fetch_end)
             
-            if len(m5) < 100:
+            if len(m1) < 100 or len(m5) < 100 or len(m15) < 100:
                 # print(f"Skipping {pair} (Insufficient data)")
                 continue
                 
@@ -691,7 +735,7 @@ def main():
             m5 = fetch_binance_data(pair, '5m', fetch_start, fetch_end)
             m15 = fetch_binance_data(pair, '15m', fetch_start, fetch_end)
             
-            if len(m5) < 100:
+            if len(m1) < 100 or len(m5) < 100 or len(m15) < 100:
                 continue
                 
             ft = mtf_fe.align_timeframes(m1, m5, m15)

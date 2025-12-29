@@ -1,28 +1,18 @@
 {
-    "capital": 28.71195057940833,
+    "capital": 19.984648044519382,
     "position": {
         "pair": "PIPPIN/USDT:USDT",
-        "direction": "SHORT",
-        "entry_price": 0.42319,
-        "entry_time": "2025-12-28T19:18:03.991806",
-        "stop_loss": 0.4302585813133008,
-        "take_profit": 0.4090528373733985,
-        "size": 203.2172313373219,
-        "leverage": 2.9934578187824914,
-        "position_value": 85.99950012964125,
+        "direction": "LONG",
+        "entry_price": 0.41947,
+        "entry_time": "2025-12-29T04:15:34.933258",
+        "stop_loss": 0.4140052889991166,
+        "take_profit": 0.446793555004417,
+        "stop_distance": 0.005464711000883389,
+        "size": 182.99229361595638,
+        "leverage": 3.8379888701542613,
+        "position_value": 76.75977740308522,
         "bars_held": 0,
         "highest_pnl": 0
     },
-    "history": [
-        {
-            "pair": "PIPPIN/USDT:USDT",
-            "direction": "SHORT",
-            "entry": 0.46456,
-            "exit": 0.43064,
-            "pnl": 8.753192650476032,
-            "pnl_pct": 43.76596325238016,
-            "reason": "Take Profit",
-            "time": "2025-12-28T19:15:13.259112"
-        }
-    ]
+    "history": []
 }
