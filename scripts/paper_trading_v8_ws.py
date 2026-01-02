@@ -581,8 +581,8 @@ def main():
                         continue
                     
                     # Check for NaN
-                    if np.isnan(X).any():
-                        nan_count = np.isnan(X).sum()
+                    if pd.isna(X).any():
+                        nan_count = pd.isna(X).sum()
                         logger.warning(f"{pair}: {nan_count} NaN values in features, skipping")
                         continue
                     
