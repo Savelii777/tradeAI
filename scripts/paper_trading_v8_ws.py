@@ -71,6 +71,34 @@ class CandleBuilder:
         self.candles = {}  # {pair: {timeframe: deque of candles}}
         self.lock = threading.Lock()
         self.max_candles = LOOKBACK  # Keep last N candles
+    
+    def preload_history(self, pair, timeframe, candles_data):
+        """
+        Preload historical candles from CCXT.
+        
+        Args:
+            pair: Trading pair
+            timeframe: Timeframe (1m, 5m, 15m)
+            candles_data: List of [timestamp, open, high, low, close, volume]
+        """
+        with self.lock:
+            if pair not in self.candles:
+                self.candles[pair] = {}
+            if timeframe not in self.candles[pair]:
+                from collections import deque
+                self.candles[pair][timeframe] = deque(maxlen=self.max_candles)
+            
+            # Convert CCXT format to our format
+            for candle in candles_data:
+                timestamp = pd.to_datetime(candle[0], unit='ms', utc=True)
+                self.candles[pair][timeframe].append({
+                    'timestamp': timestamp,
+                    'open': float(candle[1]),
+                    'high': float(candle[2]),
+                    'low': float(candle[3]),
+                    'close': float(candle[4]),
+                    'volume': float(candle[5]),
+                })
         
     def on_candle_update(self, candle):
         """Called when new candle data arrives from WebSocket."""
@@ -168,8 +196,45 @@ class DataStreamer:
         self.subscribed_candles = True
         logger.info(f"✅ Subscription complete! Active streams: {subscription_count}")
         
+        # === PRELOAD HISTORICAL DATA ===
+        logger.info("📥 Preloading historical candles from CCXT...")
+        await self._preload_history()
+        
         while True:
             await asyncio.sleep(1)
+    
+    async def _preload_history(self):
+        """Preload historical candles to fill WebSocket buffer."""
+        import ccxt
+        exchange = ccxt.binance()
+        
+        total_loads = len(self.pairs) * len(TIMEFRAMES)
+        loaded = 0
+        
+        for pair in self.pairs:
+            clean_symbol = pair.replace('_', '/')
+            if '/' not in clean_symbol:
+                clean_symbol = f"{pair[:-4]}/{pair[-4:]}"
+            
+            for tf in TIMEFRAMES:
+                try:
+                    # Fetch history
+                    candles = exchange.fetch_ohlcv(clean_symbol, tf, limit=LOOKBACK)
+                    if candles and len(candles) >= 50:
+                        self.candle_builder.preload_history(pair, tf, candles)
+                        loaded += 1
+                    
+                    # Rate limit
+                    await asyncio.sleep(0.05)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to preload {pair} {tf}: {e}")
+            
+            # Progress update every 5 pairs
+            if (self.pairs.index(pair) + 1) % 5 == 0:
+                logger.info(f"📥 Loaded {loaded}/{total_loads} candle histories...")
+        
+        logger.info(f"✅ History preloaded! {loaded}/{total_loads} successful. WebSocket ready!")
 
     def _on_trade(self, trade):
         with self.lock:
@@ -693,13 +758,17 @@ def main():
                     df = prepare_features(data, mtf_fe)
                     if len(df) < 2: continue
                     
-                    # Check Signal on last closed candle (BACKTEST LOGIC)
-                    row = df.iloc[-2:]  # Get last 2 rows for safety
+                    # Check Signal on last CLOSED candle (BACKTEST LOGIC)
+                    # CRITICAL: Use second-to-last candle (fully closed), not last (incomplete)
+                    if len(df) < 2:
+                        continue
+                    
+                    row = df.iloc[[-2]]  # Предпоследняя свеча (закрытая!)
                     
                     # === DEBUG: Show what data model sees ===
-                    last_candle_time = row.index[-1]
-                    last_close = row['close'].iloc[-1]
-                    prev_close = df['close'].iloc[-6] if len(df) >= 6 else df['close'].iloc[0]
+                    last_candle_time = row.index[0]
+                    last_close = row['close'].iloc[0]
+                    prev_close = df['close'].iloc[-7] if len(df) >= 7 else df['close'].iloc[0]
                     price_change_5m = ((last_close - prev_close) / prev_close) * 100
                     
                     # Calculate time difference using UTC
@@ -710,18 +779,21 @@ def main():
                         last_candle_time_utc = last_candle_time
                     time_ago = (now_utc - last_candle_time_utc).total_seconds() / 60
                     
-                    # Get current live price
-                    current_price = streamer.current_prices.get(pair, last_close)
+                    # Get current live price (fallback to candle close if not available)
+                    ws_price = streamer.current_prices.get(pair)
+                    has_live_price = ws_price is not None and ws_price > 0
+                    current_price = ws_price if has_live_price else last_close
                     price_diff = ((current_price - last_close) / last_close) * 100
                     
                     # Source indicator
-                    source = "📡WS" if use_websocket else "🌐API"
+                    data_source = "📡WS" if use_websocket else "🌐API"
+                    price_source = "🔴Live" if has_live_price else "📊Candle"
                     
                     if pair == 'DOGE/USDT:USDT' or time_ago > 10:  # Always log DOGE or stale data
                         logger.warning(
-                            f"⏰ {pair} {source}: Candle @ {last_candle_time} ({time_ago:.1f}min ago) | "
-                            f"Candle close: {last_close:.6f} | Current: {current_price:.6f} ({price_diff:+.2f}%) | "
-                            f"5-candle change: {price_change_5m:+.2f}%"
+                            f"⏰ {pair} {data_source}: Candle @ {last_candle_time} ({time_ago:.1f}min ago) | "
+                            f"Close: {last_close:.6f} | Now {price_source}: {current_price:.6f} ({price_diff:+.2f}%) | "
+                            f"5-bar: {price_change_5m:+.2f}%"
                         )
                     
                     # === VALIDATE FEATURES ===
@@ -734,9 +806,9 @@ def main():
                         # Don't skip - this is a critical error that needs fixing
                         continue
                     
-                    # Extract features (use iloc[-1] for last closed candle)
+                    # Extract features from the closed candle
                     try:
-                        X = row.iloc[[-1]][models['features']].values
+                        X = row[models['features']].values
                     except KeyError as e:
                         logger.error(f"{pair}: KeyError extracting features: {e}")
                         continue
@@ -794,13 +866,13 @@ def main():
                     
                     # === SIGNAL FOUND - ENTER AT CURRENT PRICE ===
                     # Use current live price from WebSocket (faster entry, like backtest)
-                    current_price = streamer.current_prices.get(pair, row['close'].iloc[-1])
+                    current_price = streamer.current_prices.get(pair, row['close'].iloc[0])
                     
                     signal = {
                         'pair': pair,
                         'direction': 'LONG' if dir_pred == 2 else 'SHORT',
                         'price': current_price,  # Live price for faster entry
-                        'atr': row['atr'].iloc[-1],
+                        'atr': row['atr'].iloc[0],  # ATR from closed candle
                         'conf': dir_conf,
                         'timing': timing_prob,
                         'strength': strength_pred
