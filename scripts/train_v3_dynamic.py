@@ -654,6 +654,15 @@ def main():
     # Save trades
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
+    
+    # SAVE MODELS
+    print(f"\nSaving models to {out}...")
+    joblib.dump(models['direction'], out / 'direction_model.joblib')
+    joblib.dump(models['timing'], out / 'timing_model.joblib')
+    joblib.dump(models['strength'], out / 'strength_model.joblib')
+    joblib.dump(features, out / 'feature_names.joblib')
+    print("Models saved.")
+
     if trades:
         pd.DataFrame(trades).to_csv(out / f'backtest_trades_{args.test_days}d.csv', index=False)
 

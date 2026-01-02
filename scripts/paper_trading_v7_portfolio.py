@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 import os
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -49,8 +49,8 @@ MIN_STRENGTH = 1.4
 RISK_PCT = 0.05          # 5% risk per trade
 MAX_LEVERAGE = 20.0      # Max leverage
 SL_ATR = 1.5             # Stop Loss = 1.5 * ATR
-TP_RR = 5.0              # Take Profit = 5.0 * Risk (Increased to let profits run)
-MAX_HOLDING_BARS = 50    # Max holding time (5m bars)
+TP_RR = 100.0            # Take Profit = 100.0 * Risk (Virtually Unlimited, rely on Trailing)
+MAX_HOLDING_BARS = 150   # Max holding time (12.5 hours)
 ENTRY_FEE = 0.0002       # 0.02%
 EXIT_FEE = 0.0002        # 0.02%
 INITIAL_CAPITAL = 20.0 # Virtual Capital
@@ -133,7 +133,8 @@ class PortfolioManager:
             'leverage': leverage,
             'position_value': position_value,
             'bars_held': 0,
-            'highest_pnl': 0
+            'highest_price': entry_price, # Track Peak for Trailing
+            'lowest_price': entry_price   # Track Bottom for Trailing
         }
         
         self.save_state()
@@ -157,52 +158,70 @@ class PortfolioManager:
         sl_dist = pos['stop_distance']
         atr = sl_dist / SL_ATR # Reverse calc ATR from stored distance
         
+        # Update Peaks
+        if current_price > pos.get('highest_price', -1):
+            pos['highest_price'] = current_price
+        if current_price < pos.get('lowest_price', 99999999):
+            pos['lowest_price'] = current_price
+        
+        # Ensure defaults if missing (for migration)
+        if 'highest_price' not in pos: pos['highest_price'] = entry_price
+        if 'lowest_price' not in pos: pos['lowest_price'] = entry_price
+        
         # 1. Breakeven Trigger (1.5 ATR)
         be_trigger_dist = atr * 1.5
         
         if pos['direction'] == 'LONG':
-            current_profit = current_price - entry_price
+            # Calculate profit from PEAK, not current price (Conservative? No, Backtest uses Bar High)
+            # Actually, Breakeven trigger in backtest is: if bar['high'] >= be_trigger_price
+            # So we check if we EVER reached the trigger level
+            
+            highest_profit = pos['highest_price'] - entry_price
             
             # Check Breakeven
-            if current_profit >= be_trigger_dist:
+            if highest_profit >= be_trigger_dist:
                  new_sl = entry_price + (atr * 0.1)
                  if new_sl > pos['stop_loss']:
                      pos['stop_loss'] = new_sl
                      logger.info(f"Moved to Breakeven: {pos['stop_loss']:.4f}")
             
             # Dynamic Trail
-            # Only trail if we are at least at breakeven or better (protected)
+            # Backtest: new_sl = bar['high'] - (atr * trail_mult)
+            # We trail from the HIGHEST price reached
             if pos['stop_loss'] > entry_price:
-                r_multiple = current_profit / sl_dist
+                current_profit_at_peak = pos['highest_price'] - entry_price
+                r_multiple = current_profit_at_peak / sl_dist
                 
                 trail_mult = 2.0 # Default
                 if r_multiple > 5.0: trail_mult = 0.5
                 elif r_multiple > 3.0: trail_mult = 1.5
                 
-                new_sl = current_price - (atr * trail_mult)
+                new_sl = pos['highest_price'] - (atr * trail_mult)
                 if new_sl > pos['stop_loss']:
                     pos['stop_loss'] = new_sl
                     logger.info(f"Trailing Stop Updated (R={r_multiple:.1f}): {pos['stop_loss']:.4f}")
                     
         else: # SHORT
-            current_profit = entry_price - current_price
+            lowest_profit = entry_price - pos['lowest_price']
             
             # Check Breakeven
-            if current_profit >= be_trigger_dist:
+            if lowest_profit >= be_trigger_dist:
                  new_sl = entry_price - (atr * 0.1)
                  if new_sl < pos['stop_loss']:
                      pos['stop_loss'] = new_sl
                      logger.info(f"Moved to Breakeven: {pos['stop_loss']:.4f}")
             
             # Dynamic Trail
+            # Backtest: new_sl = bar['low'] + (atr * trail_mult)
             if pos['stop_loss'] < entry_price:
-                r_multiple = current_profit / sl_dist
+                current_profit_at_peak = entry_price - pos['lowest_price']
+                r_multiple = current_profit_at_peak / sl_dist
                 
                 trail_mult = 2.0 # Default
                 if r_multiple > 5.0: trail_mult = 0.5
                 elif r_multiple > 3.0: trail_mult = 1.5
                 
-                new_sl = current_price + (atr * trail_mult)
+                new_sl = pos['lowest_price'] + (atr * trail_mult)
                 if new_sl < pos['stop_loss']:
                     pos['stop_loss'] = new_sl
                     logger.info(f"Trailing Stop Updated (R={r_multiple:.1f}): {pos['stop_loss']:.4f}")
@@ -220,11 +239,20 @@ class PortfolioManager:
         if self.position['direction'] == 'LONG':
             if current_price <= self.position['stop_loss']:
                 should_exit = True
-                reason = "Stop Loss" if current_price < entry_price else "Trailing Stop"
+                # Determine if it was a Stop Loss or Trailing Stop
+                # If SL is still below entry (and we never moved it up significantly), it's a Stop Loss
+                # If SL is above entry, it's a Trailing Stop / Breakeven
+                if self.position['stop_loss'] < entry_price:
+                    reason = "Stop Loss"
+                else:
+                    reason = "Trailing Stop"
         else: # SHORT
             if current_price >= self.position['stop_loss']:
                 should_exit = True
-                reason = "Stop Loss" if current_price > entry_price else "Trailing Stop"
+                if self.position['stop_loss'] > entry_price:
+                    reason = "Stop Loss"
+                else:
+                    reason = "Trailing Stop"
                 
         if should_exit:
             self.close_position(current_price, reason)
@@ -457,7 +485,17 @@ def main():
                         
                         last_time = last_processed.get(pair)
                         current_time = signal['timestamp']
-                        if last_time != current_time:
+                        
+                        # Check for Stale Signal (Must be within 2 minutes of candle close)
+                        # Candle Timestamp is Open Time. Close Time is +5m.
+                        candle_close_time = current_time + timedelta(minutes=5)
+                        # Use UTC to match CCXT/Pandas timestamps
+                        now = datetime.now(timezone.utc).replace(tzinfo=None)
+                        delay = (now - candle_close_time).total_seconds()
+                        
+                        if delay > 120: # If more than 2 minutes late
+                             status = f"STALE ({int(delay)}s)"
+                        elif last_time != current_time:
                             portfolio.open_position(signal)
                             last_processed[pair] = current_time
                     else:
@@ -478,7 +516,7 @@ def main():
         # Update active positions
         portfolio.update(current_prices)
             
-        time.sleep(60)
+        time.sleep(10)
 
 if __name__ == '__main__':
     main()
