@@ -62,7 +62,68 @@ TELEGRAM_TOKEN = "8270168075:AAHkJ_bbJGgk4fV3r0_Gc8NQb07O_zUMBJc"
 TELEGRAM_CHAT_ID = "677822370"
 
 # ============================================================
-# DATA STREAMER
+# CANDLE BUILDER - Build candles from WebSocket in real-time
+# ============================================================
+class CandleBuilder:
+    """Builds and maintains candles from WebSocket data."""
+    
+    def __init__(self):
+        self.candles = {}  # {pair: {timeframe: deque of candles}}
+        self.lock = threading.Lock()
+        self.max_candles = LOOKBACK  # Keep last N candles
+        
+    def on_candle_update(self, candle):
+        """Called when new candle data arrives from WebSocket."""
+        with self.lock:
+            pair = candle.symbol
+            tf = candle.timeframe
+            
+            # Initialize storage
+            if pair not in self.candles:
+                self.candles[pair] = {}
+            if tf not in self.candles[pair]:
+                from collections import deque
+                self.candles[pair][tf] = deque(maxlen=self.max_candles)
+            
+            # Add or update candle
+            candles_deque = self.candles[pair][tf]
+            
+            # Check if this is an update to existing candle or new one
+            if candles_deque and candles_deque[-1]['timestamp'] == candle.timestamp:
+                # Update existing (incomplete) candle
+                candles_deque[-1].update({
+                    'high': max(candles_deque[-1]['high'], candle.high),
+                    'low': min(candles_deque[-1]['low'], candle.low),
+                    'close': candle.close,
+                    'volume': candle.volume,
+                })
+            else:
+                # New candle
+                candles_deque.append({
+                    'timestamp': candle.timestamp,
+                    'open': candle.open,
+                    'high': candle.high,
+                    'low': candle.low,
+                    'close': candle.close,
+                    'volume': candle.volume,
+                })
+    
+    def get_candles(self, pair, timeframe):
+        """Get candles as DataFrame."""
+        with self.lock:
+            if pair not in self.candles or timeframe not in self.candles[pair]:
+                return None
+            
+            candles_list = list(self.candles[pair][timeframe])
+            if not candles_list:
+                return None
+                
+            df = pd.DataFrame(candles_list)
+            df.set_index('timestamp', inplace=True)
+            return df
+
+# ============================================================
+# DATA STREAMER - WebSocket data manager
 # ============================================================
 class DataStreamer:
     def __init__(self, pairs):
@@ -70,17 +131,29 @@ class DataStreamer:
         self.ws_manager = WebSocketManager('binance')
         self.lock = threading.Lock()
         self.ready = False
-        self.current_prices = {} 
+        self.current_prices = {}
+        self.candle_builder = CandleBuilder()
+        self.subscribed_candles = False
 
     async def _run_ws(self):
         await self.ws_manager.connect()
         logger.info("WebSocket Connected. Subscribing...")
         
         for pair in self.pairs:
-            # Subscribe to TRADES for instant updates
+            # Subscribe to TRADES for instant price updates (stop-loss)
             await self.ws_manager.subscribe_trades(pair, self._on_trade)
-            await asyncio.sleep(0.2) # Rate limit protection (Binance allows 5 msg/sec)
             
+            # Subscribe to CANDLES for real-time candle building (entries)
+            for tf in TIMEFRAMES:
+                await self.ws_manager.subscribe_candles(
+                    pair, tf, self.candle_builder.on_candle_update
+                )
+            
+            await asyncio.sleep(0.2)  # Rate limit protection
+        
+        self.subscribed_candles = True
+        logger.info(f"✅ Subscribed to {len(self.pairs)} pairs x {len(TIMEFRAMES)} timeframes = {len(self.pairs) * len(TIMEFRAMES)} candle streams")
+        
         while True:
             await asyncio.sleep(1)
 
@@ -91,6 +164,10 @@ class DataStreamer:
         # INSTANT EXIT CHECK
         if hasattr(self, 'on_price_update'):
             self.on_price_update(trade.symbol, trade.price)
+
+    def get_candles_realtime(self, pair, timeframe):
+        """Get real-time candles from WebSocket (faster than API!)."""
+        return self.candle_builder.get_candles(pair, timeframe)
 
     def start(self):
         def run_loop():
@@ -539,29 +616,99 @@ def main():
         # === SCAN FOR NEW SIGNALS ===
         # Only scan if no position (single slot)
         if portfolio.position is None:
+            scan_stats = {'total': 0, 'short': 0, 'side': 0, 'long': 0, 'errors': 0, 'ws_data': 0, 'api_data': 0}
+            
             for pair in pairs:
+                scan_stats['total'] += 1
                 try:
-                    # Fetch fresh history for signal generation
+                    # === TRY WEBSOCKET FIRST (FAST!) ===
                     data = {}
-                    clean_symbol = pair.replace('_', '/')
-                    if '/' not in clean_symbol:
-                        clean_symbol = f"{pair[:-4]}/{pair[-4:]}"
+                    use_websocket = False
                     
-                    valid = True
-                    for tf in TIMEFRAMES:
-                        candles = exchange.fetch_ohlcv(clean_symbol, tf, limit=LOOKBACK)
-                        df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                        df.set_index('timestamp', inplace=True)
-                        data[tf] = df
-                        if len(df) < 50: valid = False
-                    if not valid: continue
+                    if streamer.subscribed_candles:
+                        # Try to get candles from WebSocket
+                        ws_valid = True
+                        for tf in TIMEFRAMES:
+                            df = streamer.get_candles_realtime(pair, tf)
+                            if df is None or len(df) < 50:
+                                ws_valid = False
+                                break
+                            data[tf] = df
+                        
+                        if ws_valid:
+                            use_websocket = True
+                            scan_stats['ws_data'] += 1
+                    
+                    # === FALLBACK TO CCXT API (if WebSocket not ready) ===
+                    if not use_websocket:
+                        scan_stats['api_data'] += 1
+                        clean_symbol = pair.replace('_', '/')
+                        if '/' not in clean_symbol:
+                            clean_symbol = f"{pair[:-4]}/{pair[-4:]}"
+                        
+                        valid = True
+                        for tf in TIMEFRAMES:
+                            # Request fresh data: last N candles from NOW (UTC!)
+                            tf_minutes = int(tf[:-1])  # '5m' -> 5
+                            now_utc = datetime.now(timezone.utc)
+                            since_ms = int((now_utc - timedelta(minutes=LOOKBACK * tf_minutes)).timestamp() * 1000)
+                            
+                            candles = exchange.fetch_ohlcv(clean_symbol, tf, since=since_ms, limit=LOOKBACK)
+                            
+                            # Check data freshness (compare UTC times!)
+                            if candles:
+                                last_candle_time = pd.to_datetime(candles[-1][0], unit='ms', utc=True)
+                                age_minutes = (now_utc - last_candle_time).total_seconds() / 60
+                                
+                                if age_minutes > 15:  # Data older than 15 minutes - skip
+                                    logger.warning(f"{pair} {tf}: Data too old ({age_minutes:.0f}min), skipping")
+                                    valid = False
+                                    break
+                            
+                            df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                            df.set_index('timestamp', inplace=True)
+                            data[tf] = df
+                            if len(df) < 50: valid = False
+                            
+                            # Small delay to avoid rate limits
+                            time.sleep(0.05)
+                        
+                        if not valid: continue
                     
                     df = prepare_features(data, mtf_fe)
                     if len(df) < 2: continue
                     
                     # Check Signal on last closed candle (BACKTEST LOGIC)
                     row = df.iloc[-2:]  # Get last 2 rows for safety
+                    
+                    # === DEBUG: Show what data model sees ===
+                    last_candle_time = row.index[-1]
+                    last_close = row['close'].iloc[-1]
+                    prev_close = df['close'].iloc[-6] if len(df) >= 6 else df['close'].iloc[0]
+                    price_change_5m = ((last_close - prev_close) / prev_close) * 100
+                    
+                    # Calculate time difference using UTC
+                    now_utc = datetime.now(timezone.utc)
+                    if last_candle_time.tzinfo is None:
+                        last_candle_time_utc = last_candle_time.replace(tzinfo=timezone.utc)
+                    else:
+                        last_candle_time_utc = last_candle_time
+                    time_ago = (now_utc - last_candle_time_utc).total_seconds() / 60
+                    
+                    # Get current live price
+                    current_price = streamer.current_prices.get(pair, last_close)
+                    price_diff = ((current_price - last_close) / last_close) * 100
+                    
+                    # Source indicator
+                    source = "📡WS" if use_websocket else "🌐API"
+                    
+                    if pair == 'DOGE/USDT:USDT' or time_ago > 10:  # Always log DOGE or stale data
+                        logger.warning(
+                            f"⏰ {pair} {source}: Candle @ {last_candle_time} ({time_ago:.1f}min ago) | "
+                            f"Candle close: {last_close:.6f} | Current: {current_price:.6f} ({price_diff:+.2f}%) | "
+                            f"5-candle change: {price_change_5m:+.2f}%"
+                        )
                     
                     # === VALIDATE FEATURES ===
                     missing_features = [f for f in models['features'] if f not in row.columns]
@@ -592,17 +739,44 @@ def main():
                     dir_conf = np.max(dir_proba)
                     dir_pred = np.argmax(dir_proba)
                     
-                    # === DEBUG: Log predictions ===
-                    if dir_conf > 0.4:  # Log interesting signals
-                        logger.info(f"{pair}: Dir={dir_pred} (conf={dir_conf:.2f}) - Proba: {dir_proba[0]}")
-                    
-                    if dir_pred == 1 or dir_conf < MIN_CONF: continue
-                    
+                    # === DETAILED LOGGING: Show ALL signal parameters ===
                     timing_prob = models['timing'].predict_proba(X)[0][1]
-                    if timing_prob < MIN_TIMING: continue
-                    
                     strength_pred = models['strength'].predict(X)[0]
-                    if strength_pred < MIN_STRENGTH: continue
+                    
+                    # Update stats
+                    if dir_pred == 0:
+                        scan_stats['short'] += 1
+                    elif dir_pred == 1:
+                        scan_stats['side'] += 1
+                    else:
+                        scan_stats['long'] += 1
+                    
+                    # Log ALL predictions (even sideways)
+                    if dir_conf > 0.4 or dir_pred != 1:  # Log interesting signals
+                        direction_name = ['SHORT', 'SIDE', 'LONG'][dir_pred]
+                        logger.info(
+                            f"{pair}: {direction_name} | "
+                            f"Conf={dir_conf:.2f} | "
+                            f"Timing={timing_prob:.2f} | "
+                            f"Strength={strength_pred:.2f} | "
+                            f"Proba: [{dir_proba[0][0]:.2f}, {dir_proba[0][1]:.2f}, {dir_proba[0][2]:.2f}]"
+                        )
+                    
+                    # Apply filters
+                    if dir_pred == 1:
+                        continue  # Skip sideways
+                    
+                    if dir_conf < MIN_CONF:
+                        logger.debug(f"{pair}: REJECTED - Low confidence ({dir_conf:.2f} < {MIN_CONF})")
+                        continue
+                    
+                    if timing_prob < MIN_TIMING:
+                        logger.debug(f"{pair}: REJECTED - Low timing ({timing_prob:.2f} < {MIN_TIMING})")
+                        continue
+                    
+                    if strength_pred < MIN_STRENGTH:
+                        logger.debug(f"{pair}: REJECTED - Low strength ({strength_pred:.2f} < {MIN_STRENGTH})")
+                        continue
                     
                     # === SIGNAL FOUND - ENTER AT CURRENT PRICE ===
                     # Use current live price from WebSocket (faster entry, like backtest)
@@ -623,6 +797,18 @@ def main():
                     
                 except Exception as e:
                     logger.error(f"Scan error {pair}: {e}")
+                    scan_stats['errors'] += 1
+            
+            # Print scan summary
+            logger.info(
+                f"📊 Scan complete: {scan_stats['total']} pairs | "
+                f"SHORT: {scan_stats['short']} | "
+                f"SIDE: {scan_stats['side']} | "
+                f"LONG: {scan_stats['long']} | "
+                f"WS: {scan_stats['ws_data']} | "
+                f"API: {scan_stats['api_data']} | "
+                f"Errors: {scan_stats['errors']}"
+            )
         
         # Sleep (shorter interval for faster trailing updates)
         time.sleep(10)
