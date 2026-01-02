@@ -138,21 +138,35 @@ class DataStreamer:
     async def _run_ws(self):
         await self.ws_manager.connect()
         logger.info("WebSocket Connected. Subscribing...")
+        logger.info(f"⏳ Subscribing to {len(self.pairs) * (len(TIMEFRAMES) + 1)} streams (will take ~{len(self.pairs) * (len(TIMEFRAMES) + 1) / 4:.0f}s)...")
         
-        for pair in self.pairs:
+        subscription_count = 0
+        for i, pair in enumerate(self.pairs):
             # Subscribe to TRADES for instant price updates (stop-loss)
-            await self.ws_manager.subscribe_trades(pair, self._on_trade)
+            try:
+                await self.ws_manager.subscribe_trades(pair, self._on_trade)
+                subscription_count += 1
+                await asyncio.sleep(0.25)  # 4 subscriptions per second (Binance limit: 5/sec)
+            except Exception as e:
+                logger.error(f"Failed to subscribe to trades for {pair}: {e}")
             
             # Subscribe to CANDLES for real-time candle building (entries)
             for tf in TIMEFRAMES:
-                await self.ws_manager.subscribe_candles(
-                    pair, tf, self.candle_builder.on_candle_update
-                )
+                try:
+                    await self.ws_manager.subscribe_candles(
+                        pair, tf, self.candle_builder.on_candle_update
+                    )
+                    subscription_count += 1
+                    await asyncio.sleep(0.25)  # 4 subscriptions per second
+                except Exception as e:
+                    logger.error(f"Failed to subscribe to {pair} {tf}: {e}")
             
-            await asyncio.sleep(0.2)  # Rate limit protection
+            # Progress update every 5 pairs
+            if (i + 1) % 5 == 0:
+                logger.info(f"📡 Subscribed {subscription_count}/{len(self.pairs) * (len(TIMEFRAMES) + 1)} streams...")
         
         self.subscribed_candles = True
-        logger.info(f"✅ Subscribed to {len(self.pairs)} pairs x {len(TIMEFRAMES)} timeframes = {len(self.pairs) * len(TIMEFRAMES)} candle streams")
+        logger.info(f"✅ Subscription complete! Active streams: {subscription_count}")
         
         while True:
             await asyncio.sleep(1)
