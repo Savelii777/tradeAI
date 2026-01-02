@@ -308,16 +308,16 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     direction = signal['direction']
     pred_strength = signal.get('pred_strength', 2.0)
     
-    # === V8: ADAPTIVE STOP LOSS ===
-    # High strength prediction → tighter SL (more leverage, bigger wins)
-    # Low strength prediction → wider SL (safer, but smaller position)
+    # === V8: ADAPTIVE STOP LOSS (CORRECTED) ===
+    # Strong signal (High Conf) -> WIDER SL (Give room to breathe for big move)
+    # Weak signal (Low Conf) -> TIGHT SL (Cut losses fast if not moving)
     if USE_ADAPTIVE_SL:
-        if pred_strength >= 3.0:      # Strong signal: tight SL
-            sl_mult = 1.2
-        elif pred_strength >= 2.0:    # Medium signal: normal SL
+        if pred_strength >= 3.0:      # Strong signal: room to breathe
+            sl_mult = 1.6
+        elif pred_strength >= 2.0:    # Medium signal: standard
             sl_mult = 1.5
-        else:                          # Weak signal: wider SL
-            sl_mult = 1.8
+        else:                          # Weak signal: tight leash
+            sl_mult = 1.2
     else:
         sl_mult = SL_ATR_MULT
     
