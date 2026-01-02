@@ -45,7 +45,7 @@ MIN_CONF = 0.50
 MIN_TIMING = 0.55    
 MIN_STRENGTH = 1.4  
 
-# Risk Management (From Backtest)
+# Risk Management (MATCHES BACKTEST)
 RISK_PCT = 0.05          # 5% risk per trade
 MAX_LEVERAGE = 20.0      # Max leverage
 SL_ATR_BASE = 1.5        # Base Stop Loss = 1.5 * ATR
@@ -53,6 +53,8 @@ MAX_HOLDING_BARS = 150   # Max holding time (12.5 hours)
 ENTRY_FEE = 0.0002       # 0.02%
 EXIT_FEE = 0.0002        # 0.02%
 INITIAL_CAPITAL = 20.0   # Virtual Capital
+MAX_POSITION_SIZE = 50000.0  # Max $50K position (BACKTEST LIMIT)
+SLIPPAGE_PCT = 0.0001        # 0.01% slippage (BACKTEST REALISM)
 
 # V8 IMPROVEMENTS
 USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
@@ -139,8 +141,9 @@ class PortfolioManager:
         # === V8: DYNAMIC RISK/LEVERAGE ===
         if USE_DYNAMIC_LEVERAGE:
             # Quality multiplier: 0.8x to 1.5x based on signal quality
+            # MUST match backtest formula (divider 0.5, not 0.3)
             score = conf * timing
-            quality = (score / 0.3) * (timing / 0.6) * (pred_strength / 2.0)
+            quality = (score / 0.5) * (timing / 0.6) * (pred_strength / 2.0)
             quality_mult = np.clip(quality, 0.8, 1.5)
             risk_pct = RISK_PCT * quality_mult
         else:
@@ -150,16 +153,24 @@ class PortfolioManager:
         # Leverage = Risk% / SL% (capped at Max Leverage)
         leverage = min(risk_pct / stop_loss_pct, MAX_LEVERAGE)
         position_value = self.capital * leverage
+        
+        # === BACKTEST LIMIT: Cap position size ===
+        if position_value > MAX_POSITION_SIZE:
+            position_value = MAX_POSITION_SIZE
+            leverage = position_value / self.capital
+        
         size = position_value / entry_price
         
         # Entry Fee
         fee = position_value * ENTRY_FEE
         self.capital -= fee # Deduct fee immediately
         
+        # CRITICAL: Store ORIGINAL entry price (without slippage) for SL/BE/Trailing calculations
+        # Slippage will be applied ONLY in PnL calculation (like backtest)
         self.position = {
             'pair': signal['pair'],
             'direction': signal['direction'],
-            'entry_price': entry_price,
+            'entry_price': entry_price,  # ORIGINAL price (NO slippage) - for SL/BE/Trailing
             'entry_time': datetime.now().isoformat(),
             'stop_loss': stop_loss,
             'stop_distance': stop_distance, # Saved for Trailing Stop
@@ -210,14 +221,15 @@ class PortfolioManager:
         entry_price = pos['entry_price']
         sl_dist = pos['stop_distance']
         # Calculate ATR from stop distance (account for adaptive SL)
+        # MUST match the sl_mult used during position opening!
         pred_strength = pos.get('pred_strength', 2.0)
         if USE_ADAPTIVE_SL:
             if pred_strength >= 3.0:
-                sl_mult = 1.2
+                sl_mult = 1.6  # Strong signal: wide SL
             elif pred_strength >= 2.0:
-                sl_mult = 1.5
+                sl_mult = 1.5  # Medium signal: standard
             else:
-                sl_mult = 1.8
+                sl_mult = 1.2  # Weak signal: tight SL
         else:
             sl_mult = SL_ATR_BASE
         atr = sl_dist / sl_mult
@@ -352,19 +364,28 @@ class PortfolioManager:
                 reason = "Stop Loss" if sl_price > entry_price else "Trailing Stop"
         
         if should_exit:
+            # Pass raw price - slippage will be applied in close_position()
             self.close_position(current_price, reason)
             return True
         
         return False
 
     def close_position(self, exit_price, reason):
+        """
+        Close position with BACKTEST LOGIC.
+        Slippage applied HERE in PnL calculation (not at entry).
+        """
         pos = self.position
         
-        # Calculate PnL
+        # Apply slippage to BOTH entry and exit (like backtest)
         if pos['direction'] == 'LONG':
-            price_change = (exit_price - pos['entry_price']) / pos['entry_price']
+            effective_entry = pos['entry_price'] * (1 + SLIPPAGE_PCT)
+            effective_exit = exit_price * (1 - SLIPPAGE_PCT)
+            price_change = (effective_exit - effective_entry) / effective_entry
         else:
-            price_change = (pos['entry_price'] - exit_price) / pos['entry_price']
+            effective_entry = pos['entry_price'] * (1 - SLIPPAGE_PCT)
+            effective_exit = exit_price * (1 + SLIPPAGE_PCT)
+            price_change = (effective_entry - effective_exit) / effective_entry
             
         raw_pnl = price_change * pos['position_value']
         exit_fee = pos['position_value'] * EXIT_FEE
@@ -554,7 +575,16 @@ def main():
                     'close': last_completed_candle['close'],
                     'timestamp': last_completed_candle.name
                 }
-                current_price = last_completed_candle['close']  # For signal entry price
+                
+                # Get current live price for entry (faster entry, inside the current candle)
+                try:
+                    clean_symbol = pair.replace('_', '/')
+                    if '/' not in clean_symbol:
+                        clean_symbol = f"{pair[:-4]}/{pair[-4:]}"
+                    ticker = exchange.fetch_ticker(clean_symbol)
+                    current_price = ticker['last']  # Live price
+                except:
+                    current_price = last_completed_candle['close']  # Fallback
                 
                 df = prepare_features(data, mtf_fe)
                 
@@ -596,16 +626,8 @@ def main():
                         last_time = last_processed.get(pair)
                         current_time = signal['timestamp']
                         
-                        # Check for Stale Signal (Must be within 2 minutes of candle close)
-                        # Candle Timestamp is Open Time. Close Time is +5m.
-                        candle_close_time = current_time + timedelta(minutes=5)
-                        # Use UTC to match CCXT/Pandas timestamps
-                        now = datetime.now(timezone.utc).replace(tzinfo=None)
-                        delay = (now - candle_close_time).total_seconds()
-                        
-                        if delay > 120: # If more than 2 minutes late
-                             status = f"STALE ({int(delay)}s)"
-                        elif last_time != current_time:
+                        # NO STALE CHECK - Enter immediately on signal (like backtest)
+                        if last_time != current_time:
                             portfolio.open_position(signal)
                             last_processed[pair] = current_time
                     else:
