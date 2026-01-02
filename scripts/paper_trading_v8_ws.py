@@ -411,24 +411,32 @@ class PortfolioManager:
 # ============================================================
 def load_models():
     logger.info("Loading V8 Models...")
-    return {
+    models = {
         'direction': joblib.load(MODEL_DIR / 'direction_model.joblib'),
         'timing': joblib.load(MODEL_DIR / 'timing_model.joblib'),
         'strength': joblib.load(MODEL_DIR / 'strength_model.joblib'),
         'features': joblib.load(MODEL_DIR / 'feature_names.joblib')
     }
+    logger.info(f"Loaded {len(models['features'])} features")
+    logger.info(f"First 10 features: {models['features'][:10]}")
+    
+    # Check excluded columns (should NOT be in features)
+    excluded = ['atr', 'price_change', 'obv', 'obv_sma', 'open', 'high', 'low', 'close', 'volume']
+    found_excluded = [f for f in excluded if f in models['features']]
+    if found_excluded:
+        logger.error(f"⚠️ WARNING: Excluded columns in features: {found_excluded}")
+    
+    return models
 
 def get_pairs():
     with open(PAIRS_FILE, 'r') as f:
         return [p['symbol'] for p in json.load(f)['pairs']][:20]
 
 def add_volume_features(df):
+    """Add volume features required by the model (6 features)."""
     df['vol_sma_20'] = df['volume'].rolling(20).mean()
     df['vol_ratio'] = df['volume'] / df['vol_sma_20']
     df['vol_zscore'] = (df['volume'] - df['vol_sma_20']) / df['volume'].rolling(20).std()
-    df['price_change'] = df['close'].diff()
-    df['obv'] = np.where(df['price_change'] > 0, df['volume'], -df['volume']).cumsum()
-    df['obv_sma'] = pd.Series(df['obv']).rolling(20).mean()
     df['vwap'] = (df['close'] * df['volume']).rolling(20).sum() / df['volume'].rolling(20).sum()
     df['price_vs_vwap'] = df['close'] / df['vwap'] - 1
     df['vol_momentum'] = df['volume'].pct_change(5)
@@ -445,11 +453,33 @@ def prepare_features(data, mtf_fe):
     m1 = data['1m']
     m5 = data['5m']
     m15 = data['15m']
+    
+    # Check data quality
+    if len(m1) < 50 or len(m5) < 50 or len(m15) < 50:
+        logger.debug(f"Insufficient data: m1={len(m1)}, m5={len(m5)}, m15={len(m15)}")
+        return pd.DataFrame()
+    
+    # Generate MTF features (166 features aligned to M5)
     ft = mtf_fe.align_timeframes(m1, m5, m15)
+    
+    # === ADD OHLCV for volume features & ATR calculation ===
     ft = ft.join(m5[['open', 'high', 'low', 'close', 'volume']])
+    
+    # Add volume features (6 features required by model)
     ft = add_volume_features(ft)
+    
+    # Add ATR for position sizing (not used by model)
     ft['atr'] = calculate_atr(ft)
-    return ft.dropna()
+    
+    # Remove rows with NaN (important!)
+    before_dropna = len(ft)
+    ft = ft.dropna()
+    after_dropna = len(ft)
+    
+    if after_dropna < before_dropna * 0.5:
+        logger.warning(f"Heavy data loss after dropna: {before_dropna} -> {after_dropna}")
+    
+    return ft
 
 def main():
     logger.info("Starting V8 Sniper (BACKTEST LOGIC + Real-time Exits)...")
@@ -531,14 +561,40 @@ def main():
                     if len(df) < 2: continue
                     
                     # Check Signal on last closed candle (BACKTEST LOGIC)
-                    row = df.iloc[[-2]]
-                    X = row[models['features']].values
+                    row = df.iloc[-2:]  # Get last 2 rows for safety
+                    
+                    # === VALIDATE FEATURES ===
+                    missing_features = [f for f in models['features'] if f not in row.columns]
+                    if missing_features:
+                        if len(missing_features) < 10:
+                            logger.error(f"{pair}: Missing {len(missing_features)} features: {missing_features}")
+                        else:
+                            logger.error(f"{pair}: Missing {len(missing_features)} features (first 10): {missing_features[:10]}")
+                        # Don't skip - this is a critical error that needs fixing
+                        continue
+                    
+                    # Extract features (use iloc[-1] for last closed candle)
+                    try:
+                        X = row.iloc[[-1]][models['features']].values
+                    except KeyError as e:
+                        logger.error(f"{pair}: KeyError extracting features: {e}")
+                        continue
+                    
+                    # Check for NaN
+                    if np.isnan(X).any():
+                        nan_count = np.isnan(X).sum()
+                        logger.warning(f"{pair}: {nan_count} NaN values in features, skipping")
+                        continue
                     
                     # NO STALE CHECK - Enter immediately on signal (like backtest)
                     
                     dir_proba = models['direction'].predict_proba(X)
                     dir_conf = np.max(dir_proba)
                     dir_pred = np.argmax(dir_proba)
+                    
+                    # === DEBUG: Log predictions ===
+                    if dir_conf > 0.4:  # Log interesting signals
+                        logger.info(f"{pair}: Dir={dir_pred} (conf={dir_conf:.2f}) - Proba: {dir_proba[0]}")
                     
                     if dir_pred == 1 or dir_conf < MIN_CONF: continue
                     
@@ -550,13 +606,13 @@ def main():
                     
                     # === SIGNAL FOUND - ENTER AT CURRENT PRICE ===
                     # Use current live price from WebSocket (faster entry, like backtest)
-                    current_price = streamer.current_prices.get(pair, row['close'].iloc[0])
+                    current_price = streamer.current_prices.get(pair, row['close'].iloc[-1])
                     
                     signal = {
                         'pair': pair,
                         'direction': 'LONG' if dir_pred == 2 else 'SHORT',
                         'price': current_price,  # Live price for faster entry
-                        'atr': row['atr'].iloc[0],
+                        'atr': row['atr'].iloc[-1],
                         'conf': dir_conf,
                         'timing': timing_prob,
                         'strength': strength_pred
