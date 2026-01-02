@@ -76,6 +76,7 @@ class DataStreamer:
         for pair in self.pairs:
             # Subscribe to TRADES for instant updates
             await self.ws_manager.subscribe_trades(pair, self._on_trade)
+            await asyncio.sleep(0.2) # Rate limit protection (Binance allows 5 msg/sec)
             
         while True:
             await asyncio.sleep(1)
