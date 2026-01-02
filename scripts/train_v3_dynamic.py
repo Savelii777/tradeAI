@@ -41,11 +41,20 @@ from train_mtf import MTFFeatureEngine
 # ============================================================
 # CONFIG
 # ============================================================
-SL_ATR_MULT = 1.5
+SL_ATR_MULT = 1.5       # Base SL multiplier (adaptive based on strength)
 MAX_LEVERAGE = 20.0
-RISK_PCT = 0.05      # 5% Risk per trade
-FEE_PCT = 0.0002     # 0.02% Maker/Taker (MEXC Futures)
-LOOKAHEAD = 12       # 1 hour on M5
+RISK_PCT = 0.05         # 5% Risk per trade
+FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
+LOOKAHEAD = 12          # 1 hour on M5
+
+# REALISTIC LIMITS
+MAX_POSITION_SIZE = 50000.0  # Max $50K position (realistic for liquidity)
+SLIPPAGE_PCT = 0.0001        # 0.01% slippage (limit orders, minimal)
+
+# V8 IMPROVEMENTS
+USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
+USE_DYNAMIC_LEVERAGE = True  # Boost leverage for high-confidence signals
+USE_AGGRESSIVE_TRAIL = True  # Tighter trailing at medium R-multiples
 
 
 # ============================================================
@@ -281,7 +290,13 @@ def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_na
 
 
 def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
-    """Simulate a single trade on a specific pair dataframe."""
+    """
+    Simulate a single trade on a specific pair dataframe.
+    V8 IMPROVEMENTS:
+    - Adaptive SL based on predicted strength
+    - Dynamic breakeven trigger
+    - Aggressive trailing at medium R-multiples
+    """
     # Find start index
     try:
         start_idx = df.index.get_loc(signal['timestamp'])
@@ -291,9 +306,34 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     entry_price = signal['entry_price']
     atr = signal['atr']
     direction = signal['direction']
+    pred_strength = signal.get('pred_strength', 2.0)
     
-    sl_dist = atr * SL_ATR_MULT
-    be_trigger_dist = atr * 1.5
+    # === V8: ADAPTIVE STOP LOSS ===
+    # High strength prediction → tighter SL (more leverage, bigger wins)
+    # Low strength prediction → wider SL (safer, but smaller position)
+    if USE_ADAPTIVE_SL:
+        if pred_strength >= 3.0:      # Strong signal: tight SL
+            sl_mult = 1.2
+        elif pred_strength >= 2.0:    # Medium signal: normal SL
+            sl_mult = 1.5
+        else:                          # Weak signal: wider SL
+            sl_mult = 1.8
+    else:
+        sl_mult = SL_ATR_MULT
+    
+    sl_dist = atr * sl_mult
+    
+    # === V8: DYNAMIC BREAKEVEN TRIGGER ===
+    # Strong signals → later BE (let it run)
+    # Weak signals → faster BE (protect capital)
+    if pred_strength >= 3.0:
+        be_trigger_mult = 1.8   # Wait for 1.8 ATR before BE
+    elif pred_strength >= 2.0:
+        be_trigger_mult = 1.5   # Standard
+    else:
+        be_trigger_mult = 1.2   # Fast BE for weak signals
+    
+    be_trigger_dist = atr * be_trigger_mult
     
     if direction == 'LONG':
         sl_price = entry_price - sl_dist
@@ -307,6 +347,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     exit_price = df['close'].iloc[exit_idx]
     exit_time = df.index[exit_idx]
     breakeven_active = False
+    max_r_reached = 0.0  # Track maximum R for trailing
     
     # Simulate bar by bar
     for j in range(start_idx + 1, min(start_idx + 150, len(df))):
@@ -321,21 +362,31 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['high'] >= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price + (atr * 0.1)
+                sl_price = entry_price + (atr * 0.3)  # V8: Higher BE margin to cover slippage
             
-            # 4. Progressive Trailing Stop (Catch Pumps)
+            # Progressive Trailing Stop
             if breakeven_active:
-                # Calculate current R-multiple (How many risks are we up?)
                 current_profit = bar['high'] - entry_price
                 r_multiple = current_profit / sl_dist
+                max_r_reached = max(max_r_reached, r_multiple)
                 
-                # Dynamic Trail Distance
-                trail_mult = 2.0  # Default loose trail (allow volatility)
-                
-                if r_multiple > 5.0:    # Super Pump (>7.5 ATR): Tighten hard
-                    trail_mult = 0.5
-                elif r_multiple > 3.0:  # Good Trend (>4.5 ATR): Tighten
-                    trail_mult = 1.5
+                # === V8: AGGRESSIVE TRAILING ===
+                if USE_AGGRESSIVE_TRAIL:
+                    if r_multiple > 5.0:      # Super Pump: Lock it in
+                        trail_mult = 0.4
+                    elif r_multiple > 3.0:    # Good Trend: Tight trail
+                        trail_mult = 0.8
+                    elif r_multiple > 2.0:    # Medium: Medium trail
+                        trail_mult = 1.2
+                    else:                      # Early: Loose trail
+                        trail_mult = 1.8
+                else:
+                    # Original logic
+                    trail_mult = 2.0
+                    if r_multiple > 5.0:
+                        trail_mult = 0.5
+                    elif r_multiple > 3.0:
+                        trail_mult = 1.5
                 
                 new_sl = bar['high'] - (atr * trail_mult)
                 if new_sl > sl_price:
@@ -350,21 +401,30 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['low'] <= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price - (atr * 0.1)
+                sl_price = entry_price - (atr * 0.3)  # V8: Higher BE margin to cover slippage
             
-            # 4. Progressive Trailing Stop (Catch Pumps)
+            # Progressive Trailing Stop
             if breakeven_active:
-                # Calculate current R-multiple
                 current_profit = entry_price - bar['low']
                 r_multiple = current_profit / sl_dist
+                max_r_reached = max(max_r_reached, r_multiple)
                 
-                # Dynamic Trail Distance
-                trail_mult = 2.0  # Default loose trail
-                
-                if r_multiple > 5.0:    # Super Pump
-                    trail_mult = 0.5
-                elif r_multiple > 3.0:  # Good Trend
-                    trail_mult = 1.5
+                # === V8: AGGRESSIVE TRAILING ===
+                if USE_AGGRESSIVE_TRAIL:
+                    if r_multiple > 5.0:      # Super Pump
+                        trail_mult = 0.4
+                    elif r_multiple > 3.0:    # Good Trend
+                        trail_mult = 0.8
+                    elif r_multiple > 2.0:    # Medium
+                        trail_mult = 1.2
+                    else:                      # Early
+                        trail_mult = 1.8
+                else:
+                    trail_mult = 2.0
+                    if r_multiple > 5.0:
+                        trail_mult = 0.5
+                    elif r_multiple > 3.0:
+                        trail_mult = 1.5
                 
                 new_sl = bar['low'] + (atr * trail_mult)
                 if new_sl < sl_price:
@@ -374,7 +434,9 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
         'exit_time': exit_time,
         'exit_price': exit_price,
         'outcome': outcome,
-        'sl_dist': sl_dist
+        'sl_dist': sl_dist,
+        'sl_mult': sl_mult,
+        'max_r': max_r_reached
     }
 
 
@@ -408,8 +470,23 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
             exit_price = result['exit_price']
             sl_dist = result['sl_dist']
             
-            # Risk Management
-            risk_amount = balance * RISK_PCT # 5% of current balance
+            # === V8: DYNAMIC RISK BASED ON SIGNAL QUALITY ===
+            base_risk = RISK_PCT  # 5%
+            
+            if USE_DYNAMIC_LEVERAGE:
+                # Boost risk for high-quality signals
+                score = signal.get('score', 0.3)
+                timing = signal.get('timing_prob', 0.5)
+                strength = signal.get('pred_strength', 2.0)
+                
+                # Quality multiplier: 0.8x to 1.5x based on signal quality
+                quality = (score / 0.5) * (timing / 0.6) * (strength / 2.0)
+                quality_mult = np.clip(quality, 0.8, 1.5)
+                
+                risk_amount = balance * base_risk * quality_mult
+            else:
+                risk_amount = balance * base_risk
+            
             sl_pct = sl_dist / entry_price
             
             # Position Size (Value in $)
@@ -421,11 +498,20 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
                 position_size = balance * MAX_LEVERAGE
                 leverage = MAX_LEVERAGE
             
-            # PnL Calculation
+            # REALISTIC LIMIT: Cap position size for liquidity
+            if position_size > MAX_POSITION_SIZE:
+                position_size = MAX_POSITION_SIZE
+                leverage = position_size / balance
+            
+            # PnL Calculation (with slippage)
             if signal['direction'] == 'LONG':
-                raw_pnl_pct = (exit_price - entry_price) / entry_price
+                effective_entry = entry_price * (1 + SLIPPAGE_PCT)  # Worse entry
+                effective_exit = exit_price * (1 - SLIPPAGE_PCT)    # Worse exit
+                raw_pnl_pct = (effective_exit - effective_entry) / effective_entry
             else:
-                raw_pnl_pct = (entry_price - exit_price) / entry_price
+                effective_entry = entry_price * (1 - SLIPPAGE_PCT)  # Worse entry for short
+                effective_exit = exit_price * (1 + SLIPPAGE_PCT)    # Worse exit for short
+                raw_pnl_pct = (effective_entry - effective_exit) / effective_entry
                 
             gross_profit = position_size * raw_pnl_pct
             fees = position_size * FEE_PCT * 2 # Entry + Exit

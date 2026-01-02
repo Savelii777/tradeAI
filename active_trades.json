@@ -1,16 +1,20 @@
 {
-    "capital": 19.91083987728346,
-    "position": null,
-    "history": [
-        {
-            "pair": "ASTER/USDT:USDT",
-            "direction": "SHORT",
-            "entry": 0.6929,
-            "exit": 0.693,
-            "pnl": -0.05639999490325441,
-            "pnl_pct": -0.28199997451627207,
-            "reason": "Trailing Stop",
-            "time": "2025-12-29T15:23:25.162726"
-        }
-    ]
+    "capital": 19.98493323034553,
+    "position": {
+        "pair": "ADA/USDT:USDT",
+        "direction": "LONG",
+        "entry_price": 0.3699,
+        "entry_time": "2026-01-02T18:36:09.685870",
+        "stop_loss": 0.3659718852576043,
+        "stop_distance": 0.0039281147423956865,
+        "size": 203.66003858433484,
+        "leverage": 3.7666924136172732,
+        "position_value": 75.33384827234546,
+        "bars_held": 1,
+        "breakeven_active": false,
+        "last_candle_time": "2026-01-02 15:30:00",
+        "pred_strength": 2.0,
+        "be_trigger_mult": 1.5
+    },
+    "history": []
 }
