@@ -786,7 +786,8 @@ def main():
                     # Source indicators
                     price_source = "🔴Live" if has_live_price else "📊Candle"
                     
-                    if pair == 'DOGE/USDT:USDT' or time_ago > 10:  # Always log DOGE or stale data
+                    # Only warn if data is REALLY stale (> 15 min for 5m candles)
+                    if time_ago > 15:
                         logger.warning(
                             f"⏰ {pair}: Candle @ {last_candle_time} ({time_ago:.1f}min ago) | "
                             f"Close: {last_close:.6f} | Now {price_source}: {current_price:.6f} ({price_diff:+.2f}%) | "
