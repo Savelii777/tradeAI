@@ -3,7 +3,7 @@
 Paper Trading Script V8 Improved - MEXC LIVE (Data from Binance)
 - Uses v8_improved model
 - Gets market data from Binance (free, no auth)
-- Executes trades on MEXC (USDT-M futures)
+- Executes trades on MEXC (USDT-M futures) via DIRECT API
 - EXACT backtest logic (breakeven stop, trailing, etc.)
 """
 
@@ -13,6 +13,8 @@ import json
 import joblib
 import ccxt
 import requests
+import hmac
+import hashlib
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -32,10 +34,10 @@ TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
 LOOKBACK = 500
 
-# V8 Thresholds (from backtest)
-MIN_CONF = 0.50
-MIN_TIMING = 0.55
-MIN_STRENGTH = 1.4
+# V8 Thresholds (LOWERED for testing with small balance)
+MIN_CONF = 0.40       # Was 0.50 - lower for more signals
+MIN_TIMING = 0.45     # Was 0.55 - lower for more signals  
+MIN_STRENGTH = 1.0    # Was 1.4 - lower for more signals
 
 # Risk Management (EXACT backtest settings)
 RISK_PCT = 0.05
@@ -60,184 +62,194 @@ TELEGRAM_CHAT_ID = "677822370"
 # MEXC API
 MEXC_API_KEY = "mx0vglp7RP0pQYiNA2"
 MEXC_API_SECRET = "25817ec107364a55976a23ca6f19d470"
+MEXC_BASE_URL = "https://contract.mexc.com"
 
 # ============================================================
-# EXCHANGE MANAGERS
+# MEXC DIRECT API CLIENT
 # ============================================================
-class ExchangeManager:
-    """Manages data fetching (Binance) and trading (MEXC)"""
+class MEXCClient:
+    """Direct MEXC Futures API client (no CCXT)"""
     
-    def __init__(self):
-        # Binance for data (no auth needed)
-        self.binance = ccxt.binance({
-            'timeout': 10000,
-            'enableRateLimit': True,
-            'options': {'defaultType': 'future'}
-        })
+    def __init__(self, api_key: str, api_secret: str):
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.base_url = MEXC_BASE_URL
+        logger.info("✅ MEXC Direct API Client initialized")
+    
+    def _generate_signature(self, sign_str: str) -> str:
+        """Generate HMAC SHA256 signature for MEXC"""
+        return hmac.new(
+            self.api_secret.encode('utf-8'),
+            sign_str.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+    
+    def _request(self, method: str, endpoint: str, params: dict = None):
+        """Make authenticated request to MEXC"""
+        timestamp = int(time.time() * 1000)
         
-        # MEXC for trading
-        self.mexc = ccxt.mexc({
-            'apiKey': MEXC_API_KEY,
-            'secret': MEXC_API_SECRET,
-            'timeout': 10000,
-            'enableRateLimit': True,
-            'options': {
-                'defaultType': 'swap',  # USDT-M futures
-                'adjustForTimeDifference': True
-            }
-        })
+        if params is None:
+            params = {}
         
-        logger.info("✅ Exchanges initialized")
-    
-    def fetch_ohlcv_binance(self, symbol: str, timeframe: str, limit: int = 500):
-        """Fetch candles from Binance (free data source)"""
+        params['timestamp'] = timestamp
+        
+        # Sort parameters and build query string
+        sorted_params = sorted(params.items())
+        params_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
+        
+        # Generate signature: API_KEY + timestamp + params_str
+        sign_str = f"{self.api_key}{timestamp}{params_str}"
+        signature = self._generate_signature(sign_str)
+        
+        # Headers with signature
+        headers = {
+            'ApiKey': self.api_key,
+            'Request-Time': str(timestamp),
+            'Signature': signature,
+            'Content-Type': 'application/json'
+        }
+        
+        url = f"{self.base_url}{endpoint}"
+        
         try:
-            candles = self.binance.fetch_ohlcv(symbol, timeframe, limit=limit)
-            return candles
+            if method == 'GET':
+                response = requests.get(url, params=params, headers=headers, timeout=30)
+            elif method == 'POST':
+                # For POST, send params as query string (not JSON body)
+                response = requests.post(url, params=params, headers=headers, timeout=30)
+            
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
-            logger.error(f"Error fetching {symbol} {timeframe} from Binance: {e}")
-            return []
+            logger.error(f"MEXC API request failed: {e}")
+            if 'response' in locals():
+                logger.error(f"Response: {response.text if hasattr(response, 'text') else 'N/A'}")
+            return None
     
-    def get_balance_mexc(self):
-        """Get USDT balance from MEXC"""
-        try:
-            balance = self.mexc.fetch_balance()
-            usdt_balance = balance['USDT']['free']
-            return float(usdt_balance)
-        except Exception as e:
-            logger.error(f"Error fetching MEXC balance: {e}")
-            return 0.0
+    def get_account_assets(self):
+        """Get account balance"""
+        result = self._request('GET', '/api/v1/private/account/assets', {})
+        if result and result.get('success'):
+            # Find USDT balance
+            for asset in result.get('data', []):
+                if asset['currency'] == 'USDT':
+                    return float(asset.get('availableBalance', 0))
+        return 0.0
     
-    def create_order_mexc(self, symbol: str, side: str, amount: float, price: float = None, 
-                         stop_loss: float = None, leverage: int = 20):
+    def get_open_positions(self, symbol: str = None):
+        """Get open positions"""
+        params = {}
+        if symbol:
+            params['symbol'] = symbol
+        
+        result = self._request('GET', '/api/v1/private/position/open_positions', params)
+        if result and result.get('success'):
+            return result.get('data', [])
+        return []
+    
+    def place_order(self, symbol: str, side: int, volume: int, leverage: int, 
+                   price: float = 0, order_type: int = 5, open_type: int = 1):
         """
-        Create order on MEXC with stop loss.
+        Place order on MEXC Futures.
         
         Args:
-            symbol: Trading pair (e.g., 'BTC/USDT:USDT')
-            side: 'buy' or 'sell'
-            amount: Position size in USD
-            price: Limit price (None for market order)
-            stop_loss: Stop loss price
-            leverage: Leverage to use
+            symbol: Symbol (e.g., 'BTC_USDT', 'PIPPIN_USDT')
+            side: 1=open long, 2=open short, 3=close long, 4=close short
+            volume: Volume in contracts
+            leverage: Leverage (1-125)
+            price: Limit price (0 for market order)
+            order_type: 5=market, 6=limit
+            open_type: 1=isolated, 2=cross
         """
-        try:
-            # Set leverage
-            self.mexc.set_leverage(leverage, symbol)
-            
-            # Calculate quantity in contracts
-            ticker = self.mexc.fetch_ticker(symbol)
-            current_price = ticker['last']
-            quantity = amount / current_price
-            
-            # Round to exchange precision
-            market = self.mexc.market(symbol)
-            quantity = self.mexc.amount_to_precision(symbol, quantity)
-            
-            # Create market order
-            order_type = 'market' if price is None else 'limit'
-            order = self.mexc.create_order(
-                symbol=symbol,
-                type=order_type,
-                side=side,
-                amount=quantity,
-                price=price
-            )
-            
-            logger.info(f"✅ Order created on MEXC: {side} {quantity} {symbol} @ {current_price}")
-            
-            # Set stop loss if provided
-            if stop_loss:
-                self.set_stop_loss_mexc(symbol, side, quantity, stop_loss)
-            
-            return order
-            
-        except Exception as e:
-            logger.error(f"Error creating order on MEXC: {e}")
+        params = {
+            'symbol': symbol,
+            'price': price,
+            'vol': volume,
+            'leverage': leverage,
+            'side': side,
+            'type': order_type,
+            'openType': open_type
+        }
+        
+        logger.info(f"📤 Placing MEXC order: {params}")
+        result = self._request('POST', '/api/v1/private/order/submit', params)
+        
+        if result and result.get('success'):
+            logger.info(f"✅ Order placed successfully! Order ID: {result.get('data')}")
+            return result.get('data')
+        else:
+            logger.error(f"❌ Order failed: {result}")
             return None
     
-    def set_stop_loss_mexc(self, symbol: str, side: str, quantity: float, stop_price: float):
-        """Set stop loss order on MEXC"""
-        try:
-            # Stop loss side is opposite of entry
-            sl_side = 'sell' if side == 'buy' else 'buy'
-            
-            sl_order = self.mexc.create_order(
-                symbol=symbol,
-                type='stop_market',
-                side=sl_side,
-                amount=quantity,
-                params={'stopPrice': stop_price}
-            )
-            
-            logger.info(f"✅ Stop loss set: {sl_side} @ {stop_price}")
-            return sl_order
-            
-        except Exception as e:
-            logger.error(f"Error setting stop loss: {e}")
+    def place_stop_order(self, symbol: str, side: int, volume: int, stop_price: float, leverage: int):
+        """
+        Place STOP LOSS order on MEXC.
+        
+        Args:
+            symbol: Symbol (e.g., 'BTC_USDT')
+            side: 3=close long (stop), 4=close short (stop)
+            volume: Volume in contracts
+            stop_price: Trigger price for stop loss
+            leverage: Leverage
+        """
+        # MEXC uses trigger price in planType
+        params = {
+            'symbol': symbol,
+            'price': 0,  # Market order when triggered
+            'vol': volume,
+            'leverage': leverage,
+            'side': side,
+            'type': 5,  # Market order
+            'openType': 1,  # Isolated
+            'triggerPrice': stop_price,
+            'triggerType': 1,  # Last price trigger
+            'executeCycle': 1,  # Execute once
+            'trend': 1 if side == 3 else 2  # 1=price down (long SL), 2=price up (short SL)
+        }
+        
+        logger.info(f"📤 Placing STOP order @ {stop_price}: {params}")
+        result = self._request('POST', '/api/v1/private/planorder/place', params)
+        
+        if result and result.get('success'):
+            order_id = result.get('data')
+            logger.info(f"✅ Stop order placed! Order ID: {order_id}")
+            return order_id
+        else:
+            logger.error(f"❌ Stop order failed: {result}")
             return None
     
-    def close_position_mexc(self, symbol: str, side: str):
-        """Close position on MEXC"""
-        try:
-            # Get current position
-            positions = self.mexc.fetch_positions([symbol])
-            
-            for pos in positions:
-                if pos['symbol'] == symbol and float(pos['contracts']) > 0:
-                    # Close position (opposite side)
-                    close_side = 'sell' if side == 'LONG' else 'buy'
-                    quantity = abs(float(pos['contracts']))
-                    
-                    order = self.mexc.create_order(
-                        symbol=symbol,
-                        type='market',
-                        side=close_side,
-                        amount=quantity,
-                        params={'reduceOnly': True}
-                    )
-                    
-                    logger.info(f"✅ Position closed: {close_side} {quantity} {symbol}")
-                    return order
-            
-            logger.warning(f"No open position found for {symbol}")
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error closing position: {e}")
-            return None
-    
-    def update_stop_loss_mexc(self, symbol: str, side: str, new_stop: float):
-        """Update stop loss (cancel old, create new)"""
-        try:
-            # Cancel all stop orders for this symbol
-            open_orders = self.mexc.fetch_open_orders(symbol)
-            for order in open_orders:
-                if order['type'] == 'stop_market':
-                    self.mexc.cancel_order(order['id'], symbol)
-            
-            # Get position size
-            positions = self.mexc.fetch_positions([symbol])
-            for pos in positions:
-                if pos['symbol'] == symbol and float(pos['contracts']) > 0:
-                    quantity = abs(float(pos['contracts']))
-                    self.set_stop_loss_mexc(symbol, side, quantity, new_stop)
-                    logger.info(f"✅ Stop loss updated: {new_stop}")
-                    return True
-            
+    def cancel_stop_orders(self, symbol: str):
+        """Cancel all stop/plan orders for a symbol"""
+        # Get all plan orders for symbol
+        result = self._request('GET', '/api/v1/private/planorder/list', {'symbol': symbol})
+        
+        if not result or not result.get('success'):
             return False
-            
-        except Exception as e:
-            logger.error(f"Error updating stop loss: {e}")
-            return False
-
+        
+        orders = result.get('data', [])
+        cancelled = 0
+        
+        for order in orders:
+            order_id = order.get('id')
+            if order_id:
+                cancel_result = self._request('POST', '/api/v1/private/planorder/cancel', {
+                    'symbol': symbol,
+                    'orderId': order_id
+                })
+                if cancel_result and cancel_result.get('success'):
+                    cancelled += 1
+        
+        if cancelled > 0:
+            logger.info(f"✅ Cancelled {cancelled} stop orders for {symbol}")
+        
+        return True
 
 # ============================================================
 # PORTFOLIO MANAGER (V8 BACKTEST LOGIC)
 # ============================================================
 class PortfolioManager:
-    def __init__(self, exchange_manager):
-        self.exchange = exchange_manager
+    def __init__(self, mexc_client):
+        self.mexc = mexc_client
         self.position = None
         self.trades_history = []
         
@@ -246,7 +258,7 @@ class PortfolioManager:
             logger.info(f"📂 State loaded from file. Capital: ${self.capital:.2f}")
         else:
             # Get real balance from MEXC
-            self.capital = self.exchange.get_balance_mexc()
+            self.capital = self.mexc.get_account_assets()
             if self.capital == 0:
                 logger.warning("⚠️ Could not fetch MEXC balance, using INITIAL_CAPITAL")
                 self.capital = INITIAL_CAPITAL
@@ -324,25 +336,33 @@ class PortfolioManager:
         else:
             be_trigger_mult = 1.2
         
-        # === V8: DYNAMIC RISK ===
+        # === V8: DYNAMIC RISK (MATCHES BACKTEST) ===
         if USE_DYNAMIC_LEVERAGE:
+            # CORRECT: Use same formula as backtest
             score = conf * timing
-            quality = (score / 0.5) * (timing / 0.6) * (pred_strength / 2.0)
+            timing_norm = timing
+            strength_norm = pred_strength
+            
+            # Quality multiplier: 0.8x to 1.5x based on signal quality
+            # Formula from backtest: (score / 0.5) * (timing / 0.6) * (strength / 2.0)
+            quality = (score / 0.5) * (timing_norm / 0.6) * (strength_norm / 2.0)
             quality_mult = np.clip(quality, 0.8, 1.5)
             risk_pct = RISK_PCT * quality_mult
         else:
             risk_pct = RISK_PCT
         
-        # Position sizing
+        # Position sizing (MATCHES BACKTEST)
         stop_loss_pct = stop_distance / entry_price
         risk_amount = self.capital * risk_pct
         position_value = risk_amount / stop_loss_pct
         
+        # Calculate leverage
         leverage = position_value / self.capital
         if leverage > MAX_LEVERAGE:
             leverage = MAX_LEVERAGE
             position_value = self.capital * leverage
         
+        # Cap position size (BACKTEST LIMIT)
         if position_value > MAX_POSITION_SIZE:
             position_value = MAX_POSITION_SIZE
             leverage = position_value / self.capital
@@ -351,19 +371,47 @@ class PortfolioManager:
         entry_fee = position_value * ENTRY_FEE
         self.capital -= entry_fee
         
-        # === CREATE ORDER ON MEXC ===
-        order = self.exchange.create_order_mexc(
-            symbol=signal['pair'],
-            side=side,
-            amount=position_value,
-            stop_loss=stop_loss,
+        # === PLACE ORDER ON MEXC ===
+        # Convert symbol: BTC/USDT:USDT -> BTC_USDT
+        mexc_symbol = signal['pair'].replace('/USDT:USDT', '_USDT').replace('/', '_')
+        
+        # Calculate volume in contracts
+        volume = int(position_value / entry_price)
+        if volume < 1:
+            volume = 1
+        
+        # MEXC API: side 1=open long, 2=open short
+        mexc_side = 1 if signal['direction'] == 'LONG' else 2
+        
+        logger.info(f"📊 Position sizing: ${position_value:.0f} | {volume} contracts | Lev: {leverage:.1f}x")
+        
+        order_id = self.mexc.place_order(
+            symbol=mexc_symbol,
+            side=mexc_side,
+            volume=volume,
             leverage=int(leverage)
         )
         
-        if order is None:
+        if order_id is None:
             logger.error(f"Failed to create order for {signal['pair']}")
             self.capital += entry_fee  # Refund fee
             return
+        
+        # === PLACE STOP LOSS ORDER ON MEXC ===
+        # Side: 3=close long, 4=close short
+        stop_side = 3 if signal['direction'] == 'LONG' else 4
+        
+        stop_order_id = self.mexc.place_stop_order(
+            symbol=mexc_symbol,
+            side=stop_side,
+            volume=volume,
+            stop_price=stop_loss,
+            leverage=int(leverage)
+        )
+        
+        if stop_order_id is None:
+            logger.warning(f"⚠️ Failed to place stop order! Position is unprotected!")
+            # Continue anyway - we'll manage SL manually if needed
         
         # Store position
         self.position = {
@@ -380,7 +428,10 @@ class PortfolioManager:
             'be_trigger_mult': be_trigger_mult,
             'last_update_time': None,
             'bars_held': 0,
-            'mexc_order_id': order['id']
+            'mexc_order_id': order_id,
+            'mexc_stop_order_id': stop_order_id,  # Track stop order
+            'mexc_symbol': mexc_symbol,
+            'volume': volume
         }
         self.save_state()
         
@@ -492,9 +543,30 @@ class PortfolioManager:
         
         # Update stop loss on MEXC if changed
         if updated and old_sl != pos['stop_loss']:
-            side = 'buy' if pos['direction'] == 'LONG' else 'sell'
-            self.exchange.update_stop_loss_mexc(pos['pair'], side, pos['stop_loss'])
-            logger.info(f"📈 Stop loss updated: {old_sl:.6f} → {pos['stop_loss']:.6f}")
+            mexc_symbol = pos['mexc_symbol']
+            volume = pos['volume']
+            new_sl = pos['stop_loss']
+            stop_side = 3 if pos['direction'] == 'LONG' else 4
+            
+            # Cancel old stop order
+            if pos.get('mexc_stop_order_id'):
+                logger.debug(f"Cancelling old stop order...")
+                self.mexc.cancel_stop_orders(mexc_symbol)
+            
+            # Place new stop order
+            logger.info(f"📈 Updating stop loss on MEXC: {old_sl:.6f} → {new_sl:.6f}")
+            new_stop_order_id = self.mexc.place_stop_order(
+                symbol=mexc_symbol,
+                side=stop_side,
+                volume=volume,
+                stop_price=new_sl,
+                leverage=int(pos['leverage'])
+            )
+            
+            if new_stop_order_id:
+                pos['mexc_stop_order_id'] = new_stop_order_id
+            else:
+                logger.warning(f"⚠️ Failed to update stop order on exchange!")
         
         self.save_state()
     
@@ -505,10 +577,31 @@ class PortfolioManager:
         if price is None or price <= 0:
             price = pos['entry_price']
         
-        # Close on MEXC
-        self.exchange.close_position_mexc(pos['pair'], pos['direction'])
+        # === CANCEL STOP ORDERS FIRST ===
+        mexc_symbol = pos['mexc_symbol']
+        logger.info(f"Cancelling stop orders for {mexc_symbol}...")
+        self.mexc.cancel_stop_orders(mexc_symbol)
         
-        # Calculate PnL (V8 logic)
+        # === CLOSE ON MEXC ===
+        volume = pos['volume']
+        
+        # MEXC API: side 3=close long, 4=close short
+        close_side = 3 if pos['direction'] == 'LONG' else 4
+        
+        logger.info(f"📤 Closing position: {mexc_symbol} | {volume} contracts | Side: {close_side}")
+        
+        close_order = self.mexc.place_order(
+            symbol=mexc_symbol,
+            side=close_side,
+            volume=volume,
+            leverage=int(pos['leverage'])
+        )
+        
+        if close_order is None:
+            logger.error(f"❌ Failed to close position on MEXC!")
+            # Continue with PnL calculation anyway (for tracking)
+        
+        # Calculate PnL (V8 logic - MATCHES BACKTEST)
         if pos['direction'] == 'LONG':
             effective_entry = pos['entry_price'] * (1 + SLIPPAGE_PCT)
             effective_exit = price * (1 - SLIPPAGE_PCT)
@@ -652,8 +745,16 @@ def main():
     
     models = load_models()
     pairs = get_pairs()
-    exchange = ExchangeManager()
-    portfolio = PortfolioManager(exchange)
+    
+    # Initialize MEXC Direct API and Binance
+    mexc_client = MEXCClient(MEXC_API_KEY, MEXC_API_SECRET)
+    binance = ccxt.binance({
+        'timeout': 10000,
+        'enableRateLimit': True,
+        'options': {'defaultType': 'future'}
+    })
+    
+    portfolio = PortfolioManager(mexc_client)
     mtf_fe = MTFFeatureEngine()
     
     logger.info(f"Monitoring {len(pairs)} pairs on MEXC")
@@ -670,34 +771,49 @@ def main():
             if portfolio.position:
                 pos = portfolio.position
                 
+                logger.debug(f"📍 Monitoring position: {pos['pair']} {pos['direction']}")
+                
                 # Get current price from Binance
-                ticker = exchange.binance.fetch_ticker(pos['pair'])
+                ticker = binance.fetch_ticker(pos['pair'])
                 current_price = ticker['last']
                 
                 # Get last 5m candle for trailing update
-                candles_5m = exchange.fetch_ohlcv_binance(pos['pair'], '5m', limit=2)
+                candles_5m = binance.fetch_ohlcv(pos['pair'], '5m', limit=2)
                 if len(candles_5m) >= 2:
                     last_candle = candles_5m[-2]  # Closed candle
                     candle_high = last_candle[2]
                     candle_low = last_candle[3]
                     
                     portfolio.update_position(current_price, candle_high, candle_low)
+            else:
+                # No position - waiting
+                if current_time % 60 < 30:  # Log every minute
+                    logger.debug(f"⏳ No position. Waiting for next scan... (Capital: ${portfolio.capital:.2f})")
             
             # Scan for new signals every 60 seconds
             if current_time - last_scan >= 60:
                 last_scan = current_time
                 
                 if portfolio.position is None:
+                    logger.info("=" * 70)
                     logger.info("🔍 Scanning for new signals...")
+                    logger.info(f"   Filters: Conf>{MIN_CONF}, Timing>{MIN_TIMING}, Strength>{MIN_STRENGTH}")
+                    logger.info(f"   Available capital: ${portfolio.capital:.2f}")
+                    
+                    signals_checked = 0
+                    signals_found = 0
                     
                     for pair in pairs:
+                        signals_checked += 1
+                        logger.info(f"   [{signals_checked}/{len(pairs)}] Checking {pair}...")
+                        
                         try:
                             # Fetch data from Binance
                             data = {}
                             valid = True
                             
                             for tf in TIMEFRAMES:
-                                candles = exchange.fetch_ohlcv_binance(pair, tf, LOOKBACK)
+                                candles = binance.fetch_ohlcv(pair, tf, LOOKBACK)
                                 if not candles or len(candles) < 50:
                                     valid = False
                                     break
@@ -736,30 +852,44 @@ def main():
                             timing_prob = float(models['timing'].predict_proba(X)[0][1])
                             strength_pred = float(models['strength'].predict(X)[0])
                             
+                            # Log prediction details
+                            direction_str = 'LONG' if dir_pred == 2 else ('SHORT' if dir_pred == 0 else 'SIDEWAYS')
+                            logger.info(f"      → {direction_str} | Conf: {dir_conf:.2f} | Timing: {timing_prob:.2f} | Strength: {strength_pred:.1f}")
+                            
                             # Apply V8 filters
                             if dir_pred == 1:  # Sideways
+                                logger.debug(f"      ✗ Skipped (SIDEWAYS)")
                                 continue
                             
+                            rejected_reasons = []
                             if dir_conf < MIN_CONF:
-                                continue
+                                rejected_reasons.append(f"Conf({dir_conf:.2f}<{MIN_CONF})")
                             if timing_prob < MIN_TIMING:
-                                continue
+                                rejected_reasons.append(f"Timing({timing_prob:.2f}<{MIN_TIMING})")
                             if strength_pred < MIN_STRENGTH:
+                                rejected_reasons.append(f"Strength({strength_pred:.1f}<{MIN_STRENGTH})")
+                            
+                            if rejected_reasons:
+                                logger.info(f"      ✗ Rejected: {', '.join(rejected_reasons)}")
                                 continue
+                            
+                            # SIGNAL FOUND!
+                            signals_found += 1
+                            logger.info(f"      ✅ SIGNAL FOUND!")
                             
                             # Get current price
-                            ticker = exchange.binance.fetch_ticker(pair)
+                            ticker = binance.fetch_ticker(pair)
                             current_price = ticker['last']
                             
-                            # Create signal
+                            # Create signal (MATCH BACKTEST KEYS)
                             signal = {
                                 'pair': pair,
                                 'direction': 'LONG' if dir_pred == 2 else 'SHORT',
                                 'price': current_price,
                                 'atr': row['atr'].iloc[0],
                                 'conf': dir_conf,
-                                'timing_prob': timing_prob,
-                                'pred_strength': strength_pred
+                                'timing_prob': timing_prob,  # CORRECT KEY
+                                'pred_strength': strength_pred  # CORRECT KEY
                             }
                             
                             portfolio.open_position(signal)
@@ -767,8 +897,13 @@ def main():
                             break  # Only one position
                             
                         except Exception as e:
-                            logger.error(f"Error processing {pair}: {e}")
+                            logger.error(f"      ✗ Error processing {pair}: {e}")
                             continue
+                    
+                    # Summary after scan
+                    logger.info("=" * 70)
+                    logger.info(f"📊 Scan complete: {signals_checked} pairs checked, {signals_found} signals found")
+                    logger.info("=" * 70)
         
         except Exception as e:
             logger.error(f"Main loop error: {e}")
