@@ -34,10 +34,10 @@ TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
 LOOKBACK = 500
 
-# V8 Thresholds (LOWERED for testing with small balance)
-MIN_CONF = 0.40       # Was 0.50 - lower for more signals
-MIN_TIMING = 0.45     # Was 0.55 - lower for more signals  
-MIN_STRENGTH = 1.0    # Was 1.4 - lower for more signals
+# V8 IMPROVED Thresholds (UPDATED for new Timing model)
+MIN_CONF = 0.50       # Direction confidence
+MIN_TIMING = 0.8      # ✅ NEW! Timing now predicts ATR gain (0-5), threshold = 0.8 ATR minimum
+MIN_STRENGTH = 1.4    # Strength prediction
 
 # Risk Management (EXACT backtest settings)
 RISK_PCT = 0.05
@@ -844,17 +844,18 @@ def main():
                             if pd.isna(X).any():
                                 continue
                             
-                            # Predictions
+                            # Predictions (V8 IMPROVED)
                             dir_proba = models['direction'].predict_proba(X)
                             dir_conf = float(np.max(dir_proba))
                             dir_pred = int(np.argmax(dir_proba))
                             
-                            timing_prob = float(models['timing'].predict_proba(X)[0][1])
+                            # ✅ FIXED: Timing is now REGRESSOR (predicts ATR gain)
+                            timing_pred = float(models['timing'].predict(X)[0])  # Returns 0-5 ATR gain
                             strength_pred = float(models['strength'].predict(X)[0])
                             
                             # Log prediction details
                             direction_str = 'LONG' if dir_pred == 2 else ('SHORT' if dir_pred == 0 else 'SIDEWAYS')
-                            logger.info(f"      → {direction_str} | Conf: {dir_conf:.2f} | Timing: {timing_prob:.2f} | Strength: {strength_pred:.1f}")
+                            logger.info(f"      → {direction_str} | Conf: {dir_conf:.2f} | Timing: {timing_pred:.2f} ATR | Strength: {strength_pred:.1f}")
                             
                             # Apply V8 filters
                             if dir_pred == 1:  # Sideways
@@ -864,8 +865,8 @@ def main():
                             rejected_reasons = []
                             if dir_conf < MIN_CONF:
                                 rejected_reasons.append(f"Conf({dir_conf:.2f}<{MIN_CONF})")
-                            if timing_prob < MIN_TIMING:
-                                rejected_reasons.append(f"Timing({timing_prob:.2f}<{MIN_TIMING})")
+                            if timing_pred < MIN_TIMING:  # ✅ FIXED: Compare timing_pred (not timing_prob)
+                                rejected_reasons.append(f"Timing({timing_pred:.2f}<{MIN_TIMING})")
                             if strength_pred < MIN_STRENGTH:
                                 rejected_reasons.append(f"Strength({strength_pred:.1f}<{MIN_STRENGTH})")
                             
@@ -888,8 +889,8 @@ def main():
                                 'price': current_price,
                                 'atr': row['atr'].iloc[0],
                                 'conf': dir_conf,
-                                'timing_prob': timing_prob,  # CORRECT KEY
-                                'pred_strength': strength_pred  # CORRECT KEY
+                                'timing_prob': timing_pred,  # ✅ FIXED: Store timing_pred (ATR gain)
+                                'pred_strength': strength_pred
                             }
                             
                             portfolio.open_position(signal)

@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 """
-Train V7 SNIPER - Single Slot Optimization
-"One Shot, One Kill"
+Train V8 IMPROVED - Anti-Overfitting Edition
+"Realistic Backtest, Honest Results"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
 - We cannot afford to waste time on low-probability or low-profit trades.
-- We need High Win Rate (>60%) and High Expected Value.
 - Target: ~10-15 trades per day across ALL 20 pairs (approx 0.5 - 1 trade per pair/day).
 
-Changes:
-1. Training Targets: Increased threshold to 0.5% (Train only on significant moves).
-2. Filters: Added `min_strength` filter. We only enter if model predicts a move > 2.0 ATR.
-3. Execution: "Smart Trail" - Fast Breakeven (1.2R) to free up the slot if price stalls, then loose trail.
-4. Portfolio Logic: True "Single Slot" backtest across all pairs sorted by time.
-5. Real PnL: Calculates Dollar PnL with 5% Risk/Trade and 0.02% Fees.
+ANTI-OVERFITTING IMPROVEMENTS (Jan 2026):
+1. Simplified Models: Reduced complexity (100 trees, depth 3, min_child_samples=50)
+2. Improved Timing Target: Now predicts actual gain potential (regression, not binary)
+3. Strict Train/Test Split: NO data leakage between train and test
+4. Realistic Slippage: 0.05% instead of 0.01% (honest cost modeling)
+5. Walk-Forward Validation: Test on truly unseen future data
+
+Changes from V7:
+- Models are SIMPLER to prevent memorization
+- Timing model now REGRESSOR (predicts R-multiple gain)
+- Added proper validation to catch overfitting early
+- Increased slippage to realistic levels
 """
 
 import sys
@@ -47,9 +52,9 @@ RISK_PCT = 0.05         # 5% Risk per trade
 FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
 LOOKAHEAD = 12          # 1 hour on M5
 
-# REALISTIC LIMITS
+# REALISTIC LIMITS (V8 IMPROVED)
 MAX_POSITION_SIZE = 50000.0  # Max $50K position (realistic for liquidity)
-SLIPPAGE_PCT = 0.0001        # 0.01% slippage (limit orders, minimal)
+SLIPPAGE_PCT = 0.0005        # ✅ 0.05% slippage (REALISTIC! Was 0.01% - too optimistic)
 
 # V8 IMPROVEMENTS
 USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
@@ -144,14 +149,21 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 
 # ============================================================
-# V1 TARGETS (The "Great Base")
+# V8 IMPROVED TARGETS (Anti-Overfitting)
 # ============================================================
 def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
-    """Create V1-style targets (NO LOOKAHEAD BIAS)."""
+    """
+    Create V8 Improved targets (NO LOOKAHEAD BIAS).
+    
+    IMPROVEMENTS vs V7:
+    - Direction: Same (works well)
+    - Timing: NEW! Now regression target (predicts R-multiple gain)
+    - Strength: Same (works well)
+    """
     df = df.copy()
     df['atr'] = calculate_atr(df)
     
-    # 1. Direction (Adaptive Threshold)
+    # 1. Direction (Adaptive Threshold) - UNCHANGED (works well)
     # V7: Set to 0.5% (Significant moves only). 
     # We don't want to learn noise.
     
@@ -167,26 +179,23 @@ def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
         np.where(future_return < -threshold, 0, 1)
     )
     
-    # 2. Timing (Entry Quality)
+    # 2. ✅ NEW TIMING TARGET (V8 Improved): Predict actual gain potential
+    # Instead of binary "good/bad", predict HOW MUCH we can gain in ATR multiples
     future_lows = df['low'].rolling(LOOKAHEAD).min().shift(-LOOKAHEAD)
     future_highs = df['high'].rolling(LOOKAHEAD).max().shift(-LOOKAHEAD)
     
-    # For Long
-    adv_long = (df['close'] - future_lows) / df['atr']
-    fav_long = (future_highs - df['close']) / df['atr']
-    # For Short
-    adv_short = (future_highs - df['close']) / df['atr']
-    fav_short = (df['close'] - future_lows) / df['atr']
+    # For LONG: How much can we gain?
+    long_gain = (future_highs - df['close']) / df['atr']
     
-    # Combined Timing Target (1 if good entry for the correct direction)
-    is_good_long = (fav_long > adv_long) & (fav_long > 1.0)
-    is_good_short = (fav_short > adv_short) & (fav_short > 1.0)
+    # For SHORT: How much can we gain?
+    short_gain = (df['close'] - future_lows) / df['atr']
     
-    df['target_timing'] = 0
-    df.loc[(df['target_dir'] == 2) & is_good_long, 'target_timing'] = 1
-    df.loc[(df['target_dir'] == 0) & is_good_short, 'target_timing'] = 1
+    # Take the BEST opportunity (whether LONG or SHORT)
+    # This tells the model "timing quality" as a continuous value
+    df['target_timing'] = np.maximum(long_gain, short_gain)
+    df['target_timing'] = df['target_timing'].clip(0, 5)  # Cap at 5 ATR
     
-    # 3. Strength (Potential Move in ATRs)
+    # 3. Strength (Potential Move in ATRs) - UNCHANGED (works well)
     # Used for Dynamic TP prediction
     move_long = (future_highs - df['close']) / df['atr']
     move_short = (df['close'] - future_lows) / df['atr']
@@ -199,42 +208,70 @@ def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ============================================================
-# TRAINING (V1 Params)
+# TRAINING (V8 IMPROVED - Anti-Overfitting)
 # ============================================================
 def train_models(X_train, y_train, X_val, y_val):
-    """Train models using V1 conservative parameters."""
+    """
+    Train models using V8 IMPROVED anti-overfitting parameters.
+    
+    KEY CHANGES vs V7:
+    - Reduced n_estimators: 600→100 (less memorization)
+    - Reduced max_depth: 5→3 (simpler trees)
+    - Reduced num_leaves: 20→8 (less branching)
+    - Added min_child_samples: 50 (requires more data per leaf)
+    - Timing is now REGRESSOR (predicts gain, not binary)
+    """
     
     # 1. Direction Model (Multiclass)
-    print("   Training Direction Model...")
+    print("   Training Direction Model (Simplified)...")
     dir_model = lgb.LGBMClassifier(
         objective='multiclass', num_class=3, metric='multi_logloss',
-        n_estimators=600, max_depth=5, num_leaves=20, # Slightly boosted for V7
-        learning_rate=0.02, subsample=0.7, colsample_bytree=0.5,
-        random_state=42, verbosity=-1
+        n_estimators=100,        # ✅ Was 600 → 100 (ANTI-OVERFIT)
+        max_depth=3,             # ✅ Was 5 → 3 (SIMPLER)
+        num_leaves=8,            # ✅ Was 20 → 8 (LESS BRANCHING)
+        min_child_samples=50,    # ✅ NEW! Requires 50+ samples per leaf (ROBUST)
+        learning_rate=0.05,      # ✅ Was 0.02 → 0.05 (faster convergence)
+        subsample=0.7, 
+        colsample_bytree=0.5,
+        random_state=42, 
+        verbosity=-1
     )
     dir_model.fit(X_train, y_train['target_dir'], 
                   eval_set=[(X_val, y_val['target_dir'])],
                   callbacks=[lgb.early_stopping(50, verbose=False)])
     
-    # 2. Timing Model (Binary)
-    print("   Training Timing Model...")
-    timing_model = lgb.LGBMClassifier(
-        objective='binary', metric='binary_logloss',
-        n_estimators=400, max_depth=5, num_leaves=15,
-        learning_rate=0.02, subsample=0.7, colsample_bytree=0.5,
-        random_state=42, verbosity=-1
+    # 2. ✅ NEW: Timing Model (REGRESSOR instead of Classifier)
+    print("   Training Timing Model (NEW Regressor)...")
+    timing_model = lgb.LGBMRegressor(  # ⚠️ Changed from Classifier!
+        objective='regression',         # Predict continuous gain (not binary)
+        metric='mae',                   # Mean Absolute Error
+        n_estimators=100,        # ✅ Simplified
+        max_depth=3,             # ✅ Simplified
+        num_leaves=8,            # ✅ Simplified
+        min_child_samples=50,    # ✅ NEW
+        learning_rate=0.05,      # ✅ Faster
+        subsample=0.7,
+        colsample_bytree=0.5,
+        random_state=42,
+        verbosity=-1
     )
     timing_model.fit(X_train, y_train['target_timing'],
                      eval_set=[(X_val, y_val['target_timing'])],
                      callbacks=[lgb.early_stopping(50, verbose=False)])
     
-    # 3. Strength Model (Regression)
-    print("   Training Strength Model...")
+    # 3. Strength Model (Regression) - Simplified
+    print("   Training Strength Model (Simplified)...")
     strength_model = lgb.LGBMRegressor(
-        objective='regression', metric='mse',
-        n_estimators=400, max_depth=5, num_leaves=15,
-        learning_rate=0.02, subsample=0.7, colsample_bytree=0.5,
-        random_state=42, verbosity=-1
+        objective='regression', metric='mae',
+        n_estimators=100,        # ✅ Was 400 → 100
+        max_depth=3,             # ✅ Was 5 → 3
+        num_leaves=8,            # ✅ Was 15 → 8
+        min_child_samples=50,    # ✅ NEW
+        learning_rate=0.05,      # ✅ Was 0.02 → 0.05
+        subsample=0.7,
+        colsample_bytree=0.5,
+        random_state=42,
+        verbosity=-1
     )
     strength_model.fit(X_train, y_train['target_strength'],
                        eval_set=[(X_val, y_val['target_strength'])],
@@ -251,9 +288,14 @@ def train_models(X_train, y_train, X_val, y_val):
 # PORTFOLIO BACKTEST (V7 Sniper)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.50, min_timing: float = 0.55, min_strength: float = 1.4) -> list:
+                    min_conf: float = 0.50, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
                     
-    """Generate all valid signals for a single pair."""
+    """
+    Generate all valid signals for a single pair.
+    
+    ✅ V8 IMPROVED: Timing threshold changed from 0.55 → 0.8 ATR
+    (Since timing now predicts R-multiple gain, we want at least 0.8 ATR potential)
+    """
     signals = []
     
     # Predict in batches for speed
@@ -264,8 +306,8 @@ def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_na
     dir_preds = np.argmax(dir_proba, axis=1)
     dir_confs = np.max(dir_proba, axis=1)
     
-    # 2. Timing
-    timing_probs = models['timing'].predict_proba(X)[:, 1]
+    # 2. ✅ Timing (NOW REGRESSOR - returns gain potential in ATR multiples)
+    timing_preds = models['timing'].predict(X)  # ⚠️ Changed from predict_proba!
     
     # 3. Strength
     strength_preds = models['strength'].predict(X)
@@ -275,7 +317,7 @@ def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_na
         if dir_preds[i] == 1: continue # Sideways
         
         if dir_confs[i] < min_conf: continue
-        if timing_probs[i] < min_timing: continue
+        if timing_preds[i] < min_timing: continue  # ✅ Now checks ATR gain potential
         if strength_preds[i] < min_strength: continue
         
         signals.append({
@@ -284,8 +326,8 @@ def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_na
             'direction': 'LONG' if dir_preds[i] == 2 else 'SHORT',
             'entry_price': df['close'].iloc[i],
             'atr': df['atr'].iloc[i],
-            'score': dir_confs[i] * timing_probs[i], # Combined score for sorting if needed
-            'timing_prob': timing_probs[i],
+            'score': dir_confs[i] * timing_preds[i], # Combined score (conf × timing_gain)
+            'timing_prob': timing_preds[i],  # ✅ Now stores gain potential (not probability)
             'pred_strength': strength_preds[i]
         })
         
@@ -607,23 +649,219 @@ def print_trade_list(trades):
 
 
 # ============================================================
+# ✅ WALK-FORWARD VALIDATION (Honest Out-of-Sample Test)
+# ============================================================
+def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
+    """
+    Walk-Forward Validation: Train on past, test on future (never seen before).
+    
+    This is the MOST HONEST test for overfitting detection.
+    If model performs well here, it will likely work in live trading.
+    
+    Example timeline:
+    Period 1: Train [Sep 1-15]  → Test [Sep 16-22]
+    Period 2: Train [Sep 8-22]  → Test [Sep 23-30]
+    Period 3: Train [Sep 15-30] → Test [Oct 1-7]
+    ...
+    """
+    print("\n" + "="*70)
+    print("WALK-FORWARD VALIDATION (Honest Out-of-Sample Test)")
+    print("="*70)
+    print("This tests if the model can predict TRULY UNSEEN future data.")
+    print("If Win Rate drops significantly here → Model is overfit!")
+    print("="*70)
+    
+    # Define periods (each period: 15 days train, 7 days test)
+    now = datetime.now()
+    periods = []
+    
+    # Create 4 rolling windows going backwards in time
+    for i in range(4):
+        test_end = now - timedelta(days=i*7)
+        test_start = test_end - timedelta(days=7)
+        train_end = test_start
+        train_start = train_end - timedelta(days=15)
+        
+        periods.append({
+            'name': f"Period_{i+1}",
+            'train_start': train_start,
+            'train_end': train_end,
+            'test_start': test_start,
+            'test_end': test_end
+        })
+    
+    all_results = []
+    
+    for period in periods:
+        print(f"\n{'='*60}")
+        print(f"📊 {period['name']}")
+        print(f"   TRAIN: {period['train_start'].strftime('%Y-%m-%d')} → {period['train_end'].strftime('%Y-%m-%d')}")
+        print(f"   TEST:  {period['test_start'].strftime('%Y-%m-%d')} → {period['test_end'].strftime('%Y-%m-%d')}")
+        print(f"{'='*60}")
+        
+        # Load and prepare data
+        all_train = []
+        test_dfs = {}
+        test_features = {}
+        
+        for pair in pairs:
+            pair_name = pair.replace('/', '_').replace(':', '_')
+            
+            try:
+                m1 = pd.read_csv(data_dir / f"{pair_name}_1m.csv", parse_dates=['timestamp'], index_col='timestamp')
+                m5 = pd.read_csv(data_dir / f"{pair_name}_5m.csv", parse_dates=['timestamp'], index_col='timestamp')
+                m15 = pd.read_csv(data_dir / f"{pair_name}_15m.csv", parse_dates=['timestamp'], index_col='timestamp')
+            except FileNotFoundError:
+                continue
+            
+            # Filter TRAIN data
+            m1_train = m1[(m1.index >= period['train_start']) & (m1.index < period['train_end'])]
+            m5_train = m5[(m5.index >= period['train_start']) & (m5.index < period['train_end'])]
+            m15_train = m15[(m15.index >= period['train_start']) & (m15.index < period['train_end'])]
+            
+            if len(m5_train) < 500: continue
+            
+            ft_train = mtf_fe.align_timeframes(m1_train, m5_train, m15_train)
+            ft_train = ft_train.join(m5_train[['open', 'high', 'low', 'close', 'volume']])
+            ft_train = add_volume_features(ft_train)
+            ft_train = create_targets_v1(ft_train)
+            ft_train['pair'] = pair
+            all_train.append(ft_train)
+            
+            # Filter TEST data (UNSEEN!)
+            m1_test = m1[(m1.index >= period['test_start']) & (m1.index < period['test_end'])]
+            m5_test = m5[(m5.index >= period['test_start']) & (m5.index < period['test_end'])]
+            m15_test = m15[(m15.index >= period['test_start']) & (m15.index < period['test_end'])]
+            
+            if len(m5_test) < 100: continue
+            
+            ft_test = mtf_fe.align_timeframes(m1_test, m5_test, m15_test)
+            ft_test = ft_test.join(m5_test[['open', 'high', 'low', 'close', 'volume']])
+            ft_test = add_volume_features(ft_test)
+            ft_test = create_targets_v1(ft_test)
+            ft_test['pair'] = pair
+            test_features[pair] = ft_test
+            test_dfs[pair] = ft_test
+        
+        if len(all_train) == 0:
+            print(f"⚠️  {period['name']}: No training data, skipping")
+            continue
+        
+        # Train models on THIS period
+        train_df = pd.concat(all_train).dropna()
+        exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
+                   'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change', 'obv', 'obv_sma']
+        features = [c for c in train_df.columns if c not in exclude]
+        
+        X_train = train_df[features]
+        y_train = {
+            'target_dir': train_df['target_dir'],
+            'target_timing': train_df['target_timing'],
+            'target_strength': train_df['target_strength']
+        }
+        
+        # Simple 90/10 split for validation
+        val_idx = int(len(X_train) * 0.9)
+        X_t = X_train.iloc[:val_idx]
+        X_v = X_train.iloc[val_idx:]
+        y_t = {k: v.iloc[:val_idx] for k, v in y_train.items()}
+        y_v = {k: v.iloc[val_idx:] for k, v in y_train.items()}
+        
+        models = train_models(X_t, y_t, X_v, y_v)
+        
+        # Test on UNSEEN period
+        all_signals = []
+        for pair, df in test_features.items():
+            df_clean = df.dropna()
+            if len(df_clean) == 0: continue
+            sigs = generate_signals(df_clean, features, models, pair)
+            all_signals.extend(sigs)
+        
+        if len(all_signals) == 0:
+            print(f"⚠️  {period['name']}: No signals generated")
+            continue
+        
+        trades, final_bal = run_portfolio_backtest(all_signals, test_dfs, initial_balance=initial_balance)
+        
+        # Calculate metrics
+        if len(trades) > 0:
+            wins = [t for t in trades if t['net_profit'] > 0]
+            win_rate = len(wins) / len(trades) * 100
+            total_pnl = final_bal - initial_balance
+            pnl_pct = (total_pnl / initial_balance) * 100
+            
+            result = {
+                'period': period['name'],
+                'trades': len(trades),
+                'win_rate': win_rate,
+                'pnl': total_pnl,
+                'pnl_pct': pnl_pct,
+                'final_balance': final_bal
+            }
+            all_results.append(result)
+            
+            print(f"   Trades: {len(trades)} | Win Rate: {win_rate:.1f}% | PnL: ${total_pnl:+.2f} ({pnl_pct:+.1f}%)")
+        else:
+            print(f"   No trades executed")
+    
+    # Summary
+    if len(all_results) > 0:
+        print("\n" + "="*70)
+        print("WALK-FORWARD VALIDATION SUMMARY")
+        print("="*70)
+        
+        avg_win_rate = np.mean([r['win_rate'] for r in all_results])
+        avg_trades = np.mean([r['trades'] for r in all_results])
+        total_pnl = sum([r['pnl'] for r in all_results])
+        
+        print(f"Average Win Rate:  {avg_win_rate:.1f}%")
+        print(f"Average Trades:    {avg_trades:.1f}")
+        print(f"Total PnL:         ${total_pnl:+.2f}")
+        
+        print("\n💡 INTERPRETATION:")
+        if avg_win_rate >= 40:
+            print("   ✅ EXCELLENT! Model generalizes well to unseen data.")
+            print("   → Ready for paper trading!")
+        elif avg_win_rate >= 30:
+            print("   ⚠️  ACCEPTABLE. Model works but needs monitoring.")
+            print("   → Try paper trading with caution.")
+        else:
+            print("   ❌ POOR! Model is likely overfit.")
+            print("   → DO NOT use in live trading. Retrain with more data.")
+        
+        print("="*70)
+        
+        return all_results
+    else:
+        print("\n⚠️  Walk-Forward Validation failed: No results")
+        return []
+
+
+# ============================================================
 # MAIN
 # ============================================================
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--days", type=int, default=90)
-    parser.add_argument("--test_days", type=int, default=14)
+    parser.add_argument("--days", type=int, default=60, help="Training days (reduced from 90 for faster convergence)")
+    parser.add_argument("--test_days", type=int, default=14, help="Test days (out-of-sample)")
     parser.add_argument("--pairs", type=int, default=20)
-    parser.add_argument("--output", type=str, default="./models/v7_sniper")
-    parser.add_argument("--initial_balance", type=float, default=10000.0, help="Initial portfolio balance")
+    parser.add_argument("--output", type=str, default="./models/v8_improved")
+    parser.add_argument("--initial_balance", type=float, default=100.0, help="Initial portfolio balance (realistic $100 start)")
     parser.add_argument("--check-dec25", action="store_true", help="Fetch and test specifically for Dec 25, 2025")
     parser.add_argument("--check-dec26", action="store_true", help="Fetch and test specifically for Dec 26, 2025")
     parser.add_argument("--reverse", action="store_true", help="Train on Recent 30d, Test on Previous 30d (For Paper Trading Prep)")
+    parser.add_argument("--walk-forward", action="store_true", help="✅ NEW: Run Walk-Forward Validation (honest test!)")
     args = parser.parse_args()
     
     print("=" * 70)
-    print("V7 SNIPER - SINGLE SLOT OPTIMIZATION")
+    print("V8 IMPROVED - ANTI-OVERFITTING EDITION")
+    print("=" * 70)
+    print("✅ Simplified models (100 trees, depth 3)")
+    print("✅ Improved timing target (regression)")
+    print("✅ Realistic slippage (0.05%)")
+    if args.walk_forward:
+        print("✅ Walk-Forward Validation ENABLED")
     print("=" * 70)
     
     # Load pairs
@@ -757,6 +995,17 @@ def main():
 
     if trades:
         pd.DataFrame(trades).to_csv(out / f'backtest_trades_{args.test_days}d.csv', index=False)
+
+    # ---------------------------------------------------------
+    # 1B. ✅ WALK-FORWARD VALIDATION (if requested)
+    # ---------------------------------------------------------
+    if args.walk_forward:
+        walk_forward_results = walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=args.initial_balance)
+        
+        if walk_forward_results:
+            # Save walk-forward results
+            pd.DataFrame(walk_forward_results).to_csv(out / 'walk_forward_results.csv', index=False)
+            print(f"Walk-forward results saved to {out / 'walk_forward_results.csv'}")
 
     # ---------------------------------------------------------
     # 2. FETCH DEC 25 DATA IF REQUESTED
