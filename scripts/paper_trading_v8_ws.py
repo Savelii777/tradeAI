@@ -591,7 +591,14 @@ def main():
     pairs = get_pairs()
     portfolio = PortfolioManager()
     mtf_fe = MTFFeatureEngine()
-    exchange = ccxt.binance()
+    exchange = ccxt.binance({
+        'timeout': 5000,  # 5 seconds timeout
+        'enableRateLimit': True,
+        'options': {
+            'defaultType': 'future',
+            'recvWindow': 10000
+        }
+    })
     
     # 1. Start WebSocket Streamer (Instant SL checks)
     streamer = DataStreamer(pairs)
@@ -632,7 +639,12 @@ def main():
                     clean_symbol = f"{pair[:-4]}/{pair[-4:]}"
                 
                 # Fetch last 2 candles (to get completed one)
-                candles_5m = exchange.fetch_ohlcv(clean_symbol, '5m', limit=2)
+                try:
+                    candles_5m = exchange.fetch_ohlcv(clean_symbol, '5m', limit=2)
+                except Exception as e:
+                    logger.error(f"Error fetching trailing candles for {pair}: {e}")
+                    continue
+                    
                 if len(candles_5m) >= 2:
                     # Use second-to-last (fully closed candle)
                     last_candle = candles_5m[-2]
@@ -682,7 +694,20 @@ def main():
                     scan_stats['fetched'] += 1
                     for tf in TIMEFRAMES:
                         # Fetch only last 100 candles for speed (not 500!)
-                        candles = exchange.fetch_ohlcv(clean_symbol, tf, limit=min(LOOKBACK, 100))
+                        try:
+                            candles = exchange.fetch_ohlcv(clean_symbol, tf, limit=min(LOOKBACK, 100))
+                        except Exception as e:
+                            if scan_stats['total'] <= 3:
+                                logger.error(f"{pair}: CCXT fetch error for {tf}: {e}")
+                            valid = False
+                            break
+                        
+                        # DEBUG: Check data freshness for first 3 pairs
+                        if scan_stats['total'] <= 3 and candles:
+                            last_candle_ts = pd.to_datetime(candles[-1][0], unit='ms', utc=True)
+                            now_utc = datetime.now(timezone.utc)
+                            age_minutes = (now_utc - last_candle_ts).total_seconds() / 60
+                            logger.info(f"{pair} {tf}: Last candle @ {last_candle_ts} ({age_minutes:.1f} min ago)")
                         
                         if not candles:
                             if scan_stats['total'] <= 3:
