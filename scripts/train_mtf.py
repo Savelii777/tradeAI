@@ -229,42 +229,62 @@ class MTFFeatureEngine:
         M1 features are aggregated to M5.
         """
         # Generate features for each TF
-        logger.debug("Generating M15 features...")
         m15_features = self.generate_m15_trend_features(m15_df)
-        
-        logger.debug("Generating M5 features...")
         m5_features = self.generate_m5_signal_features(m5_df)
-        
-        logger.debug("Generating M1 features...")
         m1_features = self.generate_m1_timing_features(m1_df)
+        
+        # Check if m5_features is empty - this is the base for alignment
+        if m5_features.empty or len(m5_features) == 0:
+            return pd.DataFrame()
         
         # Align to M5 index
         aligned = m5_features.copy()
         
         # Forward-fill M15 to M5 (each M15 covers 3 M5 candles)
-        m15_resampled = m15_features.resample('5min').ffill()
-        
-        # Join M15 features
-        for col in m15_features.columns:
-            if col in m15_resampled.columns:
-                aligned[col] = m15_resampled[col].reindex(aligned.index, method='ffill')
+        # Простой reindex с ffill - надежный способ
+        if len(m15_features) > 0:
+            for col in m15_features.columns:
+                # Сначала reindex к объединенному индексу
+                combined_index = aligned.index.union(m15_features.index).sort_values()
+                temp_series = m15_features[col].reindex(combined_index)
+                # Forward fill
+                temp_series = temp_series.ffill()
+                # Теперь взять только M5 индекс
+                aligned[col] = temp_series.reindex(aligned.index)
         
         # Aggregate M1 to M5 (last 5 M1 candles per M5)
-        m1_agg = m1_features.resample('5min').agg({
-            col: ['last', 'mean', 'std'] if 'momentum' in col or 'rsi' in col 
-            else 'last'
-            for col in m1_features.columns
-        })
+        # ВАЖНО: Создаем агрегированные фичи (last, mean, std) как в оригинале
+        if len(m1_features) > 0:
+            # Округлить временные метки M1 до ближайших 5 минут (округление вниз)
+            m1_temp = m1_features.copy()
+            m1_temp.index = m1_temp.index.floor('5min')
+            
+            # Группировать по округленному времени и создать агрегаты
+            # Для momentum и rsi делаем last/mean/std, для остальных - только last
+            m1_agg_dict = {}
+            for col in m1_features.columns:
+                if 'momentum' in col or 'rsi' in col:
+                    # Агрегация с last, mean, std
+                    m1_agg_dict[f"{col}_last"] = m1_temp[col].groupby(m1_temp.index).last()
+                    m1_agg_dict[f"{col}_mean"] = m1_temp[col].groupby(m1_temp.index).mean()
+                    m1_agg_dict[f"{col}_std"] = m1_temp[col].groupby(m1_temp.index).std()
+                else:
+                    # Только last
+                    m1_agg_dict[f"{col}_last"] = m1_temp[col].groupby(m1_temp.index).last()
+            
+            # Создать DataFrame из агрегатов
+            m1_agg = pd.DataFrame(m1_agg_dict)
+            
+            # Выровнять с M5 индексом
+            for col in m1_agg.columns:
+                combined_index = aligned.index.union(m1_agg.index).sort_values()
+                temp_series = m1_agg[col].reindex(combined_index)
+                temp_series = temp_series.ffill()
+                aligned[col] = temp_series.reindex(aligned.index)
         
-        # Flatten column names
-        m1_agg.columns = ['_'.join(col).strip() if isinstance(col, tuple) else col 
-                         for col in m1_agg.columns]
-        
-        # Join M1 features
-        for col in m1_agg.columns:
-            aligned[col] = m1_agg[col].reindex(aligned.index, method='ffill')
-        
-        return aligned.dropna()
+        # КРИТИЧНО: НЕ удалять строки с NaN - пусть это делает prepare_features
+        # Здесь просто возвращаем выровненные данные
+        return aligned
     
     def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
         """Calculate RSI."""
@@ -346,7 +366,7 @@ def prepare_mtf_data(
             
             # Volatility (future volatility)
             future_vol = close.pct_change().rolling(window=forward_periods).std().shift(-forward_periods)
-            volatility = future_vol.fillna(method='bfill')
+            volatility = future_vol.bfill()
             volatility = volatility.reindex(features.index).dropna()
             
             # Timing (good entry timing)

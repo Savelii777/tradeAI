@@ -533,5 +533,4 @@ class TechnicalIndicators:
         volume_features = self.calculate_volume_features(df, config.get('volume_periods', [5, 10, 20]))
         all_features = pd.concat([all_features, volume_features], axis=1)
         
-        logger.debug(f"Calculated {len(all_features.columns)} indicator features")
         return all_features

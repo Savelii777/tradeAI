@@ -397,5 +397,4 @@ class MarketStructure:
         regime = self.classify_regime(df)
         all_features = pd.concat([all_features, regime], axis=1)
         
-        logger.debug(f"Calculated {len(all_features.columns)} market structure features")
         return all_features

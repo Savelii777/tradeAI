@@ -74,8 +74,6 @@ class DataStreamer:
 
     async def _run_ws(self):
         await self.ws_manager.connect()
-        logger.info("WebSocket Connected. Subscribing...")
-        logger.info(f"⏳ Subscribing to {len(self.pairs) * (len(TIMEFRAMES) + 1)} streams (will take ~{len(self.pairs) * (len(TIMEFRAMES) + 1) / 4:.0f}s)...")
         
         subscription_count = 0
         for i, pair in enumerate(self.pairs):
@@ -86,13 +84,8 @@ class DataStreamer:
                 await asyncio.sleep(0.25)  # 4 subscriptions per second (Binance limit: 5/sec)
             except Exception as e:
                 logger.error(f"Failed to subscribe to trades for {pair}: {e}")
-            
-            # Progress update every 5 pairs
-            if (i + 1) % 5 == 0:
-                logger.info(f"📡 Subscribed {subscription_count}/{len(self.pairs)} trade streams...")
         
-        logger.info(f"✅ Subscription complete! Active streams: {subscription_count}")
-        logger.info("🔴 Live price monitoring active (for instant SL checks)")
+        logger.info(f"WebSocket subscribed to {subscription_count} trade streams")
         
         while True:
             await asyncio.sleep(1)
@@ -112,7 +105,6 @@ class DataStreamer:
             loop.run_until_complete(self._run_ws())
         t = threading.Thread(target=run_loop, daemon=True)
         t.start()
-        logger.info("WS Thread started.")
 
 # ============================================================
 # PORTFOLIO MANAGER
@@ -157,9 +149,9 @@ class PortfolioManager:
 
         entry_price = signal['price']
         atr = signal['atr']
-        pred_strength = signal.get('strength', 2.0)
+        pred_strength = signal.get('pred_strength', 2.0)  # MATCH BACKTEST KEY
         conf = signal.get('conf', 0.5)
-        timing = signal.get('timing', 0.5)
+        timing = signal.get('timing_prob', 0.5)  # MATCH BACKTEST KEY
         
         # === V8: ADAPTIVE STOP LOSS (BACKTEST LOGIC) ===
         if USE_ADAPTIVE_SL:
@@ -196,18 +188,28 @@ class PortfolioManager:
         else:
             risk_pct = RISK_PCT
         
-        # Calculate Position Size (BACKTEST LOGIC)
+        # === CORRECT POSITION SIZING (MATCHES REAL EXCHANGE) ===
+        # 1. Calculate position size based on risk
         stop_loss_pct = stop_distance / entry_price
-        leverage = min(risk_pct / stop_loss_pct, MAX_LEVERAGE)
-        position_value = self.capital * leverage
+        risk_amount = self.capital * risk_pct  # Dollar amount we're willing to risk
+        position_value = risk_amount / stop_loss_pct  # Position size needed to risk this amount
+        
+        # 2. Calculate leverage (Position Size / Margin)
+        leverage = position_value / self.capital
+        
+        # 3. Apply MAX_LEVERAGE limit
+        if leverage > MAX_LEVERAGE:
+            leverage = MAX_LEVERAGE
+            position_value = self.capital * leverage
         
         # === BACKTEST LIMIT: Cap position size ===
         if position_value > MAX_POSITION_SIZE:
             position_value = MAX_POSITION_SIZE
             leverage = position_value / self.capital
         
-        # Deduct Fee
-        self.capital -= position_value * ENTRY_FEE
+        # Deduct Entry Fee from capital (like real exchange)
+        entry_fee = position_value * ENTRY_FEE
+        self.capital -= entry_fee
         
         # CRITICAL: Store ORIGINAL entry price (without slippage) for SL/BE/Trailing calculations
         # Slippage will be applied ONLY in PnL calculation (like backtest)
@@ -305,7 +307,6 @@ class PortfolioManager:
             if not pos['breakeven_active'] and candle_high >= be_trigger_price:
                 pos['breakeven_active'] = True
                 pos['stop_loss'] = pos['entry_price'] + (atr * 0.3)
-                logger.info(f"Breakeven activated at {pos['stop_loss']:.4f}")
             
             # 2. Update Trailing Stop (if breakeven active)
             if pos['breakeven_active']:
@@ -330,7 +331,6 @@ class PortfolioManager:
                 new_sl = candle_high - (atr * trail_mult)
                 if new_sl > pos['stop_loss']:
                     pos['stop_loss'] = new_sl
-                    logger.info(f"Trailing SL: {new_sl:.4f} (R={r_multiple:.1f})")
         
         # SHORT LOGIC
         else:
@@ -339,7 +339,6 @@ class PortfolioManager:
             if not pos['breakeven_active'] and candle_low <= be_trigger_price:
                 pos['breakeven_active'] = True
                 pos['stop_loss'] = pos['entry_price'] - (atr * 0.3)
-                logger.info(f"Breakeven activated at {pos['stop_loss']:.4f}")
             
             # 2. Update Trailing Stop (if breakeven active)
             if pos['breakeven_active']:
@@ -364,7 +363,6 @@ class PortfolioManager:
                 new_sl = candle_low + (atr * trail_mult)
                 if new_sl < pos['stop_loss']:
                     pos['stop_loss'] = new_sl
-                    logger.info(f"Trailing SL: {new_sl:.4f} (R={r_multiple:.1f})")
         
         self.save_state()
 
@@ -430,8 +428,6 @@ def load_models():
         'strength': joblib.load(MODEL_DIR / 'strength_model.joblib'),
         'features': joblib.load(MODEL_DIR / 'feature_names.joblib')
     }
-    logger.info(f"Loaded {len(models['features'])} features")
-    logger.info(f"First 10 features: {models['features'][:10]}")
     
     # Check excluded columns (should NOT be in features)
     excluded = ['atr', 'price_change', 'obv', 'obv_sma', 'open', 'high', 'low', 'close', 'volume']
@@ -446,13 +442,23 @@ def get_pairs():
         return [p['symbol'] for p in json.load(f)['pairs']][:20]
 
 def add_volume_features(df):
-    """Add volume features required by the model (6 features)."""
+    """Add volume features required by the model (MATCHES BACKTEST)."""
     df['vol_sma_20'] = df['volume'].rolling(20).mean()
     df['vol_ratio'] = df['volume'] / df['vol_sma_20']
     df['vol_zscore'] = (df['volume'] - df['vol_sma_20']) / df['volume'].rolling(20).std()
+    
+    # CRITICAL: OBV calculation (MUST match backtest)
+    df['price_change'] = df['close'].diff()
+    df['obv'] = np.where(df['price_change'] > 0, df['volume'], -df['volume']).cumsum()
+    df['obv_sma'] = pd.Series(df['obv']).rolling(20).mean()
+    
+    # VWAP
     df['vwap'] = (df['close'] * df['volume']).rolling(20).sum() / df['volume'].rolling(20).sum()
     df['price_vs_vwap'] = df['close'] / df['vwap'] - 1
+    
+    # Volume momentum
     df['vol_momentum'] = df['volume'].pct_change(5)
+    
     return df
 
 def calculate_atr(df, period=14):
@@ -462,15 +468,14 @@ def calculate_atr(df, period=14):
     tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
     return tr.ewm(span=period, adjust=False).mean()
 
-def prepare_features(data, mtf_fe, cache=None, pair=None):
+def prepare_features(data, mtf_fe, pair=None):
     """
-    Prepare features with caching support.
+    Prepare features from multi-timeframe data.
     
     Args:
         data: Dict with '1m', '5m', '15m' DataFrames
         mtf_fe: MTFFeatureEngine instance
-        cache: Optional dict for caching {pair: (last_timestamp, features_df)}
-        pair: Pair name for caching
+        pair: Pair name for logging
     
     Returns:
         Features DataFrame
@@ -481,20 +486,58 @@ def prepare_features(data, mtf_fe, cache=None, pair=None):
     
     # Check data quality
     if len(m1) < 50 or len(m5) < 50 or len(m15) < 50:
-        logger.debug(f"Insufficient data: m1={len(m1)}, m5={len(m5)}, m15={len(m15)}")
+        if pair:
+            logger.warning(f"{pair}: Insufficient data - 1m: {len(m1)}, 5m: {len(m5)}, 15m: {len(m15)}")
         return pd.DataFrame()
     
-    # === CACHING: Skip if data hasn't changed ===
-    if cache is not None and pair is not None:
-        last_m5_time = m5.index[-1]
-        if pair in cache:
-            cached_time, cached_features = cache[pair]
-            if cached_time == last_m5_time:
-                logger.debug(f"{pair}: Using cached features (no new data)")
-                return cached_features
+    # DEBUG: Check index types and ranges
+    if pair and pair in ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']:
+        logger.debug(f"{pair}: Index types - m1: {type(m1.index)}, m5: {type(m5.index)}, m15: {type(m15.index)}")
+        logger.debug(f"{pair}: Index ranges - m1: {m1.index[0]} to {m1.index[-1]}, m5: {m5.index[0]} to {m5.index[-1]}, m15: {m15.index[0]} to {m15.index[-1]}")
+        logger.debug(f"{pair}: Index frequencies - m1: {m1.index.freq if hasattr(m1.index, 'freq') else 'None'}, m5: {m5.index.freq if hasattr(m5.index, 'freq') else 'None'}, m15: {m15.index.freq if hasattr(m15.index, 'freq') else 'None'}")
+    
+    # Ensure all DataFrames have DatetimeIndex and are sorted
+    if not isinstance(m1.index, pd.DatetimeIndex):
+        m1.index = pd.to_datetime(m1.index, utc=True)
+    m1 = m1.sort_index()
+    
+    if not isinstance(m5.index, pd.DatetimeIndex):
+        m5.index = pd.to_datetime(m5.index, utc=True)
+    m5 = m5.sort_index()
+    
+    if not isinstance(m15.index, pd.DatetimeIndex):
+        m15.index = pd.to_datetime(m15.index, utc=True)
+    m15 = m15.sort_index()
     
     # Generate MTF features (166 features aligned to M5)
-    ft = mtf_fe.align_timeframes(m1, m5, m15)
+    try:
+        # DEBUG: Check what generate_m5_signal_features returns
+        if pair and pair in ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']:
+            m5_features_debug = mtf_fe.generate_m5_signal_features(m5)
+            logger.debug(f"{pair}: m5_features shape: {m5_features_debug.shape}, NaN count: {m5_features_debug.isna().sum().sum()}, empty: {m5_features_debug.empty}")
+            if len(m5_features_debug) > 0:
+                logger.debug(f"{pair}: m5_features index: {m5_features_debug.index[0]} to {m5_features_debug.index[-1]}")
+                logger.debug(f"{pair}: m5_features sample columns: {list(m5_features_debug.columns[:5])}")
+        
+        ft = mtf_fe.align_timeframes(m1, m5, m15)
+        
+        if pair and pair in ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']:
+            logger.debug(f"{pair}: After align_timeframes - {len(ft)} rows, {len(ft.columns) if len(ft) > 0 else 0} cols")
+            if len(ft) == 0:
+                # Try to understand why it's empty
+                logger.warning(f"{pair}: align_timeframes returned empty! m1: {len(m1)} rows, m5: {len(m5)} rows, m15: {len(m15)} rows")
+                logger.warning(f"{pair}: m1 index: {m1.index[0]} to {m1.index[-1]}")
+                logger.warning(f"{pair}: m5 index: {m5.index[0]} to {m5.index[-1]}")
+                logger.warning(f"{pair}: m15 index: {m15.index[0]} to {m15.index[-1]}")
+    except Exception as e:
+        if pair:
+            logger.error(f"{pair}: Error in align_timeframes: {e}", exc_info=True)
+        return pd.DataFrame()
+    
+    if len(ft) == 0:
+        if pair:
+            logger.warning(f"{pair}: align_timeframes returned empty DataFrame")
+        return pd.DataFrame()
     
     # === ADD OHLCV for volume features & ATR calculation ===
     ft = ft.join(m5[['open', 'high', 'low', 'close', 'volume']])
@@ -505,12 +548,39 @@ def prepare_features(data, mtf_fe, cache=None, pair=None):
     # Add ATR for position sizing (not used by model)
     ft['atr'] = calculate_atr(ft)
     
-    # Remove rows with NaN
-    ft = ft.dropna()
+    # Remove rows with NaN ONLY in critical columns (not all columns!)
+    before_dropna = len(ft)
     
-    # Cache result
-    if cache is not None and pair is not None:
-        cache[pair] = (m5.index[-1], ft)
+    # Определить критичные колонки - те которые используются моделью
+    # НЕ удалять строки где есть NaN в не-критичных колонках
+    critical_cols = ['close', 'atr']  # Минимум нужный для работы
+    
+    # Удалить строки только если в критичных колонках есть NaN
+    ft = ft.dropna(subset=critical_cols)
+    
+    # ДОПОЛНИТЕЛЬНО: заполнить оставшиеся NaN в фичах (forward fill + backward fill)
+    ft = ft.ffill().bfill()
+    
+    # Если всё ещё есть NaN (колонки где все значения NaN), заполнить нулями
+    if ft.isna().any().any():
+        # Найти колонки с NaN
+        nan_cols = ft.columns[ft.isna().any()].tolist()
+        if pair and pair in ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']:
+            logger.warning(f"{pair}: Filling remaining NaN with 0 in columns: {nan_cols}")
+        ft = ft.fillna(0)
+    
+    after_dropna = len(ft)
+    
+    if pair and pair in ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']:
+        logger.debug(f"{pair}: After dropna (critical only): {before_dropna} -> {after_dropna} rows")
+        if after_dropna > 0:
+            nan_counts = ft.isna().sum()
+            remaining_nans = nan_counts[nan_counts > 0]
+            if len(remaining_nans) > 0:
+                logger.debug(f"{pair}: Remaining NaNs after fillna: {len(remaining_nans)} columns")
+    
+    if after_dropna < 2 and pair:
+        logger.warning(f"{pair}: After dropna: {before_dropna} -> {after_dropna} rows (need 2+)")
     
     return ft
 
@@ -528,17 +598,29 @@ def main():
     streamer.on_price_update = portfolio.check_instant_exit
     streamer.start() 
     
-    logger.info("Monitoring 20 pairs. Waiting for signals...")
+    logger.info(f"Monitoring {len(pairs)} pairs. Thresholds: MIN_CONF={MIN_CONF}, MIN_TIMING={MIN_TIMING}, MIN_STRENGTH={MIN_STRENGTH}")
     
     last_trailing_update = {}  # Track last trailing update per pair
-    features_cache = {}  # Cache features to avoid recalculation: {pair: (last_timestamp, features_df)}
+    last_heartbeat = time.time()  # For periodic logging
     
     # 2. Main Loop (Entries + Trailing Updates)
     while True:
+        current_time = time.time()
+        
         # Check WS readiness
         if not streamer.current_prices:
+            if current_time - last_heartbeat >= 10:  # Log every 10 seconds while waiting
+                logger.warning("⏳ Waiting for WebSocket price data...")
+                last_heartbeat = current_time
             time.sleep(2)
             continue
+        
+        # Periodic heartbeat log (every 60 seconds)
+        if current_time - last_heartbeat >= 60:
+            prices_count = len(streamer.current_prices)
+            position_info = f"Active: {portfolio.position['pair']}" if portfolio.position else "No position"
+            logger.info(f"💓 Heartbeat: {prices_count} prices tracked | {position_info} | Capital: ${portfolio.capital:.2f}")
+            last_heartbeat = current_time
         
         # === UPDATE TRAILING STOP ON CANDLE CLOSE ===
         # Fetch last completed 5m candle for active position
@@ -561,20 +643,30 @@ def main():
                         last_trailing_update[pair] = candle_time
                         
                         # Update trailing stop (BACKTEST LOGIC)
+                        old_sl = portfolio.position['stop_loss']
+                        candle_close = last_candle[4]
                         portfolio.update_trailing_on_candle(
                             candle_high=last_candle[2],
                             candle_low=last_candle[3],
-                            candle_close=last_candle[4],
+                            candle_close=candle_close,
                             candle_time=candle_time
                         )
+                        new_sl = portfolio.position['stop_loss']
+                        if old_sl != new_sl:
+                            logger.info(f"📈 Trailing stop updated for {pair}: {old_sl:.6f} → {new_sl:.6f} | Price: {candle_close:.6f}")
             except Exception as e:
                 logger.error(f"Error updating trailing for {pair}: {e}")
         
         # === SCAN FOR NEW SIGNALS ===
         # Only scan if no position (single slot)
         if portfolio.position is None:
-            scan_stats = {'total': 0, 'short': 0, 'side': 0, 'long': 0, 'errors': 0, 'cached': 0, 'fetched': 0}
-            
+            logger.debug("🔍 Starting signal scan...")
+            scan_stats = {
+                'total': 0, 'short': 0, 'side': 0, 'long': 0, 
+                'errors': 0, 'fetched': 0,
+                'rejected_conf': 0, 'rejected_timing': 0, 'rejected_strength': 0,
+                'skipped_df_empty': 0, 'skipped_missing_features': 0, 'skipped_nan': 0
+            }
             for pair in pairs:
                 scan_stats['total'] += 1
                 try:
@@ -586,42 +678,58 @@ def main():
                     data = {}
                     valid = True
                     
-                    # Check if we need to refresh (based on 5m timeframe)
-                    need_refresh = True
-                    if pair in features_cache:
-                        last_cached_time, _ = features_cache[pair]
-                        now_utc = datetime.now(timezone.utc)
-                        # Refresh if more than 1 minute passed (to catch new candles quickly)
-                        if (now_utc - last_cached_time.replace(tzinfo=timezone.utc)).total_seconds() < 60:
-                            need_refresh = False
-                            scan_stats['cached'] += 1
-                    
-                    if need_refresh:
-                        scan_stats['fetched'] += 1
-                        for tf in TIMEFRAMES:
-                            # Fetch only last 100 candles for speed (not 500!)
-                            candles = exchange.fetch_ohlcv(clean_symbol, tf, limit=min(LOOKBACK, 100))
-                            
-                            if not candles:
-                                valid = False
-                                break
-                            
-                            df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
-                            df.set_index('timestamp', inplace=True)
-                            data[tf] = df
-                            if len(df) < 50: valid = False
-                            
-                            # Small delay to avoid rate limits
-                            time.sleep(0.02)
+                    # Fetch fresh data from exchange
+                    scan_stats['fetched'] += 1
+                    for tf in TIMEFRAMES:
+                        # Fetch only last 100 candles for speed (not 500!)
+                        candles = exchange.fetch_ohlcv(clean_symbol, tf, limit=min(LOOKBACK, 100))
                         
-                        if not valid: continue
-                    else:
-                        # Use cached features
-                        continue  # Skip to next pair
+                        if not candles:
+                            if scan_stats['total'] <= 3:
+                                logger.warning(f"{pair}: No candles for {tf}")
+                            valid = False
+                            break
+                        
+                        df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+                        df.set_index('timestamp', inplace=True)
+                        
+                        # Ensure index is DatetimeIndex and sort
+                        if not isinstance(df.index, pd.DatetimeIndex):
+                            df.index = pd.to_datetime(df.index, utc=True)
+                        df = df.sort_index()
+                        
+                        data[tf] = df
+                        if len(df) < 50:
+                            if scan_stats['total'] <= 3:
+                                logger.warning(f"{pair}: {tf} has only {len(df)} candles (need 50+)")
+                            valid = False
+                        
+                        # Small delay to avoid rate limits
+                        time.sleep(0.02)
                     
-                    df = prepare_features(data, mtf_fe)
-                    if len(df) < 2: continue
+                    if not valid:
+                        if scan_stats['total'] <= 3:
+                            logger.warning(f"{pair}: Data validation failed, skipping")
+                        continue
+                    
+                    # Log data sizes before feature preparation
+                    if scan_stats['total'] <= 3:
+                        logger.debug(f"{pair}: Data sizes - 1m: {len(data.get('1m', []))}, "
+                                   f"5m: {len(data.get('5m', []))}, 15m: {len(data.get('15m', []))}")
+                    
+                    df = prepare_features(data, mtf_fe, pair=pair)
+                    
+                    # Log result after feature preparation
+                    if scan_stats['total'] <= 3:
+                        logger.debug(f"{pair}: Features prepared - len={len(df) if df is not None else 0}")
+                    
+                    if df is None or len(df) < 2:
+                        scan_stats['skipped_df_empty'] += 1
+                        # Log first 3 pairs for debugging
+                        if scan_stats['total'] <= 3:
+                            logger.warning(f"{pair}: DataFrame is None or len < 2 (len={len(df) if df is not None else 0})")
+                        continue
                     
                     # Check Signal on last CLOSED candle (BACKTEST LOGIC)
                     # CRITICAL: Use second-to-last candle (fully closed), not last (incomplete)
@@ -663,6 +771,7 @@ def main():
                     # === VALIDATE FEATURES ===
                     missing_features = [f for f in models['features'] if f not in row.columns]
                     if missing_features:
+                        scan_stats['skipped_missing_features'] += 1
                         if len(missing_features) < 10:
                             logger.error(f"{pair}: Missing {len(missing_features)} features: {missing_features}")
                         else:
@@ -679,53 +788,93 @@ def main():
                     
                     # Check for NaN
                     if pd.isna(X).any():
+                        scan_stats['skipped_nan'] += 1
                         nan_count = pd.isna(X).sum()
                         logger.warning(f"{pair}: {nan_count} NaN values in features, skipping")
                         continue
                     
                     # NO STALE CHECK - Enter immediately on signal (like backtest)
                     
-                    dir_proba = models['direction'].predict_proba(X)
-                    dir_conf = np.max(dir_proba)
-                    dir_pred = np.argmax(dir_proba)
+                    # === PREDICTIONS ===
+                    try:
+                        dir_proba = models['direction'].predict_proba(X)
+                        dir_conf = float(np.max(dir_proba))
+                        dir_pred = int(np.argmax(dir_proba))
+                        
+                        # === DETAILED LOGGING: Show ALL signal parameters ===
+                        timing_prob = float(models['timing'].predict_proba(X)[0][1])
+                        strength_pred = float(models['strength'].predict(X)[0])
+                        
+                        # DEBUG: Log prediction shape and values
+                        if scan_stats['total'] <= 3:  # Log first 3 pairs
+                            logger.debug(f"{pair}: Prediction - dir_pred={dir_pred}, dir_proba shape={dir_proba.shape}, dir_conf={dir_conf:.3f}")
+                    except Exception as e:
+                        logger.error(f"{pair}: Prediction error: {e}", exc_info=True)
+                        scan_stats['errors'] += 1
+                        continue
                     
-                    # === DETAILED LOGGING: Show ALL signal parameters ===
-                    timing_prob = models['timing'].predict_proba(X)[0][1]
-                    strength_pred = models['strength'].predict(X)[0]
-                    
-                    # Update stats
+                    # Update stats (ALWAYS update, even if signal is rejected)
+                    # CRITICAL: This must execute for stats to be updated
                     if dir_pred == 0:
                         scan_stats['short'] += 1
                     elif dir_pred == 1:
                         scan_stats['side'] += 1
-                    else:
+                    elif dir_pred == 2:
                         scan_stats['long'] += 1
+                    else:
+                        logger.warning(f"{pair}: Unexpected dir_pred value: {dir_pred} (type: {type(dir_pred)})")
+                        scan_stats['errors'] += 1
+                        continue
                     
-                    # Log ALL predictions (even sideways)
-                    if dir_conf > 0.4 or dir_pred != 1:  # Log interesting signals
-                        direction_name = ['SHORT', 'SIDE', 'LONG'][dir_pred]
+                    # === LOG ALL SIGNALS (LONG/SHORT/SIDEWAYS) - ALWAYS LOG ===
+                    direction_str = 'LONG' if dir_pred == 2 else ('SHORT' if dir_pred == 0 else 'SIDEWAYS')
+                    ws_price = streamer.current_prices.get(pair)
+                    current_price = ws_price if ws_price else row['close'].iloc[0]
+                    
+                    # For LONG/SHORT: check if signal passes filters
+                    if dir_pred != 1:  # LONG or SHORT
+                        rejection_reasons = []
+                        if dir_conf < MIN_CONF:
+                            rejection_reasons.append(f"Conf({dir_conf:.2f}<{MIN_CONF})")
+                        if timing_prob < MIN_TIMING:
+                            rejection_reasons.append(f"Timing({timing_prob:.2f}<{MIN_TIMING})")
+                        if strength_pred < MIN_STRENGTH:
+                            rejection_reasons.append(f"Strength({strength_pred:.2f}<{MIN_STRENGTH})")
+                        
+                        status = "✅ ACCEPTED" if not rejection_reasons else f"❌ REJECTED: {', '.join(rejection_reasons)}"
+                        
+                        # ALWAYS LOG - this is critical for debugging
                         logger.info(
-                            f"{pair}: {direction_name} | "
-                            f"Conf={dir_conf:.2f} | "
-                            f"Timing={timing_prob:.2f} | "
-                            f"Strength={strength_pred:.2f} | "
-                            f"Proba: [{dir_proba[0][0]:.2f}, {dir_proba[0][1]:.2f}, {dir_proba[0][2]:.2f}]"
+                            f"📊 {pair} {direction_str} | "
+                            f"Conf: {dir_conf:.3f} | Timing: {timing_prob:.3f} | Strength: {strength_pred:.2f} | "
+                            f"Price: {current_price:.6f} | {status}"
+                        )
+                    else:  # SIDEWAYS
+                        # ALWAYS LOG - this is critical for debugging
+                        logger.info(
+                            f"📊 {pair} {direction_str} | "
+                            f"Conf: {dir_conf:.3f} | Timing: {timing_prob:.3f} | Strength: {strength_pred:.2f} | "
+                            f"Price: {current_price:.6f} | ⏸️  NO ACTION"
                         )
                     
                     # Apply filters
                     if dir_pred == 1:
                         continue  # Skip sideways
                     
+                    rejection_reasons = []
                     if dir_conf < MIN_CONF:
-                        logger.debug(f"{pair}: REJECTED - Low confidence ({dir_conf:.2f} < {MIN_CONF})")
-                        continue
+                        rejection_reasons.append(f"Conf ({dir_conf:.2f} < {MIN_CONF})")
+                        scan_stats['rejected_conf'] += 1
                     
                     if timing_prob < MIN_TIMING:
-                        logger.debug(f"{pair}: REJECTED - Low timing ({timing_prob:.2f} < {MIN_TIMING})")
-                        continue
+                        rejection_reasons.append(f"Timing ({timing_prob:.2f} < {MIN_TIMING})")
+                        scan_stats['rejected_timing'] += 1
                     
                     if strength_pred < MIN_STRENGTH:
-                        logger.debug(f"{pair}: REJECTED - Low strength ({strength_pred:.2f} < {MIN_STRENGTH})")
+                        rejection_reasons.append(f"Strength ({strength_pred:.2f} < {MIN_STRENGTH})")
+                        scan_stats['rejected_strength'] += 1
+                    
+                    if rejection_reasons:
                         continue
                     
                     # === SIGNAL FOUND - ENTER AT CURRENT PRICE ===
@@ -738,27 +887,26 @@ def main():
                         'price': current_price,  # Live price for faster entry
                         'atr': row['atr'].iloc[0],  # ATR from closed candle
                         'conf': dir_conf,
-                        'timing': timing_prob,
-                        'strength': strength_pred
+                        'timing_prob': timing_prob,  # MATCH BACKTEST KEY NAME
+                        'pred_strength': strength_pred  # MATCH BACKTEST KEY NAME
                     }
                     portfolio.open_position(signal)
                     logger.info(f"🚀 Signal taken: {pair} {signal['direction']} @ {current_price:.4f}")
                     break  # Taken a slot
                     
                 except Exception as e:
-                    logger.error(f"Scan error {pair}: {e}")
+                    logger.error(f"Scan error {pair}: {e}", exc_info=True)
                     scan_stats['errors'] += 1
             
-            # Print scan summary
-            logger.info(
-                f"📊 Scan: {scan_stats['total']} pairs | "
-                f"SHORT: {scan_stats['short']} | "
-                f"SIDE: {scan_stats['side']} | "
-                f"LONG: {scan_stats['long']} | "
-                f"Fetched: {scan_stats['fetched']} | "
-                f"Cached: {scan_stats['cached']} | "
-                f"Errors: {scan_stats['errors']}"
-            )
+            # Log scan statistics
+            if scan_stats['total'] > 0:
+                logger.info(
+                    f"🔍 Scan complete: {scan_stats['total']} pairs | "
+                    f"LONG: {scan_stats['long']} | SHORT: {scan_stats['short']} | SIDEWAYS: {scan_stats['side']} | "
+                    f"Rejected: Conf({scan_stats['rejected_conf']}) Timing({scan_stats['rejected_timing']}) Strength({scan_stats['rejected_strength']}) | "
+                    f"Skipped: DF-empty({scan_stats['skipped_df_empty']}) Missing-feat({scan_stats['skipped_missing_features']}) NaN({scan_stats['skipped_nan']}) | "
+                    f"Fetched: {scan_stats['fetched']} | Errors: {scan_stats['errors']}"
+                )
         
         # Sleep (shorter interval for faster trailing updates)
         time.sleep(10)

@@ -526,7 +526,8 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
                 'position_size': position_size,
                 'net_profit': net_profit,
                 'balance_after': balance,
-                'pnl_pct': (net_profit / (risk_amount / RISK_PCT)) * 100 # PnL % relative to account balance used (approx)
+                'pnl_pct': (net_profit / balance) * 100,  # CORRECT: ROE relative to account balance
+                'roe': (net_profit / (position_size / leverage)) * 100  # ROE relative to margin used
             })
             
             executed_trades.append(trade_record)
