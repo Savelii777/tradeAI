@@ -68,6 +68,7 @@ class DataStreamer:
     def __init__(self, pairs):
         self.pairs = pairs
         self.ws_manager = WebSocketManager('binance')
+        self.logger = logger  # Use main logger
         self.lock = threading.Lock()
         self.ready = False
         self.current_prices = {}
@@ -81,17 +82,19 @@ class DataStreamer:
             try:
                 await self.ws_manager.subscribe_trades(pair, self._on_trade)
                 subscription_count += 1
-                await asyncio.sleep(0.25)  # 4 subscriptions per second (Binance limit: 5/sec)
+                # SLOWER: 2 subscriptions per second to avoid rate limit
+                await asyncio.sleep(0.6)  # Increased from 0.25 to 0.6 seconds
             except Exception as e:
                 logger.error(f"Failed to subscribe to trades for {pair}: {e}")
         
         logger.info(f"WebSocket subscribed to {subscription_count} trade streams")
+        self.logger.info("✅ WebSocket initialization complete")
         
         # Wait for prices to arrive
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
         
         while True:
-            await asyncio.sleep(1)
+            await asyncio.sleep(10)  # Keep connection alive
     
     def _on_trade(self, trade):
         # CRITICAL: Validate price before storing
