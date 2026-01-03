@@ -1,17 +1,5 @@
 {
-    "capital": -56.119292956734114,
+    "capital": 20.0,
     "position": null,
-    "history": [
-        {
-            "pair": "1000PEPE/USDT:USDT",
-            "direction": "LONG",
-            "entry": 0.006177,
-            "exit": 0.0,
-            "pnl": -76.10407518525136,
-            "roe": -380.5203759262568,
-            "reason": "Stop Loss",
-            "bars_held": 0,
-            "time": "2026-01-03T05:24:53.601400"
-        }
-    ]
+    "history": []
 }

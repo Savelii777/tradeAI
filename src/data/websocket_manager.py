@@ -580,11 +580,19 @@ class WebSocketManager:
             elif trade_data.get('S', '').lower() == 'sell':
                 side = 'sell'
             
+            # Parse price - try multiple fields
+            price = float(trade_data.get('p', 0) or trade_data.get('price', 0) or 0)
+            quantity = float(trade_data.get('q', 0) or trade_data.get('qty', 0) or trade_data.get('size', 0) or 0)
+            
+            # If price is still 0, it's a heartbeat/status message - ignore silently
+            if price == 0:
+                return None
+            
             return Trade(
                 timestamp=ts,
                 symbol=symbol,
-                price=float(trade_data.get('p', trade_data.get('price', 0))),
-                quantity=float(trade_data.get('q', trade_data.get('qty', trade_data.get('size', 0)))),
+                price=price,
+                quantity=quantity,
                 side=side
             )
         except Exception as e:

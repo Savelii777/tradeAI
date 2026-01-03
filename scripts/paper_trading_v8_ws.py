@@ -87,10 +87,23 @@ class DataStreamer:
         
         logger.info(f"WebSocket subscribed to {subscription_count} trade streams")
         
+        # Wait for prices to arrive
+        await asyncio.sleep(2)
+        
         while True:
             await asyncio.sleep(1)
     
     def _on_trade(self, trade):
+        # CRITICAL: Validate price before storing
+        if trade.price is None or trade.price <= 0:
+            # Don't log - Binance sends heartbeat trades with price=0
+            return
+        
+        # Only log first trade to confirm WebSocket is working
+        if not hasattr(self, '_first_trade_logged'):
+            logger.info(f"✅ WebSocket working! First trade: {trade.symbol} @ {trade.price:.6f}")
+            self._first_trade_logged = True
+            
         with self.lock:
             self.current_prices[trade.symbol] = trade.price
             
@@ -148,6 +161,7 @@ class PortfolioManager:
         if self.position is not None: return
 
         entry_price = signal['price']
+        candle_close = signal.get('candle_close', entry_price)  # Fallback if not provided
         atr = signal['atr']
         pred_strength = signal.get('pred_strength', 2.0)  # MATCH BACKTEST KEY
         conf = signal.get('conf', 0.5)
@@ -229,8 +243,21 @@ class PortfolioManager:
             'bars_held': 0
         }
         self.save_state()
-        self.send_alert(f"🟢 <b>OPEN {signal['direction']}</b> {signal['pair']}", 
-                        f"Price: {entry_price:.4f}\nSL: {stop_loss:.4f} ({sl_mult}ATR)\nLev: {leverage:.1f}x\nSize: ${position_value:.0f}\nStr: {pred_strength:.1f}")
+        
+        # Determine if using live or candle price
+        is_live = abs(entry_price - candle_close) / candle_close > 0.0001  # > 0.01% diff
+        price_source = "Live" if is_live else "Candle"
+        price_diff = ((entry_price - candle_close) / candle_close * 100) if is_live else 0
+        
+        if is_live:
+            price_info = f"Entry: {entry_price:.6f} (Live, {price_diff:+.2f}% vs candle)"
+        else:
+            price_info = f"Entry: {entry_price:.6f}"
+        
+        self.send_alert(
+            f"🟢 <b>OPEN {signal['direction']}</b> {signal['pair']}", 
+            f"{price_info}\nSL: {stop_loss:.6f} ({sl_mult}ATR)\nLev: {leverage:.1f}x\nSize: ${position_value:.0f}\nStr: {pred_strength:.1f}"
+        )
 
     def check_instant_exit(self, pair, current_price):
         """
@@ -239,6 +266,11 @@ class PortfolioManager:
         Trailing stop updates happen ONLY on candle close (like backtest).
         """
         if self.position is None or self.position['pair'] != pair:
+            return
+        
+        # CRITICAL: Validate price to prevent catastrophic errors
+        if current_price is None or current_price <= 0:
+            logger.error(f"Invalid price received for {pair}: {current_price} - IGNORING")
             return
 
         pos = self.position
@@ -372,6 +404,11 @@ class PortfolioManager:
         Slippage applied HERE in PnL calculation (not at entry).
         """
         pos = self.position
+        
+        # CRITICAL: Validate exit price
+        if price is None or price <= 0:
+            logger.error(f"Invalid exit price: {price}. Using entry price as fallback.")
+            price = pos['entry_price']  # Breakeven exit if price is invalid
         
         # Apply slippage to BOTH entry and exit (like backtest)
         if pos['direction'] == 'LONG':
@@ -627,6 +664,12 @@ def main():
             prices_count = len(streamer.current_prices)
             position_info = f"Active: {portfolio.position['pair']}" if portfolio.position else "No position"
             logger.info(f"💓 Heartbeat: {prices_count} prices tracked | {position_info} | Capital: ${portfolio.capital:.2f}")
+            
+            # DEBUG: Show first 3 pairs to verify symbol format
+            if streamer.current_prices:
+                sample_pairs = list(streamer.current_prices.keys())[:3]
+                logger.debug(f"WebSocket symbols sample: {sample_pairs}")
+            
             last_heartbeat = current_time
         
         # === UPDATE TRAILING STOP ON CANDLE CLOSE ===
@@ -905,19 +948,34 @@ def main():
                     
                     # === SIGNAL FOUND - ENTER AT CURRENT PRICE ===
                     # Use current live price from WebSocket (faster entry, like backtest)
-                    current_price = streamer.current_prices.get(pair, row['close'].iloc[0])
+                    ws_price = streamer.current_prices.get(pair)
+                    
+                    # CRITICAL: Validate WS price against candle price
+                    candle_close = row['close'].iloc[0]
+                    if ws_price and ws_price > 0:
+                        price_diff_pct = abs(ws_price - candle_close) / candle_close * 100
+                        if price_diff_pct > 5:  # More than 5% difference = WRONG PAIR!
+                            logger.error(f"{pair}: WebSocket price {ws_price:.6f} differs {price_diff_pct:.1f}% from candle {candle_close:.6f} - USING CANDLE!")
+                            current_price = candle_close
+                        else:
+                            current_price = ws_price
+                            logger.debug(f"{pair}: Using Live price {ws_price:.6f} (diff: {price_diff_pct:.2f}%)")
+                    else:
+                        current_price = candle_close
+                        logger.warning(f"{pair}: No WebSocket price available, using candle close {candle_close:.6f}")
                     
                     signal = {
                         'pair': pair,
                         'direction': 'LONG' if dir_pred == 2 else 'SHORT',
                         'price': current_price,  # Live price for faster entry
+                        'candle_close': candle_close,  # Reference price from signal
                         'atr': row['atr'].iloc[0],  # ATR from closed candle
                         'conf': dir_conf,
                         'timing_prob': timing_prob,  # MATCH BACKTEST KEY NAME
                         'pred_strength': strength_pred  # MATCH BACKTEST KEY NAME
                     }
                     portfolio.open_position(signal)
-                    logger.info(f"🚀 Signal taken: {pair} {signal['direction']} @ {current_price:.4f}")
+                    logger.info(f"🚀 Signal taken: {pair} {signal['direction']} @ {current_price:.6f} (candle: {row['close'].iloc[0]:.6f})")
                     break  # Taken a slot
                     
                 except Exception as e:
