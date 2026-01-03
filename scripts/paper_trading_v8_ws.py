@@ -693,9 +693,9 @@ def main():
                     # Fetch fresh data from exchange
                     scan_stats['fetched'] += 1
                     for tf in TIMEFRAMES:
-                        # Fetch only last 100 candles for speed (not 500!)
+                        # Fetch LOOKBACK candles for proper indicator calculation
                         try:
-                            candles = exchange.fetch_ohlcv(clean_symbol, tf, limit=min(LOOKBACK, 100))
+                            candles = exchange.fetch_ohlcv(clean_symbol, tf, limit=LOOKBACK)
                         except Exception as e:
                             if scan_stats['total'] <= 3:
                                 logger.error(f"{pair}: CCXT fetch error for {tf}: {e}")
