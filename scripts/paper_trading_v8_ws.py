@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Paper Trading Script (V8 Sniper) - WEBSOCKET VERSION (BACKTEST LOGIC)
+Paper Trading Script (V8 Sniper) - WEBSOCKET VERSION (DUAL CANDLE CHECK)
 - Uses WebSocketManager for real-time data (No lag!)
 - Thread-safe data sharing
 - Instant Stop-Loss checks (every tick)
 - Trailing Stop UPDATES only on candle close (MATCHES BACKTEST)
 - Slippage & Position Size limits (MATCHES BACKTEST)
+- ✨ NEW: Checks BOTH current (forming) and closed candles for signals!
 """
 
 import sys
@@ -169,6 +170,7 @@ class PortfolioManager:
         pred_strength = signal.get('pred_strength', 2.0)  # MATCH BACKTEST KEY
         conf = signal.get('conf', 0.5)
         timing = signal.get('timing_prob', 0.5)  # MATCH BACKTEST KEY
+        candle_type = signal.get('candle_type', 'CLOSED')  # NEW: Track which candle triggered
         
         # === V8: ADAPTIVE STOP LOSS (BACKTEST LOGIC) ===
         if USE_ADAPTIVE_SL:
@@ -252,13 +254,17 @@ class PortfolioManager:
         price_source = "Live" if is_live else "Candle"
         price_diff = ((entry_price - candle_close) / candle_close * 100) if is_live else 0
         
+        # Format entry type
+        entry_emoji = "⏳" if candle_type == "CURRENT" else "✅"
+        entry_label = f"{entry_emoji}{candle_type}"
+        
         if is_live:
-            price_info = f"Entry: {entry_price:.6f} (Live, {price_diff:+.2f}% vs candle)"
+            price_info = f"Entry: {entry_price:.6f} ({price_source}, {price_diff:+.2f}% vs candle)"
         else:
             price_info = f"Entry: {entry_price:.6f}"
         
         self.send_alert(
-            f"🟢 <b>OPEN {signal['direction']}</b> {signal['pair']}", 
+            f"🟢 <b>{entry_label} {signal['direction']}</b> {signal['pair']}", 
             f"{price_info}\nSL: {stop_loss:.6f} ({sl_mult}ATR)\nLev: {leverage:.1f}x\nSize: ${position_value:.0f}\nStr: {pred_strength:.1f}"
         )
 
@@ -625,7 +631,8 @@ def prepare_features(data, mtf_fe, pair=None):
     return ft
 
 def main():
-    logger.info("Starting V8 Sniper (BACKTEST LOGIC + Real-time Exits)...")
+    logger.info("Starting V8 Sniper (Dual Candle Check + Real-time Exits)...")
+    logger.info("✨ Checking BOTH current (forming) and closed candles for signals!")
     
     models = load_models()
     pairs = get_pairs()
@@ -649,6 +656,7 @@ def main():
     
     last_trailing_update = {}  # Track last trailing update per pair
     last_heartbeat = time.time()  # For periodic logging
+    last_current_candle_check = {}  # Track when we checked current candle (avoid spam)
     
     # 2. Main Loop (Entries + Trailing Updates)
     while True:
@@ -665,13 +673,35 @@ def main():
         # Periodic heartbeat log (every 60 seconds)
         if current_time - last_heartbeat >= 60:
             prices_count = len(streamer.current_prices)
-            position_info = f"Active: {portfolio.position['pair']}" if portfolio.position else "No position"
-            logger.info(f"💓 Heartbeat: {prices_count} prices tracked | {position_info} | Capital: ${portfolio.capital:.2f}")
             
-            # DEBUG: Show first 3 pairs to verify symbol format
-            if streamer.current_prices:
-                sample_pairs = list(streamer.current_prices.keys())[:3]
-                logger.debug(f"WebSocket symbols sample: {sample_pairs}")
+            # Show position details in heartbeat
+            if portfolio.position:
+                pos = portfolio.position
+                current_price = streamer.current_prices.get(pos['pair'], pos['entry_price'])
+                
+                # Calculate current PnL
+                if pos['direction'] == 'LONG':
+                    pnl_pct = ((current_price - pos['entry_price']) / pos['entry_price']) * 100
+                else:
+                    pnl_pct = ((pos['entry_price'] - current_price) / pos['entry_price']) * 100
+                
+                # Distance to stop loss
+                if pos['direction'] == 'LONG':
+                    sl_distance_pct = ((current_price - pos['stop_loss']) / current_price) * 100
+                else:
+                    sl_distance_pct = ((pos['stop_loss'] - current_price) / current_price) * 100
+                
+                position_info = (
+                    f"📍 {pos['pair']} {pos['direction']} | "
+                    f"Entry: {pos['entry_price']:.6f} | Now: {current_price:.6f} | "
+                    f"PnL: {pnl_pct:+.2f}% | SL: {pos['stop_loss']:.6f} ({sl_distance_pct:.2f}% away) | "
+                    f"Bars: {pos.get('bars_held', 0)} | BE: {'✅' if pos.get('breakeven_active') else '❌'}"
+                )
+            else:
+                position_info = "No position"
+            
+            logger.info(f"💓 Heartbeat: {prices_count} prices tracked | Capital: ${portfolio.capital:.2f}")
+            logger.info(f"   {position_info}")
             
             last_heartbeat = current_time
         
@@ -689,6 +719,7 @@ def main():
                     candles_5m = exchange.fetch_ohlcv(clean_symbol, '5m', limit=2)
                 except Exception as e:
                     logger.error(f"Error fetching trailing candles for {pair}: {e}")
+                    time.sleep(10)
                     continue
                     
                 if len(candles_5m) >= 2:
@@ -703,22 +734,32 @@ def main():
                         # Update trailing stop (BACKTEST LOGIC)
                         old_sl = portfolio.position['stop_loss']
                         candle_close = last_candle[4]
+                        candle_high = last_candle[2]
+                        candle_low = last_candle[3]
+                        
+                        logger.debug(f"🔄 Checking trailing for {pair} | Candle: H={candle_high:.6f} L={candle_low:.6f} C={candle_close:.6f}")
+                        
                         portfolio.update_trailing_on_candle(
-                            candle_high=last_candle[2],
-                            candle_low=last_candle[3],
+                            candle_high=candle_high,
+                            candle_low=candle_low,
                             candle_close=candle_close,
                             candle_time=candle_time
                         )
-                        new_sl = portfolio.position['stop_loss']
-                        if old_sl != new_sl:
-                            logger.info(f"📈 Trailing stop updated for {pair}: {old_sl:.6f} → {new_sl:.6f} | Price: {candle_close:.6f}")
+                        
+                        # Check if position still exists (might have been closed)
+                        if portfolio.position:
+                            new_sl = portfolio.position['stop_loss']
+                            if old_sl != new_sl:
+                                logger.info(f"📈 Trailing stop updated for {pair}: {old_sl:.6f} → {new_sl:.6f} | Price: {candle_close:.6f}")
+                            else:
+                                logger.debug(f"   No trailing update (SL unchanged: {old_sl:.6f})")
             except Exception as e:
                 logger.error(f"Error updating trailing for {pair}: {e}")
         
         # === SCAN FOR NEW SIGNALS ===
         # Only scan if no position (single slot)
         if portfolio.position is None:
-            logger.debug("🔍 Starting signal scan...")
+            logger.info("🔍 Scanning market for new signals...")
             scan_stats = {
                 'total': 0, 'short': 0, 'side': 0, 'long': 0, 
                 'errors': 0, 'fetched': 0,
@@ -802,18 +843,70 @@ def main():
                             logger.warning(f"{pair}: DataFrame is None or len < 2 (len={len(df) if df is not None else 0})")
                         continue
                     
-                    # Check Signal on last CLOSED candle (BACKTEST LOGIC)
-                    # CRITICAL: Use second-to-last candle (fully closed), not last (incomplete)
-                    if len(df) < 2:
-                        continue
+                    # === TRY 1: Check CURRENT (forming) candle for momentum signals ===
+                    current_row = df.iloc[[-1]]  # Last candle (may be incomplete)
+                    closed_row = df.iloc[[-2]]   # Second-to-last (fully closed)
                     
-                    row = df.iloc[[-2]]  # Предпоследняя свеча (закрытая!)
+                    current_candle_time = current_row.index[0]
+                    closed_candle_time = closed_row.index[0]
+                    
+                    # Calculate candle age
+                    now_utc = datetime.now(timezone.utc)
+                    if current_candle_time.tzinfo is None:
+                        current_candle_time_utc = current_candle_time.replace(tzinfo=timezone.utc)
+                    else:
+                        current_candle_time_utc = current_candle_time
+                    
+                    candle_age_seconds = (now_utc - current_candle_time_utc).total_seconds()
+                    
+                    # Try current candle ONLY if:
+                    # 1. Candle is "mature" (30+ seconds old, so indicators have data)
+                    # 2. Candle is NOT closed yet (< 5 minutes old)
+                    # 3. We haven't checked this candle in last 30 seconds (avoid spam)
+                    
+                    check_current_candle = False
+                    last_check_time = last_current_candle_check.get(pair, 0)
+                    time_since_last_check = current_time - last_check_time
+                    
+                    if 30 <= candle_age_seconds < 300 and time_since_last_check > 30:
+                        check_current_candle = True
+                        last_current_candle_check[pair] = current_time
+                    
+                    signal_found = False
+                    row = None
+                    candle_type = ""
+                    
+                    # === CHECK CURRENT CANDLE (if eligible) ===
+                    if check_current_candle:
+                        row = current_row
+                        candle_type = "CURRENT"
+                        
+                        # Calculate momentum
+                        candle_open = row['open'].iloc[0]
+                        candle_close = row['close'].iloc[0]
+                        candle_momentum = ((candle_close - candle_open) / candle_open) * 100
+                        
+                        # Get live price
+                        ws_price = streamer.current_prices.get(pair)
+                        has_live_price = ws_price is not None and ws_price > 0
+                        current_price = ws_price if has_live_price else candle_close
+                        
+                        # Check if there's meaningful momentum (> 0.3%)
+                        if abs(candle_momentum) < 0.3:
+                            check_current_candle = False  # Not enough momentum, skip to closed candle
+                    
+                    # === FALLBACK: Check CLOSED candle (standard backtest logic) ===
+                    if not check_current_candle:
+                        row = closed_row
+                        candle_type = "CLOSED"
                     
                     # === DEBUG: Show what data model sees ===
                     last_candle_time = row.index[0]
                     last_close = row['close'].iloc[0]
+                    candle_open = row['open'].iloc[0]
                     prev_close = df['close'].iloc[-7] if len(df) >= 7 else df['close'].iloc[0]
                     price_change_5m = ((last_close - prev_close) / prev_close) * 100
+                    candle_momentum = ((last_close - candle_open) / candle_open) * 100
                     
                     # Calculate time difference using UTC
                     now_utc = datetime.now(timezone.utc)
@@ -831,6 +924,7 @@ def main():
                     
                     # Source indicators
                     price_source = "🔴Live" if has_live_price else "📊Candle"
+                    candle_status = f"⏳{candle_type}" if candle_type == "CURRENT" else f"✅{candle_type}"
                     
                     # Only warn if data is REALLY stale (> 15 min for 5m candles)
                     if time_ago > 15:
@@ -913,23 +1007,26 @@ def main():
                         if strength_pred < MIN_STRENGTH:
                             rejection_reasons.append(f"Strength({strength_pred:.2f}<{MIN_STRENGTH})")
                         
-                        status = "✅ ACCEPTED" if not rejection_reasons else f"❌ REJECTED: {', '.join(rejection_reasons)}"
+                        status = "✅ SIGNAL" if not rejection_reasons else f"❌ REJECTED: {', '.join(rejection_reasons)}"
+                        
+                        # Show momentum in log
+                        momentum_str = f"Mom: {candle_momentum:+.2f}%"
                         
                         # ALWAYS LOG - this is critical for debugging
                         logger.info(
-                            f"📊 {pair} {direction_str} | "
+                            f"📊 {pair} {direction_str} {candle_status} | "
                             f"Conf: {dir_conf:.3f} | Timing: {timing_prob:.3f} | Strength: {strength_pred:.2f} | "
-                            f"Price: {current_price:.6f} | {status}"
+                            f"{momentum_str} | {status}"
                         )
                     else:  # SIDEWAYS
                         # ALWAYS LOG - this is critical for debugging
                         logger.info(
-                            f"📊 {pair} {direction_str} | "
+                            f"📊 {pair} {direction_str} {candle_status} | "
                             f"Conf: {dir_conf:.3f} | Timing: {timing_prob:.3f} | Strength: {strength_pred:.2f} | "
-                            f"Price: {current_price:.6f} | ⏸️  NO ACTION"
+                            f"⏸️  NO ACTION"
                         )
                     
-                    # Apply filters
+                    # Apply filters (skip sideways, check thresholds)
                     if dir_pred == 1:
                         continue  # Skip sideways
                     
@@ -967,19 +1064,20 @@ def main():
                         current_price = candle_close
                         logger.warning(f"{pair}: No WebSocket price available, using candle close {candle_close:.6f}")
                     
-                    signal = {
-                        'pair': pair,
-                        'direction': 'LONG' if dir_pred == 2 else 'SHORT',
-                        'price': current_price,  # Live price for faster entry
-                        'candle_close': candle_close,  # Reference price from signal
-                        'atr': row['atr'].iloc[0],  # ATR from closed candle
-                        'conf': dir_conf,
-                        'timing_prob': timing_prob,  # MATCH BACKTEST KEY NAME
-                        'pred_strength': strength_pred  # MATCH BACKTEST KEY NAME
-                    }
-                    portfolio.open_position(signal)
-                    logger.info(f"🚀 Signal taken: {pair} {signal['direction']} @ {current_price:.6f} (candle: {row['close'].iloc[0]:.6f})")
-                    break  # Taken a slot
+                        signal = {
+                            'pair': pair,
+                            'direction': 'LONG' if dir_pred == 2 else 'SHORT',
+                            'price': current_price,  # Live price for faster entry
+                            'candle_close': candle_close,  # Reference price from signal
+                            'atr': row['atr'].iloc[0],  # ATR from closed candle
+                            'conf': dir_conf,
+                            'timing_prob': timing_prob,  # MATCH BACKTEST KEY NAME
+                            'pred_strength': strength_pred,  # MATCH BACKTEST KEY NAME
+                            'candle_type': candle_type  # NEW: CURRENT or CLOSED
+                        }
+                        portfolio.open_position(signal)
+                        logger.info(f"🚀 {candle_type} signal taken: {pair} {signal['direction']} @ {current_price:.6f}")
+                        break  # Taken a slot
                     
                 except Exception as e:
                     logger.error(f"Scan error {pair}: {e}", exc_info=True)
@@ -994,6 +1092,9 @@ def main():
                     f"Skipped: DF-empty({scan_stats['skipped_df_empty']}) Missing-feat({scan_stats['skipped_missing_features']}) NaN({scan_stats['skipped_nan']}) | "
                     f"Fetched: {scan_stats['fetched']} | Errors: {scan_stats['errors']}"
                 )
+        else:
+            # Position is open - just log that we're monitoring it
+            logger.debug("📍 Position active, monitoring trailing stop...")
         
         # Sleep (shorter interval for faster trailing updates)
         time.sleep(10)
