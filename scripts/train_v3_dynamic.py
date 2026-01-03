@@ -147,14 +147,17 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 # V1 TARGETS (The "Great Base")
 # ============================================================
 def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
-    """Create V1-style targets."""
+    """Create V1-style targets (NO LOOKAHEAD BIAS)."""
     df = df.copy()
     df['atr'] = calculate_atr(df)
     
     # 1. Direction (Adaptive Threshold)
     # V7: Set to 0.5% (Significant moves only). 
     # We don't want to learn noise.
-    rolling_vol = df['close'].pct_change().rolling(window=100).std()
+    
+    # FIXED: NO LOOKAHEAD! Use PAST volatility only
+    rolling_vol = df['close'].pct_change().rolling(window=100, min_periods=50).std()
+    rolling_vol = rolling_vol.shift(1)  # Shift to use only past data
     threshold = np.maximum(rolling_vol, 0.005)  # Min 0.5%
     future_return = df['close'].pct_change(LOOKAHEAD).shift(-LOOKAHEAD)
     
@@ -489,19 +492,20 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
             
             sl_pct = sl_dist / entry_price
             
-            # Position Size (Value in $)
+            # Position Size (Value in $) based on risk
             position_size = risk_amount / sl_pct
             
-            # Leverage Check
-            leverage = position_size / balance
-            if leverage > MAX_LEVERAGE:
-                position_size = balance * MAX_LEVERAGE
-                leverage = MAX_LEVERAGE
+            # CRITICAL: Apply MAX_LEVERAGE limit FIRST
+            max_position_by_leverage = balance * MAX_LEVERAGE
+            if position_size > max_position_by_leverage:
+                position_size = max_position_by_leverage
             
-            # REALISTIC LIMIT: Cap position size for liquidity
+            # THEN apply liquidity limit
             if position_size > MAX_POSITION_SIZE:
                 position_size = MAX_POSITION_SIZE
-                leverage = position_size / balance
+            
+            # Calculate FINAL leverage
+            leverage = position_size / balance
             
             # PnL Calculation (with slippage)
             if signal['direction'] == 'LONG':
@@ -517,7 +521,8 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
             fees = position_size * FEE_PCT * 2 # Entry + Exit
             net_profit = gross_profit - fees
             
-            balance += net_profit
+            old_balance = balance  # Save balance BEFORE trade
+            balance += net_profit  # Update balance
             
             trade_record = signal.copy()
             trade_record.update(result)
@@ -526,7 +531,7 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
                 'position_size': position_size,
                 'net_profit': net_profit,
                 'balance_after': balance,
-                'pnl_pct': (net_profit / balance) * 100,  # CORRECT: ROE relative to account balance
+                'pnl_pct': (net_profit / old_balance) * 100,  # CORRECT: relative to OLD balance
                 'roe': (net_profit / (position_size / leverage)) * 100  # ROE relative to margin used
             })
             
