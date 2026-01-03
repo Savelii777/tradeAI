@@ -1,0 +1,22 @@
+{
+  "version": "v4.1_impulse_rider",
+  "sl_atr_mult": 0.8,
+  "tp_target_r": "None (Pure Trailing)",
+  "trailing_start_r": 1.0,
+  "max_leverage": 20.0,
+  "risk_pct": 0.05,
+  "lookahead": 10,
+  "filters": {
+    "min_conf": 0.45,
+    "min_timing": 0.5,
+    "min_strength": 1.0,
+    "min_impulse": 0.6,
+    "min_volume_surge": 2.0
+  },
+  "trailing_logic": {
+    "1-2R": "2.5 ATR (wide - let it grow)",
+    "2-4R": "1.5 ATR (medium)",
+    "4-6R": "1.0 ATR (tight - protect)",
+    "6R+": "0.7 ATR (very tight - lock in)"
+  }
+}
