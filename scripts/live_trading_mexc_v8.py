@@ -813,7 +813,9 @@ def main():
                             valid = True
                             
                             for tf in TIMEFRAMES:
-                                candles = binance.fetch_ohlcv(pair, tf, LOOKBACK)
+                                # fetch_ohlcv args: (symbol, timeframe, since=None, limit=None)
+                                # We want the latest LOOKBACK candles -> pass limit explicitly
+                                candles = binance.fetch_ohlcv(pair, tf, limit=LOOKBACK)
                                 if not candles or len(candles) < 50:
                                     valid = False
                                     break
@@ -833,6 +835,13 @@ def main():
                             
                             # Get last closed candle
                             row = df.iloc[[-2]]
+
+                            # Log candle timestamp and close to confirm we're on fresh data
+                            last_candle_time = row.index[0]
+                            candle_close = row['close'].iloc[0]
+                            logger.info(
+                                f"      Candle @ {last_candle_time} | Close: {candle_close:.6f}"
+                            )
                             
                             # Validate features
                             missing_features = [f for f in models['features'] if f not in row.columns]
