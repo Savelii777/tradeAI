@@ -241,12 +241,18 @@ class MTFFeatureEngine:
         aligned = m5_features.copy()
         
         # Forward-fill M15 to M5 (each M15 covers 3 M5 candles)
-        # Простой reindex с ffill - надежный способ
+        # ⚠️ CRITICAL FIX: Use PREVIOUS closed M15 candle (shift=1)
+        # This prevents lookahead bias - in live trading at 17:05, 
+        # the M15 candle 17:00-17:15 is still forming!
+        # So we use the PREVIOUS closed M15 (e.g., 16:45-17:00)
         if len(m15_features) > 0:
-            for col in m15_features.columns:
+            # SHIFT M15 by 1 to use only PREVIOUS closed candle
+            m15_shifted = m15_features.shift(1)
+            
+            for col in m15_shifted.columns:
                 # Сначала reindex к объединенному индексу
-                combined_index = aligned.index.union(m15_features.index).sort_values()
-                temp_series = m15_features[col].reindex(combined_index)
+                combined_index = aligned.index.union(m15_shifted.index).sort_values()
+                temp_series = m15_shifted[col].reindex(combined_index)
                 # Forward fill
                 temp_series = temp_series.ffill()
                 # Теперь взять только M5 индекс
