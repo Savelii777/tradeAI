@@ -26,6 +26,28 @@ from src.features.feature_engine import FeatureEngine
 from train_mtf import MTFFeatureEngine
 
 # ============================================================
+# LOGGING SETUP - Write to file
+# ============================================================
+LOG_FILE = Path("logs/live_trading.log")
+LOG_FILE.parent.mkdir(exist_ok=True)
+
+# Remove default handler and add file + console
+logger.remove()
+logger.add(
+    sys.stderr, 
+    format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | {message}",
+    level="INFO"
+)
+logger.add(
+    LOG_FILE,
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+    rotation="10 MB",  # New file when reaches 10MB
+    retention="7 days",  # Keep logs for 7 days
+    level="DEBUG"  # Log everything to file
+)
+logger.info(f"📝 Logging to file: {LOG_FILE.absolute()}")
+
+# ============================================================
 # CONFIG
 # ============================================================
 MODEL_DIR = Path("models/v8_improved")
@@ -693,6 +715,44 @@ def calculate_atr(df, period=14):
     return tr.ewm(span=period, adjust=False).mean()
 
 
+def wait_until_candle_close(timeframe_minutes=5):
+    """
+    Wait until the next candle close.
+    
+    5-minute candles close at: :00, :05, :10, :15, :20, :25, :30, :35, :40, :45, :50, :55
+    We wait until that moment + 3 seconds (for data to update on exchange).
+    
+    Returns:
+        datetime: The candle close time we waited for
+    """
+    now = datetime.now(timezone.utc)
+    
+    # Calculate next candle close time
+    current_minute = now.minute
+    current_second = now.second
+    
+    # Round up to next 5-minute mark
+    next_close_minute = ((current_minute // timeframe_minutes) + 1) * timeframe_minutes
+    
+    if next_close_minute >= 60:
+        # Next hour
+        next_close = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    else:
+        next_close = now.replace(minute=next_close_minute, second=0, microsecond=0)
+    
+    # Calculate wait time
+    wait_seconds = (next_close - now).total_seconds()
+    
+    # Add 3 seconds buffer for exchange data to update
+    wait_seconds += 3
+    
+    if wait_seconds > 0:
+        logger.info(f"⏰ Waiting {wait_seconds:.0f}s until candle close at {next_close.strftime('%H:%M:%S')} UTC...")
+        time.sleep(wait_seconds)
+    
+    return next_close
+
+
 def prepare_features(data, mtf_fe):
     """Prepare features from multi-timeframe data"""
     m1 = data['1m']
@@ -759,19 +819,19 @@ def main():
     
     logger.info(f"Monitoring {len(pairs)} pairs on MEXC")
     logger.info(f"Initial Capital: ${portfolio.capital:.2f}")
+    logger.info(f"🎯 SYNC MODE: Scanning at 5-minute candle closes (:00, :05, :10, ...)")
     
-    last_scan = time.time()
-    
-    # Main loop
+    # Main loop - synchronized with candle closes
     while True:
-        current_time = time.time()
-        
         try:
-            # Update position every 30 seconds
+            # === WAIT FOR CANDLE CLOSE ===
+            candle_close_time = wait_until_candle_close(timeframe_minutes=5)
+            
+            # === UPDATE POSITION IF EXISTS ===
             if portfolio.position:
                 pos = portfolio.position
                 
-                logger.debug(f"📍 Monitoring position: {pos['pair']} {pos['direction']}")
+                logger.info(f"📍 Updating position: {pos['pair']} {pos['direction']}")
                 
                 # Get current price from Binance
                 ticker = binance.fetch_ticker(pos['pair'])
@@ -785,16 +845,9 @@ def main():
                     candle_low = last_candle[3]
                     
                     portfolio.update_position(current_price, candle_high, candle_low)
-            else:
-                # No position - waiting
-                if current_time % 60 < 30:  # Log every minute
-                    logger.debug(f"⏳ No position. Waiting for next scan... (Capital: ${portfolio.capital:.2f})")
             
-            # Scan for new signals every 60 seconds
-            if current_time - last_scan >= 60:
-                last_scan = current_time
-                
-                if portfolio.position is None:
+            # === SCAN FOR NEW SIGNALS (only if no position) ===
+            if portfolio.position is None:
                     logger.info("=" * 70)
                     logger.info("🔍 Scanning for new signals...")
                     logger.info(f"   Filters: Conf>{MIN_CONF}, Timing>{MIN_TIMING}, Strength>{MIN_STRENGTH}")
@@ -913,13 +966,13 @@ def main():
                     # Summary after scan
                     logger.info("=" * 70)
                     logger.info(f"📊 Scan complete: {signals_checked} pairs checked, {signals_found} signals found")
+                    logger.info(f"⏰ Next scan at next 5-minute candle close")
                     logger.info("=" * 70)
         
         except Exception as e:
             logger.error(f"Main loop error: {e}")
-        
-        # Sleep
-        time.sleep(30)
+            # On error, wait 10 seconds before retrying
+            time.sleep(10)
 
 
 if __name__ == '__main__':
