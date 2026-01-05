@@ -32,7 +32,7 @@ MODEL_DIR = Path("models/v8_improved")
 PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades.json")
 TIMEFRAMES = ['1m', '5m', '15m']
-LOOKBACK = 500 # Candles to fetch (enough for EMA200 + buffer)
+LOOKBACK = 1500  # ✅ OPTIMIZED: 1500 stabilizes rolling indicators & minimizes live/backtest divergence
 
 # Thresholds (Must match training)
 # ORIGINAL (SAFE) VALUES:

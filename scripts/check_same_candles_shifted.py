@@ -39,7 +39,7 @@ models = {
 
 mtf_fe = MTFFeatureEngine()
 
-def fetch_klines(symbol, interval, limit=500):
+def fetch_klines(symbol, interval, limit=1500):
     """Fetch klines directly from Binance Futures API"""
     clean_symbol = symbol.replace('/USDT:USDT', 'USDT').replace('/', '')
     

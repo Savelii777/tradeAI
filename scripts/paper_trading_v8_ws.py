@@ -35,7 +35,7 @@ MODEL_DIR = Path("models/v8_improved")
 PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades_ws.json") 
 TIMEFRAMES = ['1m', '5m', '15m']
-LOOKBACK = 500
+LOOKBACK = 1500  # ✅ OPTIMIZED: 1500 stabilizes rolling indicators & minimizes live/backtest divergence
 
 # Thresholds
 MIN_CONF = 0.50      

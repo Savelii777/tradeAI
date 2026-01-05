@@ -54,7 +54,7 @@ MODEL_DIR = Path("models/v8_improved")
 PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
-LOOKBACK = 500
+LOOKBACK = 1500  # ✅ OPTIMIZED: 1500 stabilizes rolling indicators & minimizes live/backtest divergence
 
 # V8 IMPROVED Thresholds (UPDATED for new Timing model)
 MIN_CONF = 0.50       # Direction confidence
