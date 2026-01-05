@@ -65,7 +65,11 @@ class MarketStructure:
         swing_high = pd.Series(False, index=df.index)
         swing_low = pd.Series(False, index=df.index)
         
-        for i in range(self.swing_period, len(df) - self.swing_period):
+        # FIXED: Use larger end buffer to ensure stability when new candles are added
+        # Without this, swings near the end of dataset change as new data arrives
+        end_buffer = self.swing_period * 3  # 3x buffer for stability
+        
+        for i in range(self.swing_period, len(df) - end_buffer):
             # Check if current high is highest in window
             window_start = i - self.swing_period
             window_end = i + self.swing_period + 1
