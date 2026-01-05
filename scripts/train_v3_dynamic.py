@@ -111,17 +111,17 @@ def fetch_binance_data(symbol: str, timeframe: str, start_date: datetime, end_da
 # FEATURES
 # ============================================================
 def add_volume_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add volume-based features (V3)."""
+    """Add volume-based features (V3) - OBV исключен (зависит от начала окна данных)."""
     df = df.copy()
     
     df['vol_sma_20'] = df['volume'].rolling(20).mean()
     df['vol_ratio'] = df['volume'] / df['vol_sma_20']
     df['vol_zscore'] = (df['volume'] - df['vol_sma_20']) / df['volume'].rolling(20).std()
     
-    # OBV
-    df['price_change'] = df['close'].diff()
-    df['obv'] = np.where(df['price_change'] > 0, df['volume'], -df['volume']).cumsum()
-    df['obv_sma'] = pd.Series(df['obv']).rolling(20).mean()
+    # OBV УДАЛЕН: cumsum() зависит от начала окна данных
+    # В бектесте данные могут начинаться с 2017 года, в лайве - с последних 1500 свечей
+    # Это приводит к кардинально разным значениям OBV
+    # OBV уже исключен из фичей модели, поэтому не вычисляем его вообще
     
     # VWAP
     df['vwap'] = (df['close'] * df['volume']).rolling(20).sum() / df['volume'].rolling(20).sum()
@@ -750,10 +750,11 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
         # Train models on THIS period
         train_df = pd.concat(all_train).dropna()
         exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
-                   'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change', 'obv', 'obv_sma']
+                   'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change']
         # Исключаем ВСЕ cumsum-зависимые фичи - их значения зависят от начала окна данных!
-        # obv, bars_since_swing, consecutive_up/down - все используют cumsum()
-        cumsum_patterns = ['obv', 'bars_since_swing', 'consecutive_up', 'consecutive_down']
+        # bars_since_swing, consecutive_up/down - все используют cumsum()
+        # OBV уже удален из add_volume_features(), поэтому не нужно исключать
+        cumsum_patterns = ['bars_since_swing', 'consecutive_up', 'consecutive_down']
         features = [c for c in train_df.columns if c not in exclude 
                     and not any(p in c.lower() for p in cumsum_patterns)]
         
@@ -949,10 +950,11 @@ def main():
     # Train
     train_df = pd.concat(all_train).dropna()
     exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
-               'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change', 'obv', 'obv_sma']
+               'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change']
     # Исключаем ВСЕ cumsum-зависимые фичи - их значения зависят от начала окна данных!
-    # obv, bars_since_swing, consecutive_up/down - все используют cumsum()
-    cumsum_patterns = ['obv', 'bars_since_swing', 'consecutive_up', 'consecutive_down']
+    # bars_since_swing, consecutive_up/down - все используют cumsum()
+    # OBV уже удален из add_volume_features(), поэтому не нужно исключать
+    cumsum_patterns = ['bars_since_swing', 'consecutive_up', 'consecutive_down']
     features = [c for c in train_df.columns if c not in exclude 
                 and not any(p in c.lower() for p in cumsum_patterns)]
     

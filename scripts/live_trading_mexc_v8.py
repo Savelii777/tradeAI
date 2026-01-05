@@ -690,14 +690,15 @@ def get_pairs():
 
 
 def add_volume_features(df):
-    """Add volume features (V8 backtest)"""
+    """Add volume features (V8 backtest) - OBV исключен (зависит от начала окна данных)"""
     df['vol_sma_20'] = df['volume'].rolling(20).mean()
     df['vol_ratio'] = df['volume'] / df['vol_sma_20']
     df['vol_zscore'] = (df['volume'] - df['vol_sma_20']) / df['volume'].rolling(20).std()
     
-    df['price_change'] = df['close'].diff()
-    df['obv'] = np.where(df['price_change'] > 0, df['volume'], -df['volume']).cumsum()
-    df['obv_sma'] = pd.Series(df['obv']).rolling(20).mean()
+    # OBV УДАЛЕН: cumsum() зависит от начала окна данных
+    # В бектесте данные могут начинаться с 2017 года, в лайве - с последних 1500 свечей
+    # Это приводит к кардинально разным значениям OBV
+    # OBV уже исключен из фичей модели, поэтому не вычисляем его вообще
     
     df['vwap'] = (df['close'] * df['volume']).rolling(20).sum() / df['volume'].rolling(20).sum()
     df['price_vs_vwap'] = df['close'] / df['vwap'] - 1
@@ -876,6 +877,12 @@ def main():
                                 df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
                                 df.set_index('timestamp', inplace=True)
+                                
+                                # ✅ FIX: Remove duplicates and sort (same as CSV loading)
+                                # This ensures consistency with backtest data processing
+                                df = df[~df.index.duplicated(keep='first')]
+                                df.sort_index(inplace=True)
+                                
                                 data[tf] = df
                             
                             if not valid:
