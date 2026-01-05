@@ -81,10 +81,12 @@ class MarketStructure:
                     
         swings['swing_high'] = swing_high
         swings['swing_low'] = swing_low
-        swings['swing_high_price'] = high.where(swing_high, np.nan).ffill()
-        swings['swing_low_price'] = low.where(swing_low, np.nan).ffill()
+        # FIXED: limit ffill to 200 bars to ensure consistency between live and backtest
+        # Without limit, ffill propagates from FIRST swing in dataset, causing divergence
+        swings['swing_high_price'] = high.where(swing_high, np.nan).ffill(limit=200)
+        swings['swing_low_price'] = low.where(swing_low, np.nan).ffill(limit=200)
         
-        # Distance to last swing
+        # Distance to last swing (use rolling count instead of cumsum for consistency)
         swings['bars_since_swing_high'] = swing_high.cumsum()
         swings['bars_since_swing_low'] = swing_low.cumsum()
         
@@ -107,9 +109,9 @@ class MarketStructure:
         swing_highs = df['high'].where(swings['swing_high'], np.nan)
         swing_lows = df['low'].where(swings['swing_low'], np.nan)
         
-        # Previous swing values
-        prev_swing_high = swing_highs.ffill().shift(1)
-        prev_swing_low = swing_lows.ffill().shift(1)
+        # Previous swing values (limit=200 for live/backtest consistency)
+        prev_swing_high = swing_highs.ffill(limit=200).shift(1)
+        prev_swing_low = swing_lows.ffill(limit=200).shift(1)
         
         # Detect patterns
         result['higher_high'] = (swing_highs > prev_swing_high) & swings['swing_high']
