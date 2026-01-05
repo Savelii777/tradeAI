@@ -210,8 +210,10 @@ class MTFFeatureEngine:
         features['m1_micro_trend'] = np.where(features['m1_ema_3'] > features['m1_ema_8'], 1, -1)
         
         # Price vs VWAP (if volume available)
+        # FIXED: Use rolling window instead of cumsum for live/backtest consistency
         if 'volume' in df.columns:
-            vwap = (df['close'] * df['volume']).cumsum() / df['volume'].cumsum()
+            vwap_window = 200  # Rolling VWAP over last 200 bars
+            vwap = (df['close'] * df['volume']).rolling(vwap_window).sum() / df['volume'].rolling(vwap_window).sum()
             features['m1_vwap_dist'] = (df['close'] - vwap) / vwap * 100
         
         return features

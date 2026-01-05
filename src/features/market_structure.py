@@ -86,7 +86,7 @@ class MarketStructure:
         swings['swing_high_price'] = high.where(swing_high, np.nan).ffill(limit=200)
         swings['swing_low_price'] = low.where(swing_low, np.nan).ffill(limit=200)
         
-        # Distance to last swing (use rolling count instead of cumsum for consistency)
+        # Distance to last swing
         swings['bars_since_swing_high'] = swing_high.cumsum()
         swings['bars_since_swing_low'] = swing_low.cumsum()
         
