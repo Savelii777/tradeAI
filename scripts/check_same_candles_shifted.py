@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Проверка тех же свечей что и в логах live_trading
-НО с использованием ПРЕДЫДУЩЕЙ M15 свечи (shift) - как было бы в реальности
+Проверка последних свечей - сравнение с live trading
+Использует MTFFeatureEngine с shift(1) для M15 (как в live)
 """
 import json
 import pandas as pd
@@ -9,14 +9,20 @@ import numpy as np
 import joblib
 import requests
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import time
 import sys
+import argparse
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from train_mtf import MTFFeatureEngine
 
 MODEL_DIR = Path("models/v8_improved")
 PAIRS_FILE = Path("config/pairs_list.json")
+
+# Парсинг аргументов
+parser = argparse.ArgumentParser()
+parser.add_argument("--candles", type=int, default=12, help="Сколько последних 5м свечей проверить (по умолчанию 12 = 1 час)")
+args = parser.parse_args()
 
 # Загружаем пары
 with open(PAIRS_FILE, 'r') as f:
@@ -82,67 +88,30 @@ def calculate_atr(df, period=14):
     return tr.ewm(span=period, adjust=False).mean()
 
 
-def align_timeframes_with_shift(mtf_fe, m1_df, m5_df, m15_df):
-    """
-    Align all timeframes to M5 timestamps.
-    
-    ВАЖНО: M15 фичи сдвигаются на 1 (используем ПРЕДЫДУЩУЮ закрытую M15)
-    Это имитирует реальные условия когда текущая M15 свеча ещё формируется
-    """
-    # Generate features for each TF
-    m15_features = mtf_fe.generate_m15_trend_features(m15_df)
-    m5_features = mtf_fe.generate_m5_signal_features(m5_df)
-    m1_features = mtf_fe.generate_m1_timing_features(m1_df)
-    
-    if m5_features.empty or len(m5_features) == 0:
-        return pd.DataFrame()
-    
-    # Align to M5 index
-    aligned = m5_features.copy()
-    
-    # ========== КЛЮЧЕВОЕ ИЗМЕНЕНИЕ ==========
-    # Сдвигаем M15 фичи на 1 позицию (используем ПРЕДЫДУЩУЮ закрытую свечу)
-    # Это имитирует реальность: в 17:05 мы не знаем финальных данных свечи 17:00-17:15
-    if len(m15_features) > 0:
-        m15_shifted = m15_features.shift(1)  # <-- SHIFT!
-        
-        for col in m15_shifted.columns:
-            combined_index = aligned.index.union(m15_shifted.index).sort_values()
-            temp_series = m15_shifted[col].reindex(combined_index)
-            temp_series = temp_series.ffill()
-            aligned[col] = temp_series.reindex(aligned.index)
-    
-    # Aggregate M1 to M5 (без изменений)
-    if len(m1_features) > 0:
-        m1_temp = m1_features.copy()
-        m1_temp['m5_bucket'] = m1_temp.index.floor('5min')
-        
-        for col in m1_features.columns:
-            agg = m1_temp.groupby('m5_bucket')[col].agg(['last', 'mean', 'std'])
-            agg.columns = [f'{col}_last', f'{col}_mean', f'{col}_std']
-            
-            for agg_col in agg.columns:
-                if agg_col in aligned.columns:
-                    continue
-                aligned[agg_col] = agg[agg_col].reindex(aligned.index)
-    
-    return aligned
+# Используем mtf_fe.align_timeframes() напрямую - тот же код что в live trading
+# (MTFFeatureEngine уже содержит shift(1) для M15)
 
 
-# Свечи из логов (16:20 - 17:35 UTC)
-target_candles = [
-    "2026-01-04 16:20", "2026-01-04 16:25", "2026-01-04 16:30",
-    "2026-01-04 16:35", "2026-01-04 16:40", "2026-01-04 16:45",
-    "2026-01-04 16:50", "2026-01-04 16:55", "2026-01-04 17:00",
-    "2026-01-04 17:05", "2026-01-04 17:10", "2026-01-04 17:15",
-    "2026-01-04 17:20", "2026-01-04 17:25", "2026-01-04 17:30",
-    "2026-01-04 17:35"
-]
+# Генерируем последние N свечей (5м) динамически
+now = datetime.now(timezone.utc)
+# Округляем до последней закрытой 5м свечи
+current_5m = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
+# Берем предыдущую закрытую свечу (не текущую формирующуюся)
+last_closed = current_5m - timedelta(minutes=5)
+
+# Генерируем список последних N закрытых свечей
+num_candles = args.candles
+target_times = [last_closed - timedelta(minutes=5*i) for i in range(num_candles)]
+target_times = sorted(target_times)  # От старых к новым
+
+first_candle = target_times[0].strftime('%H:%M')
+last_candle = target_times[-1].strftime('%H:%M')
 
 print("="*70)
-print("🔍 БЭКТЕСТ С ИСПОЛЬЗОВАНИЕМ ПРЕДЫДУЩЕЙ M15 СВЕЧИ (SHIFT)")
-print("   Это имитирует реальные условия live trading!")
-print("   Период: 16:20 - 17:35 UTC, 4 января 2026")
+print("🔍 ПРОВЕРКА ПОСЛЕДНИХ СВЕЧЕЙ (как live trading)")
+print(f"   Использует MTFFeatureEngine с shift(1) для M15")
+print(f"   Период: {first_candle} - {last_candle} UTC ({num_candles} свечей)")
+print(f"   Время сейчас: {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
 print("="*70)
 
 all_signals = []
@@ -160,8 +129,9 @@ for idx, pair in enumerate(pairs):
         
         m1, m5, m15 = data['1m'], data['5m'], data['15m']
         
-        # Используем НОВУЮ функцию с shift для M15
-        ft = align_timeframes_with_shift(mtf_fe, m1, m5, m15)
+        # Используем тот же mtf_fe.align_timeframes() что и live trading
+        # (уже содержит shift(1) для M15)
+        ft = mtf_fe.align_timeframes(m1, m5, m15)
         
         ft = ft.join(m5[['open', 'high', 'low', 'close', 'volume']])
         ft = add_volume_features(ft)
@@ -169,7 +139,6 @@ for idx, pair in enumerate(pairs):
         ft = ft.dropna(subset=['close', 'atr']).ffill().bfill().fillna(0)
         
         # Фильтруем только нужные свечи
-        target_times = pd.to_datetime(target_candles, utc=True)
         mask = ft.index.isin(target_times)
         target_df = ft[mask]
         
@@ -259,7 +228,7 @@ for r in rejected_sorted[:20]:
           f"Conf: {r['conf']:.2f} | {reason_str}")
 
 print("\n" + "="*70)
-print("⚠️ Сравни с предыдущим бэктестом БЕЗ shift!")
-print("   Если сигналов меньше - значит M15 lookahead bias подтверждён")
+print("💡 Этот скрипт использует тот же MTFFeatureEngine что и live trading")
+print("   Результаты должны совпадать с live_trading.log")
 print("="*70)
 

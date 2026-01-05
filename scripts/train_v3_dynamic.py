@@ -751,7 +751,11 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
         train_df = pd.concat(all_train).dropna()
         exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
                    'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change', 'obv', 'obv_sma']
-        features = [c for c in train_df.columns if c not in exclude]
+        # Исключаем ВСЕ cumsum-зависимые фичи - их значения зависят от начала окна данных!
+        # obv, bars_since_swing, consecutive_up/down - все используют cumsum()
+        cumsum_patterns = ['obv', 'bars_since_swing', 'consecutive_up', 'consecutive_down']
+        features = [c for c in train_df.columns if c not in exclude 
+                    and not any(p in c.lower() for p in cumsum_patterns)]
         
         X_train = train_df[features]
         y_train = {
@@ -946,7 +950,11 @@ def main():
     train_df = pd.concat(all_train).dropna()
     exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
                'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change', 'obv', 'obv_sma']
-    features = [c for c in train_df.columns if c not in exclude]
+    # Исключаем ВСЕ cumsum-зависимые фичи - их значения зависят от начала окна данных!
+    # obv, bars_since_swing, consecutive_up/down - все используют cumsum()
+    cumsum_patterns = ['obv', 'bars_since_swing', 'consecutive_up', 'consecutive_down']
+    features = [c for c in train_df.columns if c not in exclude 
+                and not any(p in c.lower() for p in cumsum_patterns)]
     
     X_train = train_df[features]
     y_train = {
