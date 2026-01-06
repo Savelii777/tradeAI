@@ -1020,18 +1020,17 @@ def main():
                             # Extract features in EXACT order as model expects
                             X = row[features_to_use].values
                             
-                            # ✅ CRITICAL: Check for NaN/Inf and log which features have issues
-                            if pd.isna(X).any():
-                                nan_features = [features_to_use[i] for i in range(len(features_to_use)) if pd.isna(X[0][i])]
-                                logger.warning(f"NaN values in features for {pair}: {nan_features[:5]}...")
-                                # Fill NaN with 0 for now (should not happen if prepare_features works correctly)
-                                X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+                            # ✅ FIX: Force convert to float64 to avoid object dtype issues
+                            # This fixes "ufunc 'isinf' not supported" error
+                            try:
+                                X = X.astype(np.float64)
+                            except (ValueError, TypeError) as e:
+                                logger.warning(f"Could not convert features to float64: {e}")
+                                # Try element-wise conversion
+                                X = np.array([[float(v) if v is not None else 0.0 for v in X[0]]])
                             
-                            # Check for infinite values
-                            if np.isinf(X).any():
-                                inf_features = [features_to_use[i] for i in range(len(features_to_use)) if np.isinf(X[0][i])]
-                                logger.warning(f"Inf values in features for {pair}: {inf_features[:5]}...")
-                                X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+                            # ✅ CRITICAL: Check for NaN/Inf and handle them
+                            X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
                             
                             # Predictions (V8 IMPROVED)
                             dir_proba = models['direction'].predict_proba(X)
