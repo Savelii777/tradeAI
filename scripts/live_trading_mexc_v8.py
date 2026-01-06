@@ -54,7 +54,7 @@ MODEL_DIR = Path("models/v8_improved")
 PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
-LOOKBACK = 1500  # ✅ OPTIMIZED: 1500 stabilizes rolling indicators & minimizes live/backtest divergence
+LOOKBACK = 3000  # ✅ FIXED: 3000+ needed for proper indicator stabilization (EMA 200, VWAP 200, rolling vol 100)
 
 # V8 IMPROVED Thresholds (UPDATED for new Timing model)
 MIN_CONF = 0.50       # Direction confidence
@@ -755,19 +755,29 @@ def wait_until_candle_close(timeframe_minutes=5):
 
 
 def prepare_features(data, mtf_fe):
-    """Prepare features from multi-timeframe data"""
+    """
+    Prepare features from multi-timeframe data.
+    
+    ✅ FIXED: Matches backtest processing exactly:
+    - Same NaN handling (dropna, not fillna)
+    - Excludes cumsum-dependent features
+    - Ensures sufficient data for indicators
+    """
     m1 = data['1m']
     m5 = data['5m']
     m15 = data['15m']
     
-    if len(m1) < 50 or len(m5) < 50 or len(m15) < 50:
+    if len(m1) < 200 or len(m5) < 200 or len(m15) < 200:
+        logger.warning(f"Insufficient data: M1={len(m1)}, M5={len(m5)}, M15={len(m15)}")
         return pd.DataFrame()
     
-    # Ensure DatetimeIndex
+    # Ensure DatetimeIndex (UTC, same as backtest)
     for df in [m1, m5, m15]:
         if not isinstance(df.index, pd.DatetimeIndex):
             df.index = pd.to_datetime(df.index, utc=True)
         df.sort_index(inplace=True)
+        # Remove duplicates (same as backtest)
+        df = df[~df.index.duplicated(keep='first')]
     
     try:
         ft = mtf_fe.align_timeframes(m1, m5, m15)
@@ -778,17 +788,37 @@ def prepare_features(data, mtf_fe):
         ft = add_volume_features(ft)
         ft['atr'] = calculate_atr(ft)
         
-        # Fill NaN
+        # ✅ FIXED: Match backtest NaN handling - DROP rows with NaN in critical cols
+        # DO NOT fill NaN with 0 or ffill - this changes feature distributions!
         critical_cols = ['close', 'atr']
         ft = ft.dropna(subset=critical_cols)
-        ft = ft.ffill().bfill()
         
-        if ft.isna().any().any():
-            ft = ft.fillna(0)
+        # ✅ FIXED: Exclude cumsum-dependent features (same as backtest)
+        # These features depend on data window start and will differ between backtest/live
+        cumsum_patterns = ['bars_since_swing', 'consecutive_up', 'consecutive_down']
+        cols_to_drop = [c for c in ft.columns if any(p in c.lower() for p in cumsum_patterns)]
+        if cols_to_drop:
+            logger.debug(f"Excluding cumsum-dependent features: {cols_to_drop}")
+            ft = ft.drop(columns=cols_to_drop)
+        
+        # Only forward-fill for non-critical columns (to avoid breaking alignment)
+        # But DO NOT fill critical columns - drop them if NaN
+        non_critical = [c for c in ft.columns if c not in critical_cols]
+        if non_critical:
+            ft[non_critical] = ft[non_critical].ffill()
+        
+        # Final check: if still NaN in critical cols, drop those rows
+        ft = ft.dropna(subset=critical_cols)
+        
+        if len(ft) == 0:
+            logger.warning("No valid rows after NaN handling")
+            return pd.DataFrame()
         
         return ft
     except Exception as e:
         logger.error(f"Error preparing features: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return pd.DataFrame()
 
 
@@ -867,14 +897,69 @@ def main():
                             valid = True
                             
                             for tf in TIMEFRAMES:
-                                # fetch_ohlcv args: (symbol, timeframe, since=None, limit=None)
-                                # We want the latest LOOKBACK candles -> pass limit explicitly
-                                candles = binance.fetch_ohlcv(pair, tf, limit=LOOKBACK)
-                                if not candles or len(candles) < 50:
+                                # ✅ FIXED: Fetch MORE data if needed (Binance limit is 1000 per request)
+                                # For LOOKBACK=3000, we need multiple requests
+                                all_candles = []
+                                limit_per_request = 1000
+                                
+                                # First request: get latest candles
+                                try:
+                                    candles = binance.fetch_ohlcv(pair, tf, limit=min(limit_per_request, LOOKBACK))
+                                    if not candles or len(candles) < 50:
+                                        valid = False
+                                        break
+                                    all_candles.extend(candles)
+                                except Exception as e:
+                                    logger.warning(f"Error fetching {pair} {tf}: {e}")
                                     valid = False
                                     break
                                 
-                                df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                                # If we need more data, fetch older candles
+                                if len(all_candles) < LOOKBACK:
+                                    requests_needed = (LOOKBACK - len(all_candles) + limit_per_request - 1) // limit_per_request
+                                    for req_num in range(requests_needed):
+                                        try:
+                                            # Get oldest timestamp from current data
+                                            oldest_ts = all_candles[0][0]
+                                            # Calculate timeframe milliseconds
+                                            tf_ms = {'1m': 60000, '5m': 300000, '15m': 900000}[tf]
+                                            # Request older data
+                                            since_ts = oldest_ts - (limit_per_request * tf_ms)
+                                            candles = binance.fetch_ohlcv(pair, tf, since=since_ts, limit=limit_per_request)
+                                            
+                                            if not candles:
+                                                break
+                                            
+                                            # Remove duplicates and merge (oldest first)
+                                            seen_timestamps = {c[0] for c in all_candles}
+                                            new_candles = [c for c in candles if c[0] not in seen_timestamps]
+                                            
+                                            if not new_candles:
+                                                break
+                                            
+                                            # Insert at beginning (older data)
+                                            all_candles = new_candles + all_candles
+                                            
+                                            # Stop if we have enough
+                                            if len(all_candles) >= LOOKBACK:
+                                                # Keep only the oldest LOOKBACK candles
+                                                all_candles = sorted(all_candles, key=lambda x: x[0])[:LOOKBACK]
+                                                break
+                                            
+                                            time.sleep(0.1)  # Rate limit
+                                        except Exception as e:
+                                            logger.debug(f"Error fetching {pair} {tf} batch {req_num}: {e}")
+                                            break
+                                
+                                if not all_candles or len(all_candles) < 200:
+                                    logger.warning(f"Insufficient data for {pair} {tf}: {len(all_candles)} candles (need 200+)")
+                                    valid = False
+                                    break
+                                
+                                # Sort by timestamp (oldest first)
+                                all_candles = sorted(all_candles, key=lambda x: x[0])
+                                
+                                df = pd.DataFrame(all_candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
                                 df.set_index('timestamp', inplace=True)
                                 
@@ -906,12 +991,36 @@ def main():
                             # Validate features
                             missing_features = [f for f in models['features'] if f not in row.columns]
                             if missing_features:
+                                logger.warning(f"Missing features for {pair}: {missing_features[:5]}...")
+                                logger.warning(f"Available features: {len(row.columns)}, Model expects: {len(models['features'])}")
+                                logger.debug(f"First 10 missing: {missing_features[:10]}")
                                 continue
                             
-                            X = row[models['features']].values
+                            # ✅ FIXED: Exclude cumsum-dependent features (same as backtest)
+                            # These should not be in models['features'], but double-check
+                            cumsum_patterns = ['bars_since_swing', 'consecutive_up', 'consecutive_down']
+                            features_to_use = [f for f in models['features'] 
+                                             if not any(p in f.lower() for p in cumsum_patterns)]
                             
+                            if len(features_to_use) != len(models['features']):
+                                excluded = set(models['features']) - set(features_to_use)
+                                logger.debug(f"Excluding cumsum features from prediction: {excluded}")
+                            
+                            # Extract features in EXACT order as model expects
+                            X = row[features_to_use].values
+                            
+                            # ✅ CRITICAL: Check for NaN/Inf and log which features have issues
                             if pd.isna(X).any():
-                                continue
+                                nan_features = [features_to_use[i] for i in range(len(features_to_use)) if pd.isna(X[0][i])]
+                                logger.warning(f"NaN values in features for {pair}: {nan_features[:5]}...")
+                                # Fill NaN with 0 for now (should not happen if prepare_features works correctly)
+                                X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+                            
+                            # Check for infinite values
+                            if np.isinf(X).any():
+                                inf_features = [features_to_use[i] for i in range(len(features_to_use)) if np.isinf(X[0][i])]
+                                logger.warning(f"Inf values in features for {pair}: {inf_features[:5]}...")
+                                X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
                             
                             # Predictions (V8 IMPROVED)
                             dir_proba = models['direction'].predict_proba(X)
@@ -922,9 +1031,30 @@ def main():
                             timing_pred = float(models['timing'].predict(X)[0])  # Returns 0-5 ATR gain
                             strength_pred = float(models['strength'].predict(X)[0])
                             
-                            # Log prediction details
+                            # Log prediction details with full probability distribution
+                            p_down, p_sideways, p_up = dir_proba[0]
                             direction_str = 'LONG' if dir_pred == 2 else ('SHORT' if dir_pred == 0 else 'SIDEWAYS')
                             logger.info(f"      → {direction_str} | Conf: {dir_conf:.2f} | Timing: {timing_pred:.2f} ATR | Strength: {strength_pred:.1f}")
+                            logger.debug(f"      Probabilities: DOWN={p_down:.3f}, SIDEWAYS={p_sideways:.3f}, UP={p_up:.3f}")
+                            
+                            # ✅ DEBUG: Log feature statistics to compare with backtest
+                            if dir_conf < 0.5 or dir_pred == 1:
+                                # Log feature stats for low-confidence predictions
+                                feature_stats = {
+                                    'mean': float(X.mean()),
+                                    'std': float(X.std()),
+                                    'min': float(X.min()),
+                                    'max': float(X.max()),
+                                    'nan_count': int(pd.isna(X).sum()),
+                                    'inf_count': int(np.isinf(X).sum() if hasattr(np, 'isinf') else 0)
+                                }
+                                logger.debug(f"      Feature stats: {feature_stats}")
+                                
+                                # Log top 5 features with highest absolute values
+                                feature_vals = {models['features'][i]: float(X[0][i]) 
+                                               for i in range(len(models['features']))}
+                                top_features = sorted(feature_vals.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+                                logger.debug(f"      Top 5 features: {top_features}")
                             
                             # Apply V8 filters
                             if dir_pred == 1:  # Sideways
