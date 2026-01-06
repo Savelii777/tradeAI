@@ -793,9 +793,17 @@ def prepare_features(data, mtf_fe):
         critical_cols = ['close', 'atr']
         ft = ft.dropna(subset=critical_cols)
         
-        # ✅ FIXED: Exclude cumsum-dependent features (same as backtest)
-        # These features depend on data window start and will differ between backtest/live
-        cumsum_patterns = ['bars_since_swing', 'consecutive_up', 'consecutive_down']
+        # ✅ FIXED: Exclude ALL cumsum/window-dependent features (same as training)
+        # These features depend on data window start and will differ between backtest/live:
+        # - obv: cumsum() from data start
+        # - volume_delta_cumsum: similar issue
+        # - swing_high_price/swing_low_price: ffill() from first swing
+        # - bars_since_swing: cumsum()
+        # - consecutive_up/down: groupby().cumsum()
+        cumsum_patterns = [
+            'bars_since_swing', 'consecutive_up', 'consecutive_down',
+            'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
+        ]
         cols_to_drop = [c for c in ft.columns if any(p in c.lower() for p in cumsum_patterns)]
         if cols_to_drop:
             logger.debug(f"Excluding cumsum-dependent features: {cols_to_drop}")
@@ -996,9 +1004,12 @@ def main():
                                 logger.debug(f"First 10 missing: {missing_features[:10]}")
                                 continue
                             
-                            # ✅ FIXED: Exclude cumsum-dependent features (same as backtest)
-                            # These should not be in models['features'], but double-check
-                            cumsum_patterns = ['bars_since_swing', 'consecutive_up', 'consecutive_down']
+                            # ✅ FIXED: Exclude ALL cumsum/window-dependent features (same as training)
+                            # These should not be in models['features'] after retraining, but double-check
+                            cumsum_patterns = [
+                                'bars_since_swing', 'consecutive_up', 'consecutive_down',
+                                'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
+                            ]
                             features_to_use = [f for f in models['features'] 
                                              if not any(p in f.lower() for p in cumsum_patterns)]
                             

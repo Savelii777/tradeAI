@@ -751,10 +751,12 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
         train_df = pd.concat(all_train).dropna()
         exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
                    'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change']
-        # Исключаем ВСЕ cumsum-зависимые фичи - их значения зависят от начала окна данных!
-        # bars_since_swing, consecutive_up/down - все используют cumsum()
-        # OBV уже удален из add_volume_features(), поэтому не нужно исключать
-        cumsum_patterns = ['bars_since_swing', 'consecutive_up', 'consecutive_down']
+        # Исключаем ВСЕ cumsum/window-зависимые фичи - их значения зависят от начала окна данных!
+        # Эти фичи работают на бэктесте, но ЛОМАЮТСЯ на лайве из-за разной длины данных
+        cumsum_patterns = [
+            'bars_since_swing', 'consecutive_up', 'consecutive_down',
+            'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
+        ]
         features = [c for c in train_df.columns if c not in exclude 
                     and not any(p in c.lower() for p in cumsum_patterns)]
         
@@ -951,10 +953,17 @@ def main():
     train_df = pd.concat(all_train).dropna()
     exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
                'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change']
-    # Исключаем ВСЕ cumsum-зависимые фичи - их значения зависят от начала окна данных!
-    # bars_since_swing, consecutive_up/down - все используют cumsum()
-    # OBV уже удален из add_volume_features(), поэтому не нужно исключать
-    cumsum_patterns = ['bars_since_swing', 'consecutive_up', 'consecutive_down']
+    # Исключаем ВСЕ cumsum/window-зависимые фичи - их значения зависят от начала окна данных!
+    # Эти фичи работают на бэктесте, но ЛОМАЮТСЯ на лайве из-за разной длины данных:
+    # - obv: cumsum() от начала данных
+    # - volume_delta_cumsum: аналогично
+    # - swing_high_price/swing_low_price: ffill() от первого свинга
+    # - bars_since_swing: cumsum()
+    # - consecutive_up/down: groupby().cumsum()
+    cumsum_patterns = [
+        'bars_since_swing', 'consecutive_up', 'consecutive_down',
+        'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
+    ]
     features = [c for c in train_df.columns if c not in exclude 
                 and not any(p in c.lower() for p in cumsum_patterns)]
     
