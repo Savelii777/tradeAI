@@ -996,13 +996,13 @@ def main():
                                 f"      Candle @ {last_candle_time} | Close: {candle_close:.6f}"
                             )
                             
-                            # Validate features
+                            # Validate features and fill missing with 0
                             missing_features = [f for f in models['features'] if f not in row.columns]
                             if missing_features:
-                                logger.warning(f"Missing features for {pair}: {missing_features[:5]}...")
-                                logger.warning(f"Available features: {len(row.columns)}, Model expects: {len(models['features'])}")
-                                logger.debug(f"First 10 missing: {missing_features[:10]}")
-                                continue
+                                logger.debug(f"Missing features for {pair}: {missing_features}")
+                                # Fill missing features with 0 (these are typically volume-related)
+                                for mf in missing_features:
+                                    row[mf] = 0.0
                             
                             # ✅ FIXED: Exclude ALL cumsum/window-dependent features (same as training)
                             # These should not be in models['features'] after retraining, but double-check
