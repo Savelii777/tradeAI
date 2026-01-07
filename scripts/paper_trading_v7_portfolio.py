@@ -28,11 +28,11 @@ from train_mtf import MTFFeatureEngine
 # ============================================================
 # CONFIG
 # ============================================================
-MODEL_DIR = Path("models/v7_sniper")
+MODEL_DIR = Path("models/v8_improved")
 PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades.json")
 TIMEFRAMES = ['1m', '5m', '15m']
-LOOKBACK = 1000 # Candles to fetch
+LOOKBACK = 1500  # ✅ OPTIMIZED: 1500 stabilizes rolling indicators & minimizes live/backtest divergence
 
 # Thresholds (Must match training)
 # ORIGINAL (SAFE) VALUES:
@@ -45,15 +45,21 @@ MIN_CONF = 0.50
 MIN_TIMING = 0.55    
 MIN_STRENGTH = 1.4  
 
-# Risk Management (From Backtest)
+# Risk Management (MATCHES BACKTEST)
 RISK_PCT = 0.05          # 5% risk per trade
 MAX_LEVERAGE = 20.0      # Max leverage
-SL_ATR = 1.5             # Stop Loss = 1.5 * ATR
-TP_RR = 100.0            # Take Profit = 100.0 * Risk (Virtually Unlimited, rely on Trailing)
+SL_ATR_BASE = 1.5        # Base Stop Loss = 1.5 * ATR
 MAX_HOLDING_BARS = 150   # Max holding time (12.5 hours)
 ENTRY_FEE = 0.0002       # 0.02%
 EXIT_FEE = 0.0002        # 0.02%
-INITIAL_CAPITAL = 20.0 # Virtual Capital
+INITIAL_CAPITAL = 20.0   # Virtual Capital
+MAX_POSITION_SIZE = 50000.0  # Max $50K position (BACKTEST LIMIT)
+SLIPPAGE_PCT = 0.0001        # 0.01% slippage (BACKTEST REALISM)
+
+# V8 IMPROVEMENTS
+USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
+USE_DYNAMIC_LEVERAGE = True  # Boost leverage for high-confidence signals
+USE_AGGRESSIVE_TRAIL = True  # Tighter trailing at medium R-multiples
 
 # Telegram Config
 TELEGRAM_TOKEN = "8270168075:AAHkJ_bbJGgk4fV3r0_Gc8NQb07O_zUMBJc"
@@ -99,172 +105,287 @@ class PortfolioManager:
 
         entry_price = signal['price']
         atr = signal['atr']
+        pred_strength = signal.get('strength', 2.0)
+        conf = signal.get('conf', 0.5)
+        timing = signal.get('timing', 0.5)
         
-        # Calculate SL/TP
-        stop_distance = atr * SL_ATR
+        # === V8: ADAPTIVE STOP LOSS (CORRECTED) ===
+        # Strong signal (High Conf) -> WIDER SL (Give room to breathe for big move)
+        # Weak signal (Low Conf) -> TIGHT SL (Cut losses fast if not moving)
+        if USE_ADAPTIVE_SL:
+            if pred_strength >= 3.0:      # Strong signal: room to breathe
+                sl_mult = 1.6
+            elif pred_strength >= 2.0:    # Medium signal: standard
+                sl_mult = 1.5
+            else:                          # Weak signal: tight leash
+                sl_mult = 1.2
+        else:
+            sl_mult = SL_ATR_BASE
+        
+        stop_distance = atr * sl_mult
         stop_loss_pct = stop_distance / entry_price
         
         if signal['direction'] == 'LONG':
             stop_loss = entry_price - stop_distance
-            take_profit = entry_price + (stop_distance * TP_RR)
         else:
             stop_loss = entry_price + stop_distance
-            take_profit = entry_price - (stop_distance * TP_RR)
+        
+        # === V8: DYNAMIC BREAKEVEN TRIGGER ===
+        if pred_strength >= 3.0:
+            be_trigger_mult = 1.8   # Wait longer for strong signals
+        elif pred_strength >= 2.0:
+            be_trigger_mult = 1.5   # Standard
+        else:
+            be_trigger_mult = 1.2   # Fast BE for weak signals
+            
+        # === V8: DYNAMIC RISK/LEVERAGE ===
+        if USE_DYNAMIC_LEVERAGE:
+            # Quality multiplier: 0.8x to 1.5x based on signal quality
+            # MUST match backtest formula (divider 0.5, not 0.3)
+            score = conf * timing
+            quality = (score / 0.5) * (timing / 0.6) * (pred_strength / 2.0)
+            quality_mult = np.clip(quality, 0.8, 1.5)
+            risk_pct = RISK_PCT * quality_mult
+        else:
+            risk_pct = RISK_PCT
             
         # Calculate Size & Leverage
         # Leverage = Risk% / SL% (capped at Max Leverage)
-        leverage = min(RISK_PCT / stop_loss_pct, MAX_LEVERAGE)
+        leverage = min(risk_pct / stop_loss_pct, MAX_LEVERAGE)
         position_value = self.capital * leverage
+        
+        # === BACKTEST LIMIT: Cap position size ===
+        if position_value > MAX_POSITION_SIZE:
+            position_value = MAX_POSITION_SIZE
+            leverage = position_value / self.capital
+        
         size = position_value / entry_price
         
         # Entry Fee
         fee = position_value * ENTRY_FEE
         self.capital -= fee # Deduct fee immediately
         
+        # CRITICAL: Store ORIGINAL entry price (without slippage) for SL/BE/Trailing calculations
+        # Slippage will be applied ONLY in PnL calculation (like backtest)
         self.position = {
             'pair': signal['pair'],
             'direction': signal['direction'],
-            'entry_price': entry_price,
+            'entry_price': entry_price,  # ORIGINAL price (NO slippage) - for SL/BE/Trailing
             'entry_time': datetime.now().isoformat(),
             'stop_loss': stop_loss,
-            'take_profit': take_profit,
             'stop_distance': stop_distance, # Saved for Trailing Stop
             'size': size,
             'leverage': leverage,
             'position_value': position_value,
             'bars_held': 0,
-            'highest_price': entry_price, # Track Peak for Trailing
-            'lowest_price': entry_price   # Track Bottom for Trailing
+            'breakeven_active': False,  # Track if breakeven is active
+            'last_candle_time': None,   # Track last processed candle to avoid duplicates
+            'pred_strength': pred_strength,  # V8: Save for adaptive trailing
+            'be_trigger_mult': be_trigger_mult  # V8: Dynamic BE trigger
         }
         
         self.save_state()
         self.send_alert(f"🟢 <b>OPEN {signal['direction']}</b> {signal['pair']}", 
-                        f"Price: {entry_price:.4f}\nLev: {leverage:.1f}x\nSize: ${position_value:.0f}\nSL: {stop_loss:.4f}\nTP: {take_profit:.4f}")
+                        f"Price: {entry_price:.4f}\nLev: {leverage:.1f}x\nSize: ${position_value:.0f}\nSL: {stop_loss:.4f} ({sl_mult:.1f}ATR)\nStrength: {pred_strength:.1f}")
 
-    def update(self, current_prices):
+    def update_trailing_stop(self, candle_data):
+        """
+        Update trailing stop using last completed candle (matches backtest logic).
+        V8 IMPROVEMENTS: Adaptive BE trigger, Aggressive trailing
+        """
         if self.position is None:
             return
 
         pair = self.position['pair']
-        if pair not in current_prices:
+        if pair not in candle_data:
             return
             
-        current_price = current_prices[pair]
+        candle = candle_data[pair]
+        bar_high = candle['high']
+        bar_low = candle['low']
+        bar_close = candle['close']
+        
+        # Only update on new candle (track last processed timestamp)
+        last_candle_time = self.position.get('last_candle_time')
+        current_candle_time = candle.get('timestamp')
+        
+        # Skip if same candle (avoid duplicate processing)
+        if last_candle_time == current_candle_time:
+            return
+            
+        self.position['last_candle_time'] = current_candle_time
         self.position['bars_held'] += 1
         
-        # --- TRAILING STOP LOGIC (PUMP CATCHER) ---
+        # --- V8 TRAILING STOP LOGIC ---
         pos = self.position
         entry_price = pos['entry_price']
         sl_dist = pos['stop_distance']
-        atr = sl_dist / SL_ATR # Reverse calc ATR from stored distance
+        # Calculate ATR from stop distance (account for adaptive SL)
+        # MUST match the sl_mult used during position opening!
+        pred_strength = pos.get('pred_strength', 2.0)
+        if USE_ADAPTIVE_SL:
+            if pred_strength >= 3.0:
+                sl_mult = 1.6  # Strong signal: wide SL
+            elif pred_strength >= 2.0:
+                sl_mult = 1.5  # Medium signal: standard
+            else:
+                sl_mult = 1.2  # Weak signal: tight SL
+        else:
+            sl_mult = SL_ATR_BASE
+        atr = sl_dist / sl_mult
         
-        # Update Peaks
-        if current_price > pos.get('highest_price', -1):
-            pos['highest_price'] = current_price
-        if current_price < pos.get('lowest_price', 99999999):
-            pos['lowest_price'] = current_price
+        sl_price = pos['stop_loss']
+        breakeven_active = pos.get('breakeven_active', False)
         
-        # Ensure defaults if missing (for migration)
-        if 'highest_price' not in pos: pos['highest_price'] = entry_price
-        if 'lowest_price' not in pos: pos['lowest_price'] = entry_price
-        
-        # 1. Breakeven Trigger (1.5 ATR)
-        be_trigger_dist = atr * 1.5
+        # V8: Dynamic BE trigger from position data
+        be_trigger_mult = pos.get('be_trigger_mult', 1.5)
+        be_trigger_dist = atr * be_trigger_mult
         
         if pos['direction'] == 'LONG':
-            # Calculate profit from PEAK, not current price (Conservative? No, Backtest uses Bar High)
-            # Actually, Breakeven trigger in backtest is: if bar['high'] >= be_trigger_price
-            # So we check if we EVER reached the trigger level
+            # 1. Check Stop Loss FIRST
+            if bar_low <= sl_price:
+                exit_price = sl_price
+                reason = "Stop Loss" if not breakeven_active else "Trailing Stop"
+                self.close_position(exit_price, reason)
+                return
             
-            highest_profit = pos['highest_price'] - entry_price
+            # 2. Check Breakeven Trigger
+            be_trigger_price = entry_price + be_trigger_dist
+            if not breakeven_active and bar_high >= be_trigger_price:
+                breakeven_active = True
+                pos['breakeven_active'] = True
+                sl_price = entry_price + (atr * 0.3)  # V8: Higher BE margin
+                pos['stop_loss'] = sl_price
+                logger.info(f"Moved to Breakeven+: {sl_price:.4f}")
             
-            # Check Breakeven
-            if highest_profit >= be_trigger_dist:
-                 new_sl = entry_price + (atr * 0.1)
-                 if new_sl > pos['stop_loss']:
-                     pos['stop_loss'] = new_sl
-                     logger.info(f"Moved to Breakeven: {pos['stop_loss']:.4f}")
-            
-            # Dynamic Trail
-            # Backtest: new_sl = bar['high'] - (atr * trail_mult)
-            # We trail from the HIGHEST price reached
-            if pos['stop_loss'] > entry_price:
-                current_profit_at_peak = pos['highest_price'] - entry_price
-                r_multiple = current_profit_at_peak / sl_dist
+            # 3. V8: AGGRESSIVE Progressive Trailing Stop
+            if breakeven_active:
+                current_profit = bar_high - entry_price
+                r_multiple = current_profit / sl_dist
                 
-                trail_mult = 2.0 # Default
-                if r_multiple > 5.0: trail_mult = 0.5
-                elif r_multiple > 3.0: trail_mult = 1.5
+                if USE_AGGRESSIVE_TRAIL:
+                    if r_multiple > 5.0:      # Super Pump: Lock it in
+                        trail_mult = 0.4
+                    elif r_multiple > 3.0:    # Good Trend: Tight trail
+                        trail_mult = 0.8
+                    elif r_multiple > 2.0:    # Medium: Medium trail
+                        trail_mult = 1.2
+                    else:                      # Early: Loose trail
+                        trail_mult = 1.8
+                else:
+                    trail_mult = 2.0
+                    if r_multiple > 5.0:
+                        trail_mult = 0.5
+                    elif r_multiple > 3.0:
+                        trail_mult = 1.5
                 
-                new_sl = pos['highest_price'] - (atr * trail_mult)
-                if new_sl > pos['stop_loss']:
-                    pos['stop_loss'] = new_sl
-                    logger.info(f"Trailing Stop Updated (R={r_multiple:.1f}): {pos['stop_loss']:.4f}")
+                new_sl = bar_high - (atr * trail_mult)
+                if new_sl > sl_price:
+                    sl_price = new_sl
+                    pos['stop_loss'] = sl_price
+                    logger.info(f"Trailing Stop Updated (R={r_multiple:.1f}, trail={trail_mult}ATR): {sl_price:.4f}")
                     
         else: # SHORT
-            lowest_profit = entry_price - pos['lowest_price']
+            # 1. Check Stop Loss FIRST
+            if bar_high >= sl_price:
+                exit_price = sl_price
+                reason = "Stop Loss" if not breakeven_active else "Trailing Stop"
+                self.close_position(exit_price, reason)
+                return
             
-            # Check Breakeven
-            if lowest_profit >= be_trigger_dist:
-                 new_sl = entry_price - (atr * 0.1)
-                 if new_sl < pos['stop_loss']:
-                     pos['stop_loss'] = new_sl
-                     logger.info(f"Moved to Breakeven: {pos['stop_loss']:.4f}")
+            # 2. Check Breakeven Trigger
+            be_trigger_price = entry_price - be_trigger_dist
+            if not breakeven_active and bar_low <= be_trigger_price:
+                breakeven_active = True
+                pos['breakeven_active'] = True
+                sl_price = entry_price - (atr * 0.3)  # V8: Higher BE margin
+                pos['stop_loss'] = sl_price
+                logger.info(f"Moved to Breakeven+: {sl_price:.4f}")
             
-            # Dynamic Trail
-            # Backtest: new_sl = bar['low'] + (atr * trail_mult)
-            if pos['stop_loss'] < entry_price:
-                current_profit_at_peak = entry_price - pos['lowest_price']
-                r_multiple = current_profit_at_peak / sl_dist
+            # 3. V8: AGGRESSIVE Progressive Trailing Stop
+            if breakeven_active:
+                current_profit = entry_price - bar_low
+                r_multiple = current_profit / sl_dist
                 
-                trail_mult = 2.0 # Default
-                if r_multiple > 5.0: trail_mult = 0.5
-                elif r_multiple > 3.0: trail_mult = 1.5
+                if USE_AGGRESSIVE_TRAIL:
+                    if r_multiple > 5.0:      # Super Pump: Lock it in
+                        trail_mult = 0.4
+                    elif r_multiple > 3.0:    # Good Trend: Tight trail
+                        trail_mult = 0.8
+                    elif r_multiple > 2.0:    # Medium: Medium trail
+                        trail_mult = 1.2
+                    else:                      # Early: Loose trail
+                        trail_mult = 1.8
+                else:
+                    trail_mult = 2.0
+                    if r_multiple > 5.0:
+                        trail_mult = 0.5
+                    elif r_multiple > 3.0:
+                        trail_mult = 1.5
                 
-                new_sl = pos['lowest_price'] + (atr * trail_mult)
-                if new_sl < pos['stop_loss']:
-                    pos['stop_loss'] = new_sl
-                    logger.info(f"Trailing Stop Updated (R={r_multiple:.1f}): {pos['stop_loss']:.4f}")
+                new_sl = bar_low + (atr * trail_mult)
+                if new_sl < sl_price:
+                    sl_price = new_sl
+                    pos['stop_loss'] = sl_price
+                    logger.info(f"Trailing Stop Updated (R={r_multiple:.1f}, trail={trail_mult}ATR): {sl_price:.4f}")
 
-        # Check Exit Conditions
+        # Save state after updating stop loss
+        self.save_state()
+
+    def check_stop_loss(self, current_price):
+        """
+        Check stop loss using current price (called frequently for better protection).
+        This allows faster exit than waiting for candle close.
+        """
+        if self.position is None:
+            return False
+            
+        pos = self.position
+        sl_price = pos['stop_loss']
+        entry_price = pos['entry_price']
+        breakeven_active = pos.get('breakeven_active', False)
+        
         should_exit = False
         reason = ""
         
-        # 1. Time Limit
-        if self.position['bars_held'] >= MAX_HOLDING_BARS:
+        # Time Limit Check
+        if pos['bars_held'] >= MAX_HOLDING_BARS:
             should_exit = True
             reason = "Time Limit"
-            
-        # 2. Stop Loss (No Fixed TP)
-        if self.position['direction'] == 'LONG':
-            if current_price <= self.position['stop_loss']:
+        
+        # Stop Loss Check (using current price for faster execution)
+        elif pos['direction'] == 'LONG':
+            if current_price <= sl_price:
                 should_exit = True
-                # Determine if it was a Stop Loss or Trailing Stop
-                # If SL is still below entry (and we never moved it up significantly), it's a Stop Loss
-                # If SL is above entry, it's a Trailing Stop / Breakeven
-                if self.position['stop_loss'] < entry_price:
-                    reason = "Stop Loss"
-                else:
-                    reason = "Trailing Stop"
+                reason = "Stop Loss" if sl_price < entry_price else "Trailing Stop"
         else: # SHORT
-            if current_price >= self.position['stop_loss']:
+            if current_price >= sl_price:
                 should_exit = True
-                if self.position['stop_loss'] > entry_price:
-                    reason = "Stop Loss"
-                else:
-                    reason = "Trailing Stop"
-                
+                reason = "Stop Loss" if sl_price > entry_price else "Trailing Stop"
+        
         if should_exit:
+            # Pass raw price - slippage will be applied in close_position()
             self.close_position(current_price, reason)
+            return True
+        
+        return False
 
     def close_position(self, exit_price, reason):
+        """
+        Close position with BACKTEST LOGIC.
+        Slippage applied HERE in PnL calculation (not at entry).
+        """
         pos = self.position
         
-        # Calculate PnL
+        # Apply slippage to BOTH entry and exit (like backtest)
         if pos['direction'] == 'LONG':
-            price_change = (exit_price - pos['entry_price']) / pos['entry_price']
+            effective_entry = pos['entry_price'] * (1 + SLIPPAGE_PCT)
+            effective_exit = exit_price * (1 - SLIPPAGE_PCT)
+            price_change = (effective_exit - effective_entry) / effective_entry
         else:
-            price_change = (pos['entry_price'] - exit_price) / pos['entry_price']
+            effective_entry = pos['entry_price'] * (1 - SLIPPAGE_PCT)
+            effective_exit = exit_price * (1 + SLIPPAGE_PCT)
+            price_change = (effective_entry - effective_exit) / effective_entry
             
         raw_pnl = price_change * pos['position_value']
         exit_fee = pos['position_value'] * EXIT_FEE
@@ -435,16 +556,35 @@ def main():
         print(f"{'PAIR':<15} | {'DIR':<8} | {'CONF':<6} | {'TIMING':<6} | {'STR':<5} | {'STATUS'}")
         print("-" * 75)
 
-        current_prices = {}
+        candle_data = {}  # Store last completed candle data for position updates
         
         for pair in pairs:
             try:
                 data = fetch_live_data(exchange, pair)
                 if not data: continue
                 
-                # Store current price for portfolio update
-                current_price = data['5m']['close'].iloc[-1]
-                current_prices[pair] = current_price
+                # Use last completed candle ([-2]) for signal generation and position updates
+                # This matches backtest logic which uses closed candles
+                if len(data['5m']) < 2: continue
+                last_completed_candle = data['5m'].iloc[-2]
+                
+                # Store candle data for position updates (matches backtest bar-by-bar logic)
+                candle_data[pair] = {
+                    'high': last_completed_candle['high'],
+                    'low': last_completed_candle['low'],
+                    'close': last_completed_candle['close'],
+                    'timestamp': last_completed_candle.name
+                }
+                
+                # Get current live price for entry (faster entry, inside the current candle)
+                try:
+                    clean_symbol = pair.replace('_', '/')
+                    if '/' not in clean_symbol:
+                        clean_symbol = f"{pair[:-4]}/{pair[-4:]}"
+                    ticker = exchange.fetch_ticker(clean_symbol)
+                    current_price = ticker['last']  # Live price
+                except:
+                    current_price = last_completed_candle['close']  # Fallback
                 
                 df = prepare_features(data, mtf_fe)
                 
@@ -486,16 +626,8 @@ def main():
                         last_time = last_processed.get(pair)
                         current_time = signal['timestamp']
                         
-                        # Check for Stale Signal (Must be within 2 minutes of candle close)
-                        # Candle Timestamp is Open Time. Close Time is +5m.
-                        candle_close_time = current_time + timedelta(minutes=5)
-                        # Use UTC to match CCXT/Pandas timestamps
-                        now = datetime.now(timezone.utc).replace(tzinfo=None)
-                        delay = (now - candle_close_time).total_seconds()
-                        
-                        if delay > 120: # If more than 2 minutes late
-                             status = f"STALE ({int(delay)}s)"
-                        elif last_time != current_time:
+                        # NO STALE CHECK - Enter immediately on signal (like backtest)
+                        if last_time != current_time:
                             portfolio.open_position(signal)
                             last_processed[pair] = current_time
                     else:
@@ -513,8 +645,26 @@ def main():
         
         print("="*60 + "\n")
         
-        # Update active positions
-        portfolio.update(current_prices)
+        # 1. Update trailing stops using last completed candles (matches backtest logic)
+        # This updates stop loss based on candle high/low (like backtest) - called every 10s but only processes new candles
+        portfolio.update_trailing_stop(candle_data)
+        
+        # 2. Check stop loss with current prices (frequent check every 10s for better protection)
+        # This allows faster exit than waiting for candle close
+        if portfolio.position:
+            pair = portfolio.position['pair']
+            try:
+                # Get current ticker price for stop loss check
+                clean_symbol = pair.replace('_', '/')
+                if '/' not in clean_symbol:
+                    clean_symbol = f"{clean_symbol[:-4]}/{clean_symbol[-4:]}"
+                ticker = exchange.fetch_ticker(clean_symbol)
+                current_price = ticker['last']  # Last traded price
+                
+                # Check if stop loss was hit (uses current price for faster execution)
+                portfolio.check_stop_loss(current_price)
+            except Exception as e:
+                logger.error(f"Error checking stop loss for {pair}: {e}")
             
         time.sleep(10)
 

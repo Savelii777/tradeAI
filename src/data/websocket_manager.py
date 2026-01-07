@@ -72,9 +72,9 @@ class WebSocketManager:
         self._ping_task: Optional[asyncio.Task] = None
         
         # Reconnection settings
-        self._reconnect_delay = 1.0
-        self._max_reconnect_delay = 30.0
-        self._ping_interval = 30
+        self._reconnect_delay = 5.0  # Increased from 1.0
+        self._max_reconnect_delay = 60.0  # Increased from 30.0
+        self._ping_interval = 60  # Increased from 30 - ping every 60 seconds
         
         # Get WebSocket URL
         self._ws_url = self.WS_ENDPOINTS.get(
@@ -96,9 +96,10 @@ class WebSocketManager:
             
             self._ws = await websockets.connect(
                 self._ws_url,
-                ping_interval=20,
-                ping_timeout=10,
-                close_timeout=5
+                ping_interval=30,  # Increased from 20
+                ping_timeout=20,   # Increased from 10
+                close_timeout=10,  # Increased from 5
+                max_size=10 * 1024 * 1024  # 10MB buffer
             )
             
             self._connected = True
@@ -580,11 +581,19 @@ class WebSocketManager:
             elif trade_data.get('S', '').lower() == 'sell':
                 side = 'sell'
             
+            # Parse price - try multiple fields
+            price = float(trade_data.get('p', 0) or trade_data.get('price', 0) or 0)
+            quantity = float(trade_data.get('q', 0) or trade_data.get('qty', 0) or trade_data.get('size', 0) or 0)
+            
+            # If price is still 0, it's a heartbeat/status message - ignore silently
+            if price == 0:
+                return None
+            
             return Trade(
                 timestamp=ts,
                 symbol=symbol,
-                price=float(trade_data.get('p', trade_data.get('price', 0))),
-                quantity=float(trade_data.get('q', trade_data.get('qty', trade_data.get('size', 0)))),
+                price=price,
+                quantity=quantity,
                 side=side
             )
         except Exception as e:
@@ -593,15 +602,25 @@ class WebSocketManager:
 
     async def _ping_loop(self) -> None:
         """Send periodic pings to keep connection alive."""
+        consecutive_errors = 0
         while self._connected:
             try:
                 await asyncio.sleep(self._ping_interval)
                 if self._ws and self._connected:
                     await self._ws.ping()
+                    consecutive_errors = 0  # Reset on success
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self.logger.warning(f"Ping error: {e}")
+                consecutive_errors += 1
+                # Only log every 5th error to reduce spam
+                if consecutive_errors % 5 == 1:
+                    self.logger.warning(f"Ping error ({consecutive_errors}x): {e}")
+                # If too many errors, trigger reconnect
+                if consecutive_errors >= 10:
+                    self.logger.error("Too many ping errors, triggering reconnect...")
+                    asyncio.create_task(self._handle_reconnect())
+                    break
 
     async def _handle_reconnect(self) -> None:
         """Handle automatic reconnection on connection loss."""
@@ -609,42 +628,54 @@ class WebSocketManager:
             return
             
         self._reconnecting = True
-        self.logger.warning("Connection lost, attempting to reconnect...")
+        self.logger.warning("⚠️ Connection lost, waiting before reconnect...")
         
         # Store current subscriptions
         saved_subscriptions = dict(self._subscriptions)
         saved_callbacks = dict(self._callbacks)
         
-        while self._connected:
+        reconnect_attempts = 0
+        while self._connected and reconnect_attempts < 5:  # Max 5 attempts
             try:
-                # Wait before reconnecting
-                await asyncio.sleep(self._reconnect_delay)
+                reconnect_attempts += 1
+                # Exponential backoff: 5s, 10s, 20s, 40s, 60s
+                wait_time = min(self._reconnect_delay * (2 ** (reconnect_attempts - 1)), self._max_reconnect_delay)
+                self.logger.info(f"Reconnect attempt {reconnect_attempts}/5 in {wait_time:.0f}s...")
+                await asyncio.sleep(wait_time)
                 
                 # Try to connect
                 await self.connect()
                 
-                # Restore subscriptions
-                for sub_id, sub_info in saved_subscriptions.items():
+                # Restore subscriptions with delay
+                for i, (sub_id, sub_info) in enumerate(saved_subscriptions.items()):
                     try:
                         message = self._format_subscribe_message(sub_info['stream'])
                         await self._ws.send(json.dumps(message))
                         self._subscriptions[sub_id] = sub_info
                         self._callbacks[sub_id] = saved_callbacks.get(sub_id)
+                        # Delay between re-subscriptions to avoid rate limit
+                        if i < len(saved_subscriptions) - 1:
+                            await asyncio.sleep(0.6)
                     except Exception as e:
                         self.logger.warning(f"Failed to restore subscription: {e}")
                 
-                self.logger.info("Reconnected and restored subscriptions")
+                self.logger.info("✅ Reconnected and restored subscriptions")
                 self._reconnecting = False
                 return
                 
             except Exception as e:
                 self.logger.warning(
-                    f"Reconnection failed: {e}, retrying in {self._reconnect_delay}s"
+                    f"❌ Reconnection attempt {reconnect_attempts}/5 failed: {e}"
                 )
                 self._reconnect_delay = min(
                     self._reconnect_delay * 2,
                     self._max_reconnect_delay
                 )
+        
+        if reconnect_attempts >= 5:
+            self.logger.error("❌ Failed to reconnect after 5 attempts, giving up")
+        
+        self._reconnecting = False
         
         self._reconnecting = False
 

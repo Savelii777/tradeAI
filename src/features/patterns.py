@@ -404,5 +404,4 @@ class CandlePatterns:
         patterns['bullish_pattern_sum'] += patterns['engulfing'].clip(lower=0)
         patterns['bearish_pattern_sum'] += (-patterns['engulfing']).clip(lower=0)
         
-        logger.debug(f"Detected patterns for {len(df)} candles")
         return patterns

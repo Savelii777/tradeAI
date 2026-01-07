@@ -317,27 +317,22 @@ class FeatureEngine:
         # Basic OHLCV features
         ohlcv_features = self.generate_ohlcv_features(df)
         all_features = pd.concat([all_features, ohlcv_features], axis=1)
-        logger.debug(f"Generated {len(ohlcv_features.columns)} OHLCV features")
         
         # Technical indicators
         indicator_features = self.indicators.calculate_all_indicators(df)
         all_features = pd.concat([all_features, indicator_features], axis=1)
-        logger.debug(f"Generated {len(indicator_features.columns)} indicator features")
         
         # Candlestick patterns
         pattern_features = self.patterns.detect_all_patterns(df)
         all_features = pd.concat([all_features, pattern_features], axis=1)
-        logger.debug(f"Generated {len(pattern_features.columns)} pattern features")
         
         # Market structure
         structure_features = self.market_structure.calculate_all_structure_features(df)
         all_features = pd.concat([all_features, structure_features], axis=1)
-        logger.debug(f"Generated {len(structure_features.columns)} structure features")
         
         # Time features
         time_features = self.generate_time_features(df)
         all_features = pd.concat([all_features, time_features], axis=1)
-        logger.debug(f"Generated {len(time_features.columns)} time features")
         
         # Multi-timeframe features
         if additional_timeframes:
@@ -346,7 +341,6 @@ class FeatureEngine:
                 base_timeframe='5m'
             )
             all_features = pd.concat([all_features, mtf_features], axis=1)
-            logger.debug(f"Generated {len(mtf_features.columns)} MTF features")
             
         # Remove duplicate columns
         all_features = all_features.loc[:, ~all_features.columns.duplicated()]
@@ -361,7 +355,6 @@ class FeatureEngine:
         # Store feature columns
         self._feature_columns = all_features.columns.tolist()
         
-        logger.info(f"Generated {len(all_features.columns)} total features")
         return all_features
         
     def get_feature_names(self) -> List[str]:

@@ -65,7 +65,11 @@ class MarketStructure:
         swing_high = pd.Series(False, index=df.index)
         swing_low = pd.Series(False, index=df.index)
         
-        for i in range(self.swing_period, len(df) - self.swing_period):
+        # FIXED: Use larger end buffer to ensure stability when new candles are added
+        # Without this, swings near the end of dataset change as new data arrives
+        end_buffer = self.swing_period * 3  # 3x buffer for stability
+        
+        for i in range(self.swing_period, len(df) - end_buffer):
             # Check if current high is highest in window
             window_start = i - self.swing_period
             window_end = i + self.swing_period + 1
@@ -81,8 +85,10 @@ class MarketStructure:
                     
         swings['swing_high'] = swing_high
         swings['swing_low'] = swing_low
-        swings['swing_high_price'] = high.where(swing_high, np.nan).ffill()
-        swings['swing_low_price'] = low.where(swing_low, np.nan).ffill()
+        # FIXED: limit ffill to 200 bars to ensure consistency between live and backtest
+        # Without limit, ffill propagates from FIRST swing in dataset, causing divergence
+        swings['swing_high_price'] = high.where(swing_high, np.nan).ffill(limit=200)
+        swings['swing_low_price'] = low.where(swing_low, np.nan).ffill(limit=200)
         
         # Distance to last swing
         swings['bars_since_swing_high'] = swing_high.cumsum()
@@ -107,9 +113,9 @@ class MarketStructure:
         swing_highs = df['high'].where(swings['swing_high'], np.nan)
         swing_lows = df['low'].where(swings['swing_low'], np.nan)
         
-        # Previous swing values
-        prev_swing_high = swing_highs.ffill().shift(1)
-        prev_swing_low = swing_lows.ffill().shift(1)
+        # Previous swing values (limit=200 for live/backtest consistency)
+        prev_swing_high = swing_highs.ffill(limit=200).shift(1)
+        prev_swing_low = swing_lows.ffill(limit=200).shift(1)
         
         # Detect patterns
         result['higher_high'] = (swing_highs > prev_swing_high) & swings['swing_high']
@@ -397,5 +403,4 @@ class MarketStructure:
         regime = self.classify_regime(df)
         all_features = pd.concat([all_features, regime], axis=1)
         
-        logger.debug(f"Calculated {len(all_features.columns)} market structure features")
         return all_features

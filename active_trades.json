@@ -1,16 +1,36 @@
 {
-    "capital": 19.91083987728346,
+    "capital": 24.2584963710633,
     "position": null,
     "history": [
         {
-            "pair": "ASTER/USDT:USDT",
-            "direction": "SHORT",
-            "entry": 0.6929,
-            "exit": 0.693,
-            "pnl": -0.05639999490325441,
-            "pnl_pct": -0.28199997451627207,
+            "pair": "ADA/USDT:USDT",
+            "direction": "LONG",
+            "entry": 0.3699,
+            "exit": 0.3843,
+            "pnl": 2.917637785959946,
+            "pnl_pct": 14.588188929799731,
             "reason": "Trailing Stop",
-            "time": "2025-12-29T15:23:25.162726"
+            "time": "2026-01-02T19:41:14.118057"
+        },
+        {
+            "pair": "ADA/USDT:USDT",
+            "direction": "LONG",
+            "entry": 0.3835,
+            "exit": 0.3896,
+            "pnl": 1.2168228204951654,
+            "pnl_pct": 5.313040267963142,
+            "reason": "Trailing Stop",
+            "time": "2026-01-02T20:06:52.967724"
+        },
+        {
+            "pair": "DOGE/USDT:USDT",
+            "direction": "LONG",
+            "entry": 0.13865,
+            "exit": 0.1389297112553696,
+            "pnl": 0.17371430292789372,
+            "pnl_pct": 0.7206896412849303,
+            "reason": "Trailing Stop",
+            "time": "2026-01-03T00:01:17.809169"
         }
     ]
 }
