@@ -950,8 +950,8 @@ def main():
                                             
                                             # Stop if we have enough
                                             if len(all_candles) >= LOOKBACK:
-                                                # Keep only the oldest LOOKBACK candles
-                                                all_candles = sorted(all_candles, key=lambda x: x[0])[:LOOKBACK]
+                                                # Keep only the NEWEST LOOKBACK candles (not oldest!)
+                                                all_candles = sorted(all_candles, key=lambda x: x[0])[-LOOKBACK:]
                                                 break
                                             
                                             time.sleep(0.1)  # Rate limit
@@ -976,6 +976,14 @@ def main():
                                 df = df[~df.index.duplicated(keep='first')]
                                 df.sort_index(inplace=True)
                                 
+                                # 🔍 DEBUG: Log data range to verify we have fresh data
+                                import datetime
+                                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                                oldest = df.index[0]
+                                newest = df.index[-1]
+                                age_seconds = (now_utc - newest.to_pydatetime()).total_seconds()
+                                logger.debug(f"      [{tf}] Data: {len(df)} candles | Range: {oldest} to {newest} | Age: {age_seconds:.0f}s")
+                                
                                 data[tf] = df
                             
                             if not valid:
@@ -992,8 +1000,18 @@ def main():
                             # Log candle timestamp and close to confirm we're on fresh data
                             last_candle_time = row.index[0]
                             candle_close = row['close'].iloc[0]
+                            
+                            # 🔍 DEBUG: Check candle age - should be < 10 minutes for 5m candles
+                            import datetime
+                            now_utc = datetime.datetime.now(datetime.timezone.utc)
+                            candle_age_sec = (now_utc - last_candle_time.to_pydatetime()).total_seconds()
+                            candle_age_min = candle_age_sec / 60
+                            
+                            if candle_age_min > 10:
+                                logger.warning(f"      ⚠️ STALE DATA! Candle age: {candle_age_min:.1f} min (should be < 10)")
+                            
                             logger.info(
-                                f"      Candle @ {last_candle_time} | Close: {candle_close:.6f}"
+                                f"      Candle @ {last_candle_time} | Close: {candle_close:.6f} | Age: {candle_age_min:.1f} min"
                             )
                             
                             # Validate features and fill missing with 0
