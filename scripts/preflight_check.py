@@ -71,7 +71,7 @@ ABSOLUTE_PATTERNS = [
     r'^m15_atr$',
     r'^m15_volume_ma$',
     r'^vol_sma_20$',
-    r'^vwap$',
+    r'^vwap$',                 # Absolute VWAP value (price_vs_vwap is OK)
 ]
 
 # Required files

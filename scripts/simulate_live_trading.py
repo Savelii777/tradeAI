@@ -2,10 +2,10 @@
 """
 Live Trading Simulation Test
 
-Симулирует live trading на последних N часах данных, 
-сравнивая с бектестом на тех же данных.
+Simulates live trading on the last N hours of data,
+comparing with backtest on the same data.
 
-Цель: убедиться что live trading логика идентична бектесту.
+Goal: ensure live trading logic is identical to backtest.
 
 Usage:
     python scripts/simulate_live_trading.py --pair BTC_USDT_USDT --hours 48
@@ -266,7 +266,10 @@ def simulate_live_vs_backtest(pair: str, test_hours: int = 48,
         ft = ft.join(m5_limited[['open', 'high', 'low', 'close', 'volume']])
         ft = add_volume_features(ft)
         ft['atr'] = calculate_atr(ft)
-        ft = ft.replace([np.inf, -np.inf], np.nan).ffill().dropna()
+        # Handle NaN consistently with training
+        ft = ft.replace([np.inf, -np.inf], np.nan)
+        ft = ft.ffill()
+        ft = ft.dropna()
         
         if len(ft) < 2:
             continue
@@ -286,7 +289,10 @@ def simulate_live_vs_backtest(pair: str, test_hours: int = 48,
             continue
         
         X = row[feature_cols].values
-        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+        # Handle NaN/Inf the same way as training - ffill already applied above
+        # For remaining NaN after ffill, use 0.0 as last resort
+        if np.any(np.isnan(X)) or np.any(np.isinf(X)):
+            X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
         
         dir_proba = models['direction'].predict_proba(X)
         dir_conf = float(np.max(dir_proba))
@@ -324,7 +330,10 @@ def simulate_live_vs_backtest(pair: str, test_hours: int = 48,
     ft_backtest = ft_backtest.join(m5_full[['open', 'high', 'low', 'close', 'volume']])
     ft_backtest = add_volume_features(ft_backtest)
     ft_backtest['atr'] = calculate_atr(ft_backtest)
-    ft_backtest = ft_backtest.replace([np.inf, -np.inf], np.nan).ffill().dropna()
+    # Handle NaN consistently with training
+    ft_backtest = ft_backtest.replace([np.inf, -np.inf], np.nan)
+    ft_backtest = ft_backtest.ffill()
+    ft_backtest = ft_backtest.dropna()
     
     # Filter to test period
     ft_test = ft_backtest[ft_backtest.index >= start_time]
