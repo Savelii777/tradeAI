@@ -54,7 +54,9 @@ MODEL_DIR = Path("models/v8_improved")
 PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
-LOOKBACK = 3000  # ✅ FIXED: 3000+ needed for proper indicator stabilization (EMA 200, VWAP 200, rolling vol 100)
+LOOKBACK = 1000  # ✅ UPDATED: Reduced to 1000 to speed up scanning (fits in 1 API request). 
+                 # 3000 took ~6 mins to scan, leading to late entries.
+                 # 1000 is still enough for EMA-200 convergence (5x period).
 
 # V8 IMPROVED Thresholds (UPDATED for new Timing model)
 MIN_CONF = 0.50       # Direction confidence
@@ -63,13 +65,13 @@ MIN_STRENGTH = 1.4    # Strength prediction
 
 # Risk Management (EXACT backtest settings)
 RISK_PCT = 0.05
-MAX_LEVERAGE = 20.0
+MAX_LEVERAGE = 50.0
 MAX_HOLDING_BARS = 150  # 12.5 hours
 ENTRY_FEE = 0.0002
 EXIT_FEE = 0.0002
 INITIAL_CAPITAL = 20.0
 SL_ATR_BASE = 1.5
-MAX_POSITION_SIZE = 50000.0
+MAX_POSITION_SIZE = 200000.0
 SLIPPAGE_PCT = 0.0001
 
 # V8 Features
@@ -703,7 +705,8 @@ def add_volume_features(df):
     df['vwap'] = (df['close'] * df['volume']).rolling(20).sum() / df['volume'].rolling(20).sum()
     df['price_vs_vwap'] = df['close'] / df['vwap'] - 1
     
-    df['vol_momentum'] = df['volume'].pct_change(5)
+    # ✅ FIX: Clip extreme spikes (PIPPIN had 431x volume spike)
+    df['vol_momentum'] = df['volume'].pct_change(5).clip(-10, 10)
     
     return df
 
@@ -767,6 +770,20 @@ def prepare_features(data, mtf_fe):
     m5 = data['5m']
     m15 = data['15m']
     
+    # 🔍 SUPER DEBUG: Log raw data stats BEFORE any processing
+    logger.debug("=" * 70)
+    logger.debug("🔍 [PREPARE_FEATURES] RAW DATA STATS BEFORE PROCESSING")
+    logger.debug("=" * 70)
+    for tf, df in [('M1', m1), ('M5', m5), ('M15', m15)]:
+        logger.debug(f"[{tf}] Shape: {df.shape}")
+        logger.debug(f"[{tf}] Index range: {df.index[0]} to {df.index[-1]}")
+        logger.debug(f"[{tf}] Close range: {df['close'].min():.6f} to {df['close'].max():.6f}")
+        logger.debug(f"[{tf}] Volume range: {df['volume'].min():.2f} to {df['volume'].max():.2f}")
+        # Last 3 candles
+        logger.debug(f"[{tf}] Last 3 candles:")
+        for idx, row in df.tail(3).iterrows():
+            logger.debug(f"    {idx} | C:{row['close']:.6f} V:{row['volume']:.2f}")
+    
     if len(m1) < 200 or len(m5) < 200 or len(m15) < 200:
         logger.warning(f"Insufficient data: M1={len(m1)}, M5={len(m5)}, M15={len(m15)}")
         return pd.DataFrame()
@@ -780,26 +797,58 @@ def prepare_features(data, mtf_fe):
         df = df[~df.index.duplicated(keep='first')]
     
     try:
+        logger.debug("[PREPARE_FEATURES] Calling mtf_fe.align_timeframes()...")
         ft = mtf_fe.align_timeframes(m1, m5, m15)
+        
         if len(ft) == 0:
+            logger.warning("[PREPARE_FEATURES] align_timeframes returned empty DataFrame!")
             return pd.DataFrame()
         
+        logger.debug(f"[PREPARE_FEATURES] After align_timeframes: {ft.shape}")
+        logger.debug(f"[PREPARE_FEATURES] Columns after align: {list(ft.columns[:20])}...")
+        
+        # 🔍 DEBUG: Check key M15 features BEFORE join
+        m15_cols = [c for c in ft.columns if c.startswith('m15_')]
+        if m15_cols:
+            last_row = ft.iloc[-2] if len(ft) > 1 else ft.iloc[-1]
+            logger.debug(f"[M15_FEATURES] Last closed candle ({ft.index[-2] if len(ft) > 1 else ft.index[-1]}):")
+            for col in m15_cols[:10]:
+                val = last_row[col]
+                logger.debug(f"    {col}: {val:.6f}" if pd.notna(val) else f"    {col}: NaN")
+        
+        # 🔍 DEBUG: Check key M1 features BEFORE join  
+        m1_cols = [c for c in ft.columns if c.startswith('m1_')]
+        if m1_cols:
+            last_row = ft.iloc[-2] if len(ft) > 1 else ft.iloc[-1]
+            logger.debug(f"[M1_FEATURES] Sample (last closed candle):")
+            for col in m1_cols[:10]:
+                val = last_row[col]
+                logger.debug(f"    {col}: {val:.6f}" if pd.notna(val) else f"    {col}: NaN")
+        
         ft = ft.join(m5[['open', 'high', 'low', 'close', 'volume']])
+        logger.debug(f"[PREPARE_FEATURES] After join with OHLCV: {ft.shape}")
+        
         ft = add_volume_features(ft)
+        logger.debug(f"[PREPARE_FEATURES] After add_volume_features: {ft.shape}")
+        
+        # 🔍 DEBUG: Check volume features
+        last_row = ft.iloc[-2] if len(ft) > 1 else ft.iloc[-1]
+        logger.debug(f"[VOLUME_FEATURES] vol_sma_20={last_row.get('vol_sma_20', 'N/A')}")
+        logger.debug(f"[VOLUME_FEATURES] vol_ratio={last_row.get('vol_ratio', 'N/A')}")
+        logger.debug(f"[VOLUME_FEATURES] vwap={last_row.get('vwap', 'N/A')}")
+        logger.debug(f"[VOLUME_FEATURES] price_vs_vwap={last_row.get('price_vs_vwap', 'N/A')}")
+        
         ft['atr'] = calculate_atr(ft)
+        logger.debug(f"[PREPARE_FEATURES] ATR calculated. Last value: {ft['atr'].iloc[-2] if len(ft) > 1 else ft['atr'].iloc[-1]:.6f}")
         
         # ✅ FIXED: Match backtest NaN handling - DROP rows with NaN in critical cols
         # DO NOT fill NaN with 0 or ffill - this changes feature distributions!
         critical_cols = ['close', 'atr']
+        before_dropna = len(ft)
         ft = ft.dropna(subset=critical_cols)
+        logger.debug(f"[PREPARE_FEATURES] Dropped {before_dropna - len(ft)} rows with NaN in critical cols")
         
         # ✅ FIXED: Exclude ALL cumsum/window-dependent features (same as training)
-        # These features depend on data window start and will differ between backtest/live:
-        # - obv: cumsum() from data start
-        # - volume_delta_cumsum: similar issue
-        # - swing_high_price/swing_low_price: ffill() from first swing
-        # - bars_since_swing: cumsum()
-        # - consecutive_up/down: groupby().cumsum()
         cumsum_patterns = [
             'bars_since_swing', 'consecutive_up', 'consecutive_down',
             'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
@@ -809,18 +858,36 @@ def prepare_features(data, mtf_fe):
             logger.debug(f"Excluding cumsum-dependent features: {cols_to_drop}")
             ft = ft.drop(columns=cols_to_drop)
         
-        # Only forward-fill for non-critical columns (to avoid breaking alignment)
-        # But DO NOT fill critical columns - drop them if NaN
+        # Only forward-fill for non-critical columns
         non_critical = [c for c in ft.columns if c not in critical_cols]
         if non_critical:
+            nan_before = ft[non_critical].isna().sum().sum()
             ft[non_critical] = ft[non_critical].ffill()
+            nan_after = ft[non_critical].isna().sum().sum()
+            logger.debug(f"[PREPARE_FEATURES] Forward-filled {nan_before - nan_after} NaN values")
         
-        # Final check: if still NaN in critical cols, drop those rows
-        ft = ft.dropna(subset=critical_cols)
+        # Final check
+        ft = ft.dropna()  # Remove warmup rows (e.g. first 200 for EMA-200)
         
         if len(ft) == 0:
-            logger.warning("No valid rows after NaN handling")
+            logger.warning("No valid rows after final NaN handling (all rows were warmup?)")
             return pd.DataFrame()
+        
+        # 🔍 FINAL DEBUG: Show final feature stats
+        logger.debug("=" * 70)
+        logger.debug(f"[PREPARE_FEATURES] FINAL: {ft.shape[0]} rows, {ft.shape[1]} columns")
+        logger.debug(f"[PREPARE_FEATURES] Index range: {ft.index[0]} to {ft.index[-1]}")
+        
+        # Check for remaining NaN/Inf
+        nan_count = ft.isna().sum().sum()
+        inf_count = np.isinf(ft.select_dtypes(include=[np.number])).sum().sum()
+        logger.debug(f"[PREPARE_FEATURES] Remaining NaN: {nan_count}, Inf: {inf_count}")
+        
+        if nan_count > 0:
+            nan_cols = ft.columns[ft.isna().any()].tolist()
+            logger.warning(f"[PREPARE_FEATURES] Columns with NaN: {nan_cols}")
+        
+        logger.debug("=" * 70)
         
         return ft
     except Exception as e:
@@ -895,6 +962,18 @@ def main():
                     signals_checked = 0
                     signals_found = 0
                     
+                    # 🔍 Собираем статистику по всем парам для анализа
+                    scan_stats = {
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
+                        'pairs_scanned': 0,
+                        'sideways_count': 0,
+                        'rejected_conf': 0,
+                        'rejected_timing': 0,
+                        'rejected_strength': 0,
+                        'signals_found': 0,
+                        'predictions': []  # Все предсказания
+                    }
+                    
                     for pair in pairs:
                         signals_checked += 1
                         logger.info(f"   [{signals_checked}/{len(pairs)}] Checking {pair}...")
@@ -909,14 +988,27 @@ def main():
                                 # For LOOKBACK=3000, we need multiple requests
                                 all_candles = []
                                 limit_per_request = 1000
+                                fetch_requests = 0
                                 
                                 # First request: get latest candles
                                 try:
+                                    logger.debug(f"      [{tf}] Fetching from Binance (limit={min(limit_per_request, LOOKBACK)})...")
                                     candles = binance.fetch_ohlcv(pair, tf, limit=min(limit_per_request, LOOKBACK))
+                                    fetch_requests += 1
+                                    
                                     if not candles or len(candles) < 50:
+                                        logger.warning(f"      [{tf}] Got only {len(candles) if candles else 0} candles (need 50+)")
                                         valid = False
                                         break
+                                    
                                     all_candles.extend(candles)
+                                    logger.debug(f"      [{tf}] Got {len(candles)} candles in request #1")
+                                    
+                                    # Логируем первую и последнюю свечу
+                                    first_ts = datetime.fromtimestamp(candles[0][0]/1000, tz=timezone.utc)
+                                    last_ts = datetime.fromtimestamp(candles[-1][0]/1000, tz=timezone.utc)
+                                    logger.debug(f"      [{tf}] Range: {first_ts} to {last_ts}")
+                                    
                                 except Exception as e:
                                     logger.warning(f"Error fetching {pair} {tf}: {e}")
                                     valid = False
@@ -925,6 +1017,8 @@ def main():
                                 # If we need more data, fetch older candles
                                 if len(all_candles) < LOOKBACK:
                                     requests_needed = (LOOKBACK - len(all_candles) + limit_per_request - 1) // limit_per_request
+                                    logger.debug(f"      [{tf}] Need more data, making {requests_needed} additional requests...")
+                                    
                                     for req_num in range(requests_needed):
                                         try:
                                             # Get oldest timestamp from current data
@@ -934,8 +1028,10 @@ def main():
                                             # Request older data
                                             since_ts = oldest_ts - (limit_per_request * tf_ms)
                                             candles = binance.fetch_ohlcv(pair, tf, since=since_ts, limit=limit_per_request)
+                                            fetch_requests += 1
                                             
                                             if not candles:
+                                                logger.debug(f"      [{tf}] No more data in request #{fetch_requests}")
                                                 break
                                             
                                             # Remove duplicates and merge (oldest first)
@@ -943,7 +1039,10 @@ def main():
                                             new_candles = [c for c in candles if c[0] not in seen_timestamps]
                                             
                                             if not new_candles:
+                                                logger.debug(f"      [{tf}] No new candles in request #{fetch_requests}")
                                                 break
+                                            
+                                            logger.debug(f"      [{tf}] Got {len(new_candles)} new candles in request #{fetch_requests}")
                                             
                                             # Insert at beginning (older data)
                                             all_candles = new_candles + all_candles
@@ -952,6 +1051,7 @@ def main():
                                             if len(all_candles) >= LOOKBACK:
                                                 # Keep only the NEWEST LOOKBACK candles (not oldest!)
                                                 all_candles = sorted(all_candles, key=lambda x: x[0])[-LOOKBACK:]
+                                                logger.debug(f"      [{tf}] Trimmed to {len(all_candles)} newest candles")
                                                 break
                                             
                                             time.sleep(0.1)  # Rate limit
@@ -967,22 +1067,38 @@ def main():
                                 # Sort by timestamp (oldest first)
                                 all_candles = sorted(all_candles, key=lambda x: x[0])
                                 
+                                # 🔍 DEBUG: Логируем финальные данные перед DataFrame
+                                logger.debug(f"      [{tf}] Final: {len(all_candles)} candles after {fetch_requests} API requests")
+                                
                                 df = pd.DataFrame(all_candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
                                 df.set_index('timestamp', inplace=True)
                                 
+                                # ✅ SAFETY: Ensure numeric types logic
+                                for col in ['open', 'high', 'low', 'close', 'volume']:
+                                    df[col] = df[col].astype(float)
+                                
                                 # ✅ FIX: Remove duplicates and sort (same as CSV loading)
                                 # This ensures consistency with backtest data processing
+                                dups_before = len(df)
                                 df = df[~df.index.duplicated(keep='first')]
+                                dups_removed = dups_before - len(df)
+                                if dups_removed > 0:
+                                    logger.debug(f"      [{tf}] Removed {dups_removed} duplicate timestamps")
                                 df.sort_index(inplace=True)
                                 
                                 # 🔍 DEBUG: Log data range to verify we have fresh data
-                                import datetime
-                                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                                now_utc = datetime.now(timezone.utc)
                                 oldest = df.index[0]
                                 newest = df.index[-1]
                                 age_seconds = (now_utc - newest.to_pydatetime()).total_seconds()
                                 logger.debug(f"      [{tf}] Data: {len(df)} candles | Range: {oldest} to {newest} | Age: {age_seconds:.0f}s")
+                                
+                                # 🔍 DEBUG: Логируем последние 3 свечи этого ТФ
+                                last3 = df.tail(3)
+                                logger.debug(f"      [{tf}] Last 3 candles (RAW from API):")
+                                for idx, row_data in last3.iterrows():
+                                    logger.debug(f"         {idx} | O:{row_data['open']:.6f} H:{row_data['high']:.6f} L:{row_data['low']:.6f} C:{row_data['close']:.6f} V:{row_data['volume']:.2f}")
                                 
                                 data[tf] = df
                             
@@ -990,20 +1106,57 @@ def main():
                                 continue
                             
                             # Prepare features
+                            logger.debug(f"      Preparing features from {len(data)} timeframes...")
                             df = prepare_features(data, mtf_fe)
                             if df is None or len(df) < 2:
+                                logger.warning(f"      Feature preparation failed or not enough rows")
                                 continue
+                            
+                            logger.debug(f"      Features prepared: {len(df)} rows, {len(df.columns)} columns")
                             
                             # Get last closed candle
                             row = df.iloc[[-2]]
+                            
+                            # ============================================================
+                            # 🔍 FULL DEBUG LOGGING - все данные для диагностики
+                            # ============================================================
+                            logger.debug(f"=" * 60)
+                            logger.debug(f"FULL DEBUG for {pair}")
+                            
+                            # 1. Данные о свечах
+                            logger.debug(f"[CANDLES] 5m last 3 candles:")
+                            last_3 = data['5m'].tail(3)
+                            for idx, c in last_3.iterrows():
+                                logger.debug(f"   {idx} | O:{c['open']:.6f} H:{c['high']:.6f} L:{c['low']:.6f} C:{c['close']:.6f} V:{c['volume']:.2f}")
+                            
+                            # 2. Какая свеча анализируется
+                            logger.debug(f"[ANALYSIS] Analyzing candle: {row.index[0]}")
+                            logger.debug(f"[ANALYSIS] Close={row['close'].iloc[0]:.6f}, ATR={row['atr'].iloc[0]:.6f}")
+                            
+                            # 3. Все фичи для этой свечи (в файл)
+                            all_features_log = {}
+                            for feat in models['features']:
+                                if feat in row.columns:
+                                    val = row[feat].iloc[0]
+                                    all_features_log[feat] = float(val) if pd.notna(val) else "NaN"
+                                else:
+                                    all_features_log[feat] = "MISSING"
+                            logger.debug(f"[FEATURES] All {len(models['features'])} features: {json.dumps(all_features_log, indent=2)}")
+                            
+                            # 4. Статистика фичей
+                            feature_values = [v for v in all_features_log.values() if isinstance(v, (int, float))]
+                            logger.debug(f"[FEATURES] Stats: min={min(feature_values):.4f}, max={max(feature_values):.4f}, mean={np.mean(feature_values):.4f}")
+                            missing_count = sum(1 for v in all_features_log.values() if v == "MISSING")
+                            nan_count = sum(1 for v in all_features_log.values() if v == "NaN")
+                            logger.debug(f"[FEATURES] Missing: {missing_count}, NaN: {nan_count}")
+                            logger.debug(f"=" * 60)
 
                             # Log candle timestamp and close to confirm we're on fresh data
                             last_candle_time = row.index[0]
                             candle_close = row['close'].iloc[0]
                             
                             # 🔍 DEBUG: Check candle age - should be < 10 minutes for 5m candles
-                            import datetime
-                            now_utc = datetime.datetime.now(datetime.timezone.utc)
+                            now_utc = datetime.now(timezone.utc)
                             candle_age_sec = (now_utc - last_candle_time.to_pydatetime()).total_seconds()
                             candle_age_min = candle_age_sec / 60
                             
@@ -1063,39 +1216,110 @@ def main():
                             p_down, p_sideways, p_up = dir_proba[0]
                             direction_str = 'LONG' if dir_pred == 2 else ('SHORT' if dir_pred == 0 else 'SIDEWAYS')
                             logger.info(f"      → {direction_str} | Conf: {dir_conf:.2f} | Timing: {timing_pred:.2f} ATR | Strength: {strength_pred:.1f}")
+                            
+                            # 🔍 NEW: Log key indicators for manual verification
+                            try:
+                                # ✅ FIX: Calculate from REAL M5 data, not from normalized features
+                                df_5m = data['5m']
+                                close = df_5m['close'].iloc[-1]
+                                
+                                # Real RSI
+                                delta = df_5m['close'].diff()
+                                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                                loss = -delta.where(delta < 0, 0).rolling(14).mean()
+                                rs = gain / loss
+                                rsi_14 = (100 - (100 / (1 + rs))).iloc[-1]
+                                
+                                # Real EMAs
+                                ema_21 = df_5m['close'].ewm(span=21, adjust=False).mean().iloc[-1]
+                                ema_50 = df_5m['close'].ewm(span=50, adjust=False).mean().iloc[-1]
+                                
+                                # Vol ratio from features (already calculated)
+                                vol_ratio = row.get('vol_ratio', pd.Series([0])).iloc[0]
+                                
+                                trend_txt = "BULL" if ema_21 > ema_50 else "BEAR"
+                                logger.info(f"      📊 Indicators: RSI={rsi_14:.1f} | Trend={trend_txt} | VolRatio={vol_ratio:.1f}x")
+                            except Exception as e:
+                                logger.debug(f"Could not log indicators: {e}")
+
                             logger.debug(f"      Probabilities: DOWN={p_down:.3f}, SIDEWAYS={p_sideways:.3f}, UP={p_up:.3f}")
                             
-                            # ✅ DEBUG: Log feature statistics to compare with backtest
-                            if dir_conf < 0.5 or dir_pred == 1:
-                                # Log feature stats for low-confidence predictions
-                                feature_stats = {
-                                    'mean': float(X.mean()),
-                                    'std': float(X.std()),
-                                    'min': float(X.min()),
-                                    'max': float(X.max()),
-                                    'nan_count': int(pd.isna(X).sum()),
-                                    'inf_count': int(np.isinf(X).sum() if hasattr(np, 'isinf') else 0)
-                                }
-                                logger.debug(f"      Feature stats: {feature_stats}")
-                                
-                                # Log top 5 features with highest absolute values
-                                feature_vals = {models['features'][i]: float(X[0][i]) 
-                                               for i in range(len(models['features']))}
-                                top_features = sorted(feature_vals.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
-                                logger.debug(f"      Top 5 features: {top_features}")
+                            # ============================================================
+                            # 🔍 FULL PREDICTION DEBUG - ВСЕ детали предсказания
+                            # ============================================================
+                            logger.debug(f"[PREDICTION] Raw proba array: {dir_proba[0].tolist()}")
+                            logger.debug(f"[PREDICTION] dir_pred={dir_pred} (0=SHORT, 1=SIDEWAYS, 2=LONG)")
+                            logger.debug(f"[PREDICTION] Thresholds: MIN_CONF={MIN_CONF}, MIN_TIMING={MIN_TIMING}, MIN_STRENGTH={MIN_STRENGTH}")
+                            
+                            # Проверка фильтров
+                            passes_conf = dir_conf >= MIN_CONF
+                            passes_timing = timing_pred >= MIN_TIMING
+                            passes_strength = strength_pred >= MIN_STRENGTH
+                            passes_direction = dir_pred != 1
+                            
+                            logger.debug(f"[FILTERS] Direction != SIDEWAYS: {passes_direction}")
+                            logger.debug(f"[FILTERS] Confidence >= {MIN_CONF}: {passes_conf} (actual: {dir_conf:.4f})")
+                            logger.debug(f"[FILTERS] Timing >= {MIN_TIMING}: {passes_timing} (actual: {timing_pred:.4f})")
+                            logger.debug(f"[FILTERS] Strength >= {MIN_STRENGTH}: {passes_strength} (actual: {strength_pred:.4f})")
+                            logger.debug(f"[FILTERS] ALL PASS: {passes_conf and passes_timing and passes_strength and passes_direction}")
+                            
+                            # Log feature stats for ALL predictions (not just low confidence)
+                            feature_stats = {
+                                'mean': float(X.mean()),
+                                'std': float(X.std()),
+                                'min': float(X.min()),
+                                'max': float(X.max()),
+                                'nan_count': int(pd.isna(X).sum()),
+                                'inf_count': int(np.isinf(X).sum() if hasattr(np, 'isinf') else 0)
+                            }
+                            logger.debug(f"[X_STATS] Feature matrix stats: {feature_stats}")
+                            
+                            # Log top 10 features with highest absolute values
+                            feature_vals = {features_to_use[i]: float(X[0][i]) 
+                                           for i in range(len(features_to_use))}
+                            top_features = sorted(feature_vals.items(), key=lambda x: abs(x[1]), reverse=True)[:10]
+                            logger.debug(f"[X_TOP10] Top 10 features by abs value: {top_features}")
+                            
+                            # Важные индикаторы отдельно (используем фичи из МОДЕЛИ, не из row!)
+                            key_features = ['m15_rsi', 'm5_rsi_14', 'm1_rsi_9_last', 'm5_atr_14', 'vol_ratio', 'price_vs_vwap']
+                            key_vals = {k: feature_vals.get(k, 'N/A') for k in key_features}
+                            logger.debug(f"[KEY_FEATURES] {key_vals}")
+                            
+                            # 🔍 Сохраняем предсказание для анализа
+                            scan_stats['pairs_scanned'] += 1
+                            pred_record = {
+                                'pair': pair,
+                                'candle_time': str(last_candle_time),
+                                'close': float(candle_close),
+                                'direction': direction_str,
+                                'proba_down': float(p_down),
+                                'proba_sideways': float(p_sideways),
+                                'proba_up': float(p_up),
+                                'confidence': float(dir_conf),
+                                'timing': float(timing_pred),
+                                'strength': float(strength_pred),
+                                'passes_all': passes_conf and passes_timing and passes_strength and passes_direction,
+                                'top5_features': {k: v for k, v in top_features[:5]}
+                            }
+                            scan_stats['predictions'].append(pred_record)
                             
                             # Apply V8 filters
                             if dir_pred == 1:  # Sideways
-                                logger.debug(f"      ✗ Skipped (SIDEWAYS)")
+                                scan_stats['sideways_count'] += 1
+                                current_volatility = row['atr'].iloc[0] / row['close'].iloc[0] * 100
+                                logger.debug(f"      ✗ Skipped (SIDEWAYS) | Volatility: {current_volatility:.3f}% (Need > 0.5% move)")
                                 continue
                             
                             rejected_reasons = []
                             if dir_conf < MIN_CONF:
                                 rejected_reasons.append(f"Conf({dir_conf:.2f}<{MIN_CONF})")
+                                scan_stats['rejected_conf'] += 1
                             if timing_pred < MIN_TIMING:  # ✅ FIXED: Compare timing_pred (not timing_prob)
                                 rejected_reasons.append(f"Timing({timing_pred:.2f}<{MIN_TIMING})")
+                                scan_stats['rejected_timing'] += 1
                             if strength_pred < MIN_STRENGTH:
                                 rejected_reasons.append(f"Strength({strength_pred:.1f}<{MIN_STRENGTH})")
+                                scan_stats['rejected_strength'] += 1
                             
                             if rejected_reasons:
                                 logger.info(f"      ✗ Rejected: {', '.join(rejected_reasons)}")
@@ -1103,6 +1327,7 @@ def main():
                             
                             # SIGNAL FOUND!
                             signals_found += 1
+                            scan_stats['signals_found'] += 1
                             logger.info(f"      ✅ SIGNAL FOUND!")
                             
                             # Get current price
@@ -1133,6 +1358,59 @@ def main():
                     logger.info(f"📊 Scan complete: {signals_checked} pairs checked, {signals_found} signals found")
                     logger.info(f"⏰ Next scan at next 5-minute candle close")
                     logger.info("=" * 70)
+                    
+                    # 🔍 FULL SCAN SUMMARY для анализа
+                    logger.debug("=" * 70)
+                    logger.debug("[SCAN_SUMMARY] Full statistics:")
+                    logger.debug(f"   Pairs scanned: {scan_stats['pairs_scanned']}")
+                    logger.debug(f"   SIDEWAYS: {scan_stats['sideways_count']}")
+                    logger.debug(f"   Rejected by Conf: {scan_stats['rejected_conf']}")
+                    logger.debug(f"   Rejected by Timing: {scan_stats['rejected_timing']}")
+                    logger.debug(f"   Rejected by Strength: {scan_stats['rejected_strength']}")
+                    logger.debug(f"   Signals found: {scan_stats['signals_found']}")
+                    
+                    # Статистика по вероятностям
+                    if scan_stats['predictions']:
+                        up_probs = [p['proba_up'] for p in scan_stats['predictions']]
+                        down_probs = [p['proba_down'] for p in scan_stats['predictions']]
+                        sideways_probs = [p['proba_sideways'] for p in scan_stats['predictions']]
+                        
+                        logger.debug(f"   Proba UP: min={min(up_probs):.3f}, max={max(up_probs):.3f}, mean={np.mean(up_probs):.3f}")
+                        logger.debug(f"   Proba DOWN: min={min(down_probs):.3f}, max={max(down_probs):.3f}, mean={np.mean(down_probs):.3f}")
+                        logger.debug(f"   Proba SIDEWAYS: min={min(sideways_probs):.3f}, max={max(sideways_probs):.3f}, mean={np.mean(sideways_probs):.3f}")
+                        
+                        # Лучшие кандидаты (наибольшая вероятность UP или DOWN)
+                        best_candidates = sorted(scan_stats['predictions'], 
+                                                  key=lambda x: max(x['proba_up'], x['proba_down']), 
+                                                  reverse=True)[:5]
+                        logger.debug("[BEST_CANDIDATES] Top 5 by UP/DOWN probability:")
+                        for c in best_candidates:
+                            logger.debug(f"   {c['pair']}: {c['direction']} | UP={c['proba_up']:.3f} DOWN={c['proba_down']:.3f} SW={c['proba_sideways']:.3f} | T={c['timing']:.2f} S={c['strength']:.2f}")
+                    
+                    # Сохраняем в JSON для анализа
+                    scan_log_file = Path("logs/scan_stats.json")
+                    try:
+                        # Читаем существующие данные
+                        if scan_log_file.exists() and scan_log_file.stat().st_size > 0:
+                            with open(scan_log_file, 'r') as f:
+                                try:
+                                    all_scans = json.load(f)
+                                except json.JSONDecodeError:
+                                    all_scans = []
+                        else:
+                            all_scans = []
+                        
+                        # Добавляем новый скан (храним последние 100)
+                        all_scans.append(scan_stats)
+                        all_scans = all_scans[-100:]
+                        
+                        with open(scan_log_file, 'w') as f:
+                            json.dump(all_scans, f, indent=2, default=str)
+                        logger.debug(f"[SAVED] Scan stats saved to {scan_log_file}")
+                    except Exception as e:
+                        logger.warning(f"Could not save scan stats: {e}")
+                    
+                    logger.debug("=" * 70)
         
         except Exception as e:
             logger.error(f"Main loop error: {e}")

@@ -47,13 +47,13 @@ from train_mtf import MTFFeatureEngine
 # CONFIG
 # ============================================================
 SL_ATR_MULT = 1.5       # Base SL multiplier (adaptive based on strength)
-MAX_LEVERAGE = 20.0
+MAX_LEVERAGE = 50.0
 RISK_PCT = 0.05         # 5% Risk per trade
 FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
 LOOKAHEAD = 12          # 1 hour on M5
 
 # REALISTIC LIMITS (V8 IMPROVED)
-MAX_POSITION_SIZE = 50000.0  # Max $50K position (realistic for liquidity)
+MAX_POSITION_SIZE = 200000.0  # Max $50K position (realistic for liquidity)
 SLIPPAGE_PCT = 0.0005        # ✅ 0.05% slippage (REALISTIC! Was 0.01% - too optimistic)
 
 # V8 IMPROVEMENTS
@@ -128,7 +128,8 @@ def add_volume_features(df: pd.DataFrame) -> pd.DataFrame:
     df['price_vs_vwap'] = df['close'] / df['vwap'] - 1
     
     # Volume momentum
-    df['vol_momentum'] = df['volume'].pct_change(5)
+    # ✅ FIX: Clip extreme spikes (PIPPIN had 431x volume spike)
+    df['vol_momentum'] = df['volume'].pct_change(5).clip(-10, 10)
     
     return df
 
@@ -320,6 +321,12 @@ def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_na
         if timing_preds[i] < min_timing: continue  # ✅ Now checks ATR gain potential
         if strength_preds[i] < min_strength: continue
         
+        # ✅ НОВОЕ: Сохраняем ВСЕ 159 значений фичей для полного анализа
+        all_features = {}
+        for feat_name in feature_cols:
+            if feat_name in df.columns:
+                all_features[f'feat_{feat_name}'] = df[feat_name].iloc[i]
+        
         signals.append({
             'timestamp': df.index[i],
             'pair': pair_name,
@@ -328,7 +335,8 @@ def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_na
             'atr': df['atr'].iloc[i],
             'score': dir_confs[i] * timing_preds[i], # Combined score (conf × timing_gain)
             'timing_prob': timing_preds[i],  # ✅ Now stores gain potential (not probability)
-            'pred_strength': strength_preds[i]
+            'pred_strength': strength_preds[i],
+            **all_features  # ✅ Добавляем ВСЕ 159 фичей с префиксом feat_
         })
         
     return signals
@@ -951,8 +959,13 @@ def main():
     
     # Train
     train_df = pd.concat(all_train).dropna()
+    
+    # ✅ FIX: Exclude ABSOLUTE volume/price features that break when market regime changes
+    # (e.g. Volume dropped 10x in Jan 2026 vs Dec 2025, breaking absolute thresholds)
     exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
-               'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change']
+               'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change',
+               'vol_sma_20', 'm15_volume_ma', 'm15_atr', 'vwap']
+               
     # Исключаем ВСЕ cumsum/window-зависимые фичи - их значения зависят от начала окна данных!
     # Эти фичи работают на бэктесте, но ЛОМАЮТСЯ на лайве из-за разной длины данных:
     # - obv: cumsum() от начала данных

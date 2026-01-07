@@ -205,9 +205,12 @@ class MTFFeatureEngine:
         features['m1_lower_wick'] = (df[['close', 'open']].min(axis=1) - df['low']) / df['open'] * 100
         
         # Micro trend
-        features['m1_ema_3'] = df['close'].ewm(span=3, adjust=False).mean()
-        features['m1_ema_8'] = df['close'].ewm(span=8, adjust=False).mean()
-        features['m1_micro_trend'] = np.where(features['m1_ema_3'] > features['m1_ema_8'], 1, -1)
+        ema_3 = df['close'].ewm(span=3, adjust=False).mean()
+        ema_8 = df['close'].ewm(span=8, adjust=False).mean()
+        # ✅ FIX: Store as % distance from price instead of absolute price
+        features['m1_ema_3'] = (ema_3 - df['close']) / df['close'] * 100
+        features['m1_ema_8'] = (ema_8 - df['close']) / df['close'] * 100
+        features['m1_micro_trend'] = np.where(ema_3 > ema_8, 1, -1)
         
         # Price vs VWAP (if volume available)
         # FIXED: Use rolling window instead of cumsum for live/backtest consistency
