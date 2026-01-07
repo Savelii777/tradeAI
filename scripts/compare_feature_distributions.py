@@ -22,12 +22,19 @@ from scipy import stats
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from train_mtf import MTFFeatureEngine
+# Import MTFFeatureEngine with error handling
+try:
+    from train_mtf import MTFFeatureEngine
+except ImportError:
+    print("Warning: Could not import MTFFeatureEngine from train_mtf")
+    print("Make sure you're running from the scripts directory or project root")
+    MTFFeatureEngine = None
 
 # ============================================================
-# CONFIG
+# CONFIG (can be overridden via command-line)
 # ============================================================
-DATA_DIR = Path(__file__).parent.parent / 'data' / 'candles'
+DEFAULT_DATA_DIR = Path(__file__).parent.parent / 'data' / 'candles'
+DEFAULT_MAX_PAIRS = 10  # Maximum pairs to analyze when using --all-pairs
 
 # Thresholds for warnings
 MEAN_DIFF_THRESHOLD = 0.50    # 50% difference in mean
@@ -60,11 +67,11 @@ def calculate_atr(df, period=14):
     return tr.ewm(span=period, adjust=False).mean()
 
 
-def load_pair_data(pair_name: str) -> dict:
+def load_pair_data(pair_name: str, data_dir: Path) -> dict:
     """Load M1, M5, M15 data for a pair."""
     data = {}
     for tf in ['1m', '5m', '15m']:
-        filepath = DATA_DIR / f"{pair_name}_{tf}.csv"
+        filepath = data_dir / f"{pair_name}_{tf}.csv"
         if not filepath.exists():
             raise FileNotFoundError(f"Data file not found: {filepath}")
         df = pd.read_csv(filepath, parse_dates=['timestamp'], index_col='timestamp')
@@ -86,25 +93,33 @@ def prepare_features(m1, m5, m15, mtf_engine):
 # MAIN COMPARISON
 # ============================================================
 
-def compare_distributions(pair_name: str, recent_hours: int = 48, verbose: bool = True):
+def compare_distributions(pair_name: str, recent_hours: int = 48, data_dir: Path = None, verbose: bool = True):
     """
     Compare feature distributions between old and recent data.
     
     Args:
         pair_name: Pair name (e.g., 'BTC_USDT_USDT')
         recent_hours: Number of recent hours to compare
+        data_dir: Data directory path
         verbose: Print detailed output
         
     Returns:
         dict with comparison results
     """
+    if data_dir is None:
+        data_dir = DEFAULT_DATA_DIR
+    
+    if MTFFeatureEngine is None:
+        print("Error: MTFFeatureEngine not available. Cannot run comparison.")
+        return None
+    
     print(f"\n{'='*60}")
     print(f"Feature Distribution Comparison: {pair_name}")
     print(f"{'='*60}")
     
     # Load data
     try:
-        data = load_pair_data(pair_name)
+        data = load_pair_data(pair_name, data_dir)
     except FileNotFoundError as e:
         print(f"Error: {e}")
         return None
@@ -282,23 +297,28 @@ def main():
                        help="Pair name (e.g., BTC_USDT_USDT)")
     parser.add_argument("--hours", type=int, default=48,
                        help="Number of recent hours to compare")
+    parser.add_argument("--data-dir", type=str, default=str(DEFAULT_DATA_DIR),
+                       help=f"Data directory (default: {DEFAULT_DATA_DIR})")
+    parser.add_argument("--max-pairs", type=int, default=DEFAULT_MAX_PAIRS,
+                       help=f"Maximum pairs to analyze when using --all-pairs (default: {DEFAULT_MAX_PAIRS})")
     parser.add_argument("--all-pairs", action="store_true",
                        help="Run comparison for all available pairs")
     
     args = parser.parse_args()
+    data_dir = Path(args.data_dir)
     
     if args.all_pairs:
         # Find all available pairs
         pairs = set()
-        for f in DATA_DIR.glob("*_5m.csv"):
+        for f in data_dir.glob("*_5m.csv"):
             pair_name = f.name.replace("_5m.csv", "")
             pairs.add(pair_name)
         
         print(f"Found {len(pairs)} pairs")
         
         all_results = []
-        for pair in sorted(pairs)[:10]:  # Limit to first 10
-            result = compare_distributions(pair, args.hours)
+        for pair in sorted(pairs)[:args.max_pairs]:
+            result = compare_distributions(pair, args.hours, data_dir)
             if result:
                 all_results.append(result)
         
@@ -314,7 +334,7 @@ def main():
         print(f"Total warning features found: {total_warning}")
         
     else:
-        compare_distributions(args.pair, args.hours)
+        compare_distributions(args.pair, args.hours, data_dir)
     
     return 0
 

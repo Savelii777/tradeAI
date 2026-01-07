@@ -14,6 +14,7 @@ Pre-Live Validation Script
 """
 
 import sys
+import argparse
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -22,10 +23,15 @@ import joblib
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # ============================================================
-# CONFIG
+# CONFIG (can be overridden via command-line arguments)
 # ============================================================
-MODEL_DIR = Path(__file__).parent.parent / 'models' / 'v8_improved'
-DATA_DIR = Path(__file__).parent.parent / 'data' / 'candles'
+DEFAULT_MODEL_DIR = Path(__file__).parent.parent / 'models' / 'v8_improved'
+DEFAULT_DATA_DIR = Path(__file__).parent.parent / 'data' / 'candles'
+DEFAULT_LOOKBACK_CANDLES = 2000  # Number of recent candles to compare for distribution check
+
+# Will be set by argparse
+MODEL_DIR = None
+DATA_DIR = None
 
 # Dangerous patterns that should NOT be in features
 DANGEROUS_PATTERNS = [
@@ -170,9 +176,9 @@ def check_feature_distributions():
     df = pd.read_csv(m5_file, parse_dates=['timestamp'], index_col='timestamp')
     
     # Split into old (training-like) and recent (live-like)
-    split_point = len(df) - 2000  # Last 2000 candles = "live"
+    split_point = len(df) - DEFAULT_LOOKBACK_CANDLES  # Last N candles = "live"
     
-    if split_point < 2000:
+    if split_point < DEFAULT_LOOKBACK_CANDLES:
         print("  ⚠️  Not enough data for distribution comparison")
         return True
     
@@ -292,9 +298,22 @@ def check_model_hyperparams():
 # ============================================================
 
 def main():
+    global MODEL_DIR, DATA_DIR
+    
+    parser = argparse.ArgumentParser(description="Pre-Live Validation Script")
+    parser.add_argument("--model-dir", type=str, default=str(DEFAULT_MODEL_DIR),
+                       help=f"Model directory (default: {DEFAULT_MODEL_DIR})")
+    parser.add_argument("--data-dir", type=str, default=str(DEFAULT_DATA_DIR),
+                       help=f"Data directory (default: {DEFAULT_DATA_DIR})")
+    args = parser.parse_args()
+    
+    MODEL_DIR = Path(args.model_dir)
+    DATA_DIR = Path(args.data_dir)
+    
     print("="*60)
     print("PRE-LIVE VALIDATION")
     print("Checking model readiness for live trading")
+    print(f"Model dir: {MODEL_DIR}")
     print("="*60)
     
     results = {
