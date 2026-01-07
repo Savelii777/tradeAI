@@ -1175,18 +1175,9 @@ def main():
                                 for mf in missing_features:
                                     row[mf] = 0.0
                             
-                            # ✅ FIXED: Exclude ALL cumsum/window-dependent features (same as training)
-                            # These should not be in models['features'] after retraining, but double-check
-                            cumsum_patterns = [
-                                'bars_since_swing', 'consecutive_up', 'consecutive_down',
-                                'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
-                            ]
-                            features_to_use = [f for f in models['features'] 
-                                             if not any(p in f.lower() for p in cumsum_patterns)]
-                            
-                            if len(features_to_use) != len(models['features']):
-                                excluded = set(models['features']) - set(features_to_use)
-                                logger.debug(f"Excluding cumsum features from prediction: {excluded}")
+                            # ✅ FIXED: Use ALL features from model (cumsum already excluded during training)
+                            # No additional filtering needed - models['features'] is already clean
+                            features_to_use = models['features']
                             
                             # Extract features in EXACT order as model expects
                             X = row[features_to_use].values
@@ -1356,6 +1347,22 @@ def main():
                     # Summary after scan
                     logger.info("=" * 70)
                     logger.info(f"📊 Scan complete: {signals_checked} pairs checked, {signals_found} signals found")
+                    
+                    # 🔍 Show rejection breakdown on INFO level for diagnostics
+                    if scan_stats['pairs_scanned'] > 0 and signals_found == 0:
+                        logger.info(f"   📈 SIDEWAYS: {scan_stats['sideways_count']}")
+                        logger.info(f"   📈 Rejected by Confidence (<{MIN_CONF}): {scan_stats['rejected_conf']}")
+                        logger.info(f"   📈 Rejected by Timing (<{MIN_TIMING}): {scan_stats['rejected_timing']}")
+                        logger.info(f"   📈 Rejected by Strength (<{MIN_STRENGTH}): {scan_stats['rejected_strength']}")
+                        
+                        # Show best candidate for debugging
+                        if scan_stats['predictions']:
+                            try:
+                                best = max(scan_stats['predictions'], key=lambda x: max(x.get('proba_up', 0), x.get('proba_down', 0)))
+                                logger.info(f"   🏆 Best candidate: {best['pair']} {best['direction']} | Conf={best.get('confidence', 0):.2f} Tim={best.get('timing', 0):.2f} Str={best.get('strength', 0):.1f}")
+                            except Exception as e:
+                                logger.debug(f"Could not get best candidate: {e}")
+                    
                     logger.info(f"⏰ Next scan at next 5-minute candle close")
                     logger.info("=" * 70)
                     
