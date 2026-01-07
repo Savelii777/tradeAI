@@ -293,6 +293,52 @@ mypy src/
 - ✅ Risk management
 - ✅ Paper trading mode
 
+## Pre-Live Validation
+
+Before going live with V8 Improved model, run these validation scripts:
+
+### 1. Pre-Flight Check
+```bash
+# Check model files, features, and configuration
+python scripts/preflight_check.py --model-dir models/v8_improved
+
+# With verbose output
+python scripts/preflight_check.py --model-dir models/v8_improved --verbose
+```
+
+### 2. Feature Distribution Check
+```bash
+# Check for feature drift
+python scripts/compare_feature_distributions.py --pair BTC_USDT_USDT --hours 48
+
+# Check all pairs
+python scripts/compare_feature_distributions.py --all-pairs
+```
+
+### 3. Live Simulation Test
+```bash
+# Compare live-like feature generation with backtest
+python scripts/simulate_live_trading.py --pair BTC_USDT_USDT --hours 48
+```
+
+### 4. Walk-Forward Validation
+```bash
+# Train and validate with walk-forward
+python scripts/train_v3_dynamic.py --walk-forward --days 60 --test_days 14
+```
+
+### Pre-Live Checklist
+
+```
+[ ] All preflight_check.py checks pass
+[ ] No cumsum-dependent features in model
+[ ] Walk-forward win rate >= 60%
+[ ] Paper trading for 7+ days
+[ ] Paper WR matches walk-forward (+/- 10%)
+```
+
+See `docs/LIVE_TRADING_ANALYSIS.md` for detailed analysis.
+
 ## Roadmap
 
 ### Version 2.2
