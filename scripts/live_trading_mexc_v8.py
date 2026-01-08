@@ -56,10 +56,11 @@ TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
 
 # ✅ FIX: Increased LOOKBACK to ensure stable feature calculation
-# EMA-200 needs ~1000 bars to stabilize, rolling normalization needs 500+
-# Previous value of 1000 caused feature drift between backtest and live
-LOOKBACK = 2000  # Increased from 1000 to ensure feature stability
-WARMUP_BARS = 500  # ✅ NEW: Skip first 500 bars after feature calculation (warmup period)
+# EMA-200 needs ~1000 bars to stabilize
+# Note: After align_timeframes() and dropna(), we get fewer rows than LOOKBACK
+# With LOOKBACK=3000, we get ~800-1000 usable rows after processing
+LOOKBACK = 3000  # Increased from 2000 to ensure enough data after feature alignment
+WARMUP_BARS = 200  # ✅ REDUCED from 500: Since normalization is disabled, only need EMA-200 warmup
 MIN_ROWS_FOR_PREDICTION = 2  # Need at least 2 rows: current (forming) and last closed candle
 
 # Timeframe multipliers for data alignment
