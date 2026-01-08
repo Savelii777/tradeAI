@@ -55,6 +55,17 @@ CUMSUM_PATTERNS = [
     'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
 ]
 
+# ⚠️ NEW: Absolute price-based features that cause live/backtest discrepancy
+# These features have values that depend on current price level (e.g. $500 vs $420)
+# Model trained on old price levels will see completely different values on live
+ABSOLUTE_PRICE_FEATURES = [
+    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
+    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
+    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
+    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
+    'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
+]
+
 
 # ============================================================
 # HELPER FUNCTIONS (same as in training/live scripts)
@@ -389,6 +400,13 @@ def diagnose_pair(pair_name: str, lookback_live: int = 1000, lookback_backtest: 
             print(f"\n   • {len(high_drift_features)} features have >30% drift:")
             for feat in high_drift_features[:5]:
                 print(f"      - {feat}: {feature_diffs[feat]['mean_diff_pct']:.1f}% drift")
+        
+        # ✅ NEW: Check if model uses absolute price features
+        absolute_in_model = [f for f in feature_cols if f in ABSOLUTE_PRICE_FEATURES]
+        if absolute_in_model:
+            print(f"\n   ⚠️ MODEL USES ABSOLUTE PRICE FEATURES: {absolute_in_model}")
+            print(f"   These features cause SEVERE drift between training and live!")
+            print(f"   ACTION: Retrain model with: python scripts/train_v3_dynamic.py --days 60 --test_days 14")
     
     elif bt_signals.sum() > 0 and lv_signals.sum() > 0:
         print(f"\n✅ Both backtest and live generate signals!")

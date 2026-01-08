@@ -867,6 +867,21 @@ def prepare_features(data, mtf_fe):
             logger.debug(f"Excluding cumsum-dependent features: {cols_to_drop}")
             ft = ft.drop(columns=cols_to_drop)
         
+        # ✅ NEW: Exclude absolute price-based features (same as training)
+        # These features depend on price level which changes over time
+        # Model expects normalized versions (*_dist, *_ratio, *_position, *_pct)
+        absolute_price_features = [
+            'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
+            'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
+            'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
+            'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
+            'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
+        ]
+        absolute_cols_to_drop = [c for c in ft.columns if c in absolute_price_features]
+        if absolute_cols_to_drop:
+            logger.debug(f"Excluding absolute price features: {absolute_cols_to_drop}")
+            ft = ft.drop(columns=absolute_cols_to_drop)
+        
         # Only forward-fill for non-critical columns
         non_critical = [c for c in ft.columns if c not in critical_cols]
         if non_critical:
@@ -1189,6 +1204,20 @@ def main():
                             # Validate features and fill missing with 0
                             missing_features = [f for f in models['features'] if f not in row.columns]
                             if missing_features:
+                                # ✅ Check if missing features are absolute price features (model needs retraining)
+                                absolute_price_features_set = {
+                                    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',
+                                    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',
+                                    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',
+                                    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',
+                                    'm5_volume_delta', 'm5_volume_trend',
+                                }
+                                absolute_missing = [f for f in missing_features if f in absolute_price_features_set]
+                                if absolute_missing:
+                                    logger.warning(f"⚠️ Model expects ABSOLUTE price features: {absolute_missing}")
+                                    logger.warning("⚠️ These features cause live/backtest discrepancy!")
+                                    logger.warning("⚠️ Please RETRAIN model with: python scripts/train_v3_dynamic.py --days 60 --test_days 14")
+                                    
                                 logger.debug(f"Missing features for {pair}: {missing_features}")
                                 # Fill missing features with 0 (these are typically volume-related)
                                 for mf in missing_features:

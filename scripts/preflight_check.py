@@ -62,12 +62,23 @@ CUMSUM_PATTERNS = [
 ]
 
 # Absolute value patterns that may cause issues
+# ⚠️ These features have values that depend on current price level
+# and will differ between backtest (e.g. $500) and live (e.g. $420)
 ABSOLUTE_PATTERNS = [
     r'^ema_\d+$',           # ema_9, ema_21, etc. without suffix
+    r'^m5_ema_\d+$',        # m5_ema_9, m5_ema_21, etc. (absolute EMA values)
     r'^atr_\d+$',           # atr_7, atr_14 without _pct
+    r'^m5_atr_\d+$',        # m5_atr_7, m5_atr_14 (absolute ATR values)
+    r'^m5_atr_14_ma$',      # Absolute ATR MA
     r'^bb_upper$',
     r'^bb_middle$',
     r'^bb_lower$',
+    r'^m5_bb_upper$',       # Absolute Bollinger Band values
+    r'^m5_bb_middle$',
+    r'^m5_bb_lower$',
+    r'^m5_volume_ma_\d+$',  # m5_volume_ma_5, m5_volume_ma_10, etc.
+    r'^m5_volume_delta$',   # Absolute volume delta
+    r'^m5_volume_trend$',   # Absolute volume trend
     r'^m15_atr$',
     r'^m15_volume_ma$',
     r'^vol_sma_20$',

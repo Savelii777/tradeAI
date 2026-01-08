@@ -221,7 +221,7 @@ if 'volume' in df.columns:
 
 ## ⚠️ Потенциальные Риски и Митигации
 
-### 1. 🟡 Абсолютные EMA в feature_engine.py
+### 1. 🟢 Абсолютные EMA в feature_engine.py (ИСПРАВЛЕНО)
 
 **Проблема: src/features/indicators.py:84-88**
 
@@ -232,13 +232,23 @@ for period in periods:
     feature_dict[f'ema_{period}_dist'] = (close - ema) / ema * 100  # ✅ Нормализовано
 ```
 
-**Статус:** ⚠️ Частично исправлено
-- `ema_{period}` - абсолютное значение (проблема)
-- `ema_{period}_dist` - нормализованное (OK)
+**Статус:** ✅ ИСПРАВЛЕНО в train_v3_dynamic.py и live_trading_mexc_v8.py
 
-**Митигация:**
-- Проверить что модель использует только `*_dist` версии
-- Запустить `validate_live_readiness.py` для проверки
+Теперь абсолютные фичи исключаются при обучении:
+```python
+absolute_price_patterns = [
+    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
+    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
+    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
+    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
+    'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
+]
+```
+
+**⚠️ ТРЕБУЕТСЯ:** Переобучить модель после этого исправления!
+```bash
+python scripts/train_v3_dynamic.py --days 60 --test_days 14 --walk-forward
+```
 
 ### 2. 🟡 LOOKBACK ограничение
 

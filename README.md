@@ -139,20 +139,29 @@ cp config/secrets.yaml.example config/secrets.yaml
 docker-compose -f docker/docker-compose.yml up -d postgres redis
 ```
 
-6. **Train models**
+6. **Train models (V8 Improved - Anti-Overfitting)**
 ```bash
-python scripts/train_models.py --symbol BTCUSDT --days 180
+# ⚠️ IMPORTANT: Use train_v3_dynamic.py for V8 models with proper feature exclusion
+python scripts/train_v3_dynamic.py --days 60 --test_days 14 --walk-forward
 ```
 
-7. **Run backtest**
+7. **Validate model is ready for live trading**
+```bash
+python scripts/preflight_check.py --model-dir models/v8_improved --verbose
+```
+
+8. **Run backtest**
 ```bash
 python scripts/backtest.py --symbol BTCUSDT --days 90
 ```
 
-8. **Start the bot (paper trading)**
+9. **Start the bot (paper trading)**
 ```bash
 python main.py
 ```
+
+> ⚠️ **CRITICAL:** Before live trading, ensure your model was trained with the latest `train_v3_dynamic.py` 
+> which excludes absolute price features (EMA values, BB levels, ATR values) that cause backtest vs live discrepancy.
 
 ### Docker Deployment
 
