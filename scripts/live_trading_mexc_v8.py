@@ -54,9 +54,18 @@ MODEL_DIR = Path("models/v8_improved")
 PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
-LOOKBACK = 1000  # ✅ UPDATED: Reduced to 1000 to speed up scanning (fits in 1 API request). 
-                 # 3000 took ~6 mins to scan, leading to late entries.
-                 # 1000 is still enough for EMA-200 convergence (5x period).
+
+# ✅ FIX: Increased LOOKBACK to ensure stable feature calculation
+# EMA-200 needs ~1000 bars to stabilize
+# Note: After align_timeframes() and dropna(), we get fewer rows than LOOKBACK
+# With LOOKBACK=3000, we get ~800-1000 usable rows after processing
+LOOKBACK = 3000  # Increased from 2000 to ensure enough data after feature alignment
+WARMUP_BARS = 200  # ✅ REDUCED from 500: Since normalization is disabled, only need EMA-200 warmup
+MIN_ROWS_FOR_PREDICTION = 2  # Need at least 2 rows: current (forming) and last closed candle
+
+# Timeframe multipliers for data alignment
+M1_TO_M5_RATIO = 5  # M1 has 5x more candles than M5
+M5_TO_M15_RATIO = 3  # M15 has 3x fewer candles than M5
 
 # V8 IMPROVED Thresholds (UPDATED for new Timing model)
 MIN_CONF = 0.50       # Direction confidence
@@ -1108,11 +1117,21 @@ def main():
                             # Prepare features
                             logger.debug(f"      Preparing features from {len(data)} timeframes...")
                             df = prepare_features(data, mtf_fe)
-                            if df is None or len(df) < 2:
+                            if df is None or len(df) < MIN_ROWS_FOR_PREDICTION:
                                 logger.warning(f"      Feature preparation failed or not enough rows")
                                 continue
                             
                             logger.debug(f"      Features prepared: {len(df)} rows, {len(df.columns)} columns")
+                            
+                            # ✅ FIX: Skip warmup rows - first WARMUP_BARS have unstable features
+                            # EMA-200, rolling stats, etc. need time to stabilize
+                            if len(df) < WARMUP_BARS + MIN_ROWS_FOR_PREDICTION:
+                                logger.warning(f"      Not enough data after warmup ({len(df)} < {WARMUP_BARS + MIN_ROWS_FOR_PREDICTION})")
+                                continue
+                            
+                            # Only use data AFTER warmup period
+                            df = df.iloc[WARMUP_BARS:]
+                            logger.debug(f"      After warmup skip: {len(df)} rows")
                             
                             # Get last closed candle
                             row = df.iloc[[-2]]

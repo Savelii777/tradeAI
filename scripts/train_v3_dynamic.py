@@ -14,12 +14,17 @@ ANTI-OVERFITTING IMPROVEMENTS (Jan 2026):
 3. Strict Train/Test Split: NO data leakage between train and test
 4. Realistic Slippage: 0.05% instead of 0.01% (honest cost modeling)
 5. Walk-Forward Validation: Test on truly unseen future data
+6. ✅ NEW: Disabled rolling normalization in MTFFeatureEngine for live/backtest consistency
 
 Changes from V7:
 - Models are SIMPLER to prevent memorization
 - Timing model now REGRESSOR (predicts R-multiple gain)
 - Added proper validation to catch overfitting early
 - Increased slippage to realistic levels
+
+⚠️ IMPORTANT: After modifying train_mtf.py (disabling normalization), you MUST retrain the model!
+The model was trained on normalized features, so disabling normalization changes feature distributions.
+Run: python scripts/train_v3_dynamic.py --days 60 --test_days 14
 """
 
 import sys

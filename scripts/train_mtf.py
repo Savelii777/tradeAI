@@ -169,9 +169,16 @@ class MTFFeatureEngine:
         M5 signal generation features.
         
         Focus on: entry signals, momentum, patterns
+        
+        ✅ FIX: Disable normalization to ensure consistency between backtest and live.
+        Rolling normalization depends on data window length which differs between
+        backtest (60+ days) and live (1000-2000 candles), causing feature drift.
         """
         # Use full feature engine for M5
-        features = self.feature_engine.generate_all_features(df)
+        # ✅ CRITICAL FIX: Disable normalization for live/backtest consistency
+        # The rolling z-score normalization (window=500) produces different values
+        # depending on data length, which causes backtest vs live discrepancy.
+        features = self.feature_engine.generate_all_features(df, normalize=False)
         
         # Add prefix to all columns
         features.columns = [f'm5_{col}' for col in features.columns]
