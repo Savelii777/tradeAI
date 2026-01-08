@@ -41,6 +41,16 @@ except ImportError as e:
     print("Please install requirements: pip install numpy pandas joblib")
     sys.exit(1)
 
+# Import centralized constants for reference
+try:
+    from src.utils.constants import (
+        CUMSUM_PATTERNS as CONST_CUMSUM_PATTERNS,
+        ABSOLUTE_PRICE_FEATURES as CONST_ABSOLUTE_FEATURES
+    )
+except ImportError:
+    CONST_CUMSUM_PATTERNS = []
+    CONST_ABSOLUTE_FEATURES = []
+
 
 # ============================================================
 # CONFIGURATION
@@ -49,8 +59,9 @@ except ImportError as e:
 DEFAULT_MODEL_DIR = Path(__file__).parent.parent / 'models' / 'v8_improved'
 LIVE_SCRIPT_PATH = Path(__file__).parent / 'live_trading_mexc_v8.py'
 
-# Dangerous patterns that should NOT be in feature names
-CUMSUM_PATTERNS = [
+# Dangerous patterns that should NOT be in feature names (for pattern matching)
+# Note: these are patterns for substring matching, not exact names
+CUMSUM_PATTERNS_CHECK = [
     'obv',
     'cumsum',
     'bars_since_swing',
@@ -61,13 +72,24 @@ CUMSUM_PATTERNS = [
     'volume_delta_cumsum',
 ]
 
-# Absolute value patterns that may cause issues
+# Absolute value patterns that may cause issues (regex patterns)
+# ⚠️ These features have values that depend on current price level
+# and will differ between backtest (e.g. $500) and live (e.g. $420)
 ABSOLUTE_PATTERNS = [
     r'^ema_\d+$',           # ema_9, ema_21, etc. without suffix
+    r'^m5_ema_\d+$',        # m5_ema_9, m5_ema_21, etc. (absolute EMA values)
     r'^atr_\d+$',           # atr_7, atr_14 without _pct
+    r'^m5_atr_\d+$',        # m5_atr_7, m5_atr_14 (absolute ATR values)
+    r'^m5_atr_14_ma$',      # Absolute ATR MA
     r'^bb_upper$',
     r'^bb_middle$',
     r'^bb_lower$',
+    r'^m5_bb_upper$',       # Absolute Bollinger Band values
+    r'^m5_bb_middle$',
+    r'^m5_bb_lower$',
+    r'^m5_volume_ma_\d+$',  # m5_volume_ma_5, m5_volume_ma_10, etc.
+    r'^m5_volume_delta$',   # Absolute volume delta
+    r'^m5_volume_trend$',   # Absolute volume trend
     r'^m15_atr$',
     r'^m15_volume_ma$',
     r'^vol_sma_20$',
@@ -92,7 +114,7 @@ EXPECTED_HYPERPARAMS = {
 
 # Live script configuration requirements
 LIVE_CONFIG_CHECKS = {
-    'LOOKBACK': {'min': 1000, 'max': 5000},
+    'LOOKBACK': {'min': 1000, 'max': 15000},  # Increased max: volume ratios need more data
     'MIN_CONF': {'min': 0.4, 'max': 0.7},
     'MIN_TIMING': {'min': 0.5, 'max': 1.5},
     'MIN_STRENGTH': {'min': 1.0, 'max': 2.5},
@@ -167,7 +189,7 @@ def check_cumsum_features(model_dir: Path, verbose: bool = False) -> CheckResult
     dangerous = []
     
     for feat in features:
-        for pattern in CUMSUM_PATTERNS:
+        for pattern in CUMSUM_PATTERNS_CHECK:
             if pattern.lower() in feat.lower():
                 dangerous.append(feat)
                 break

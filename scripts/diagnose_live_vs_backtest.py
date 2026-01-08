@@ -29,6 +29,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from train_mtf import MTFFeatureEngine
 from src.features.feature_engine import FeatureEngine
+from src.utils.constants import (
+    CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES
+)
 
 # ============================================================
 # CONFIG
@@ -47,13 +50,6 @@ M5_TO_M15_RATIO = 3  # M15 has 3x fewer candles than M5
 
 # Minimum valid samples required for feature comparison
 MIN_VALID_SAMPLES = 10
-
-# Cumsum-dependent features that should be excluded
-# These features depend on data window start and produce different values on live vs backtest
-CUMSUM_PATTERNS = [
-    'bars_since_swing', 'consecutive_up', 'consecutive_down',
-    'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
-]
 
 
 # ============================================================
@@ -389,6 +385,13 @@ def diagnose_pair(pair_name: str, lookback_live: int = 1000, lookback_backtest: 
             print(f"\n   • {len(high_drift_features)} features have >30% drift:")
             for feat in high_drift_features[:5]:
                 print(f"      - {feat}: {feature_diffs[feat]['mean_diff_pct']:.1f}% drift")
+        
+        # ✅ NEW: Check if model uses absolute price features
+        absolute_in_model = [f for f in feature_cols if f in ABSOLUTE_PRICE_FEATURES]
+        if absolute_in_model:
+            print(f"\n   ⚠️ MODEL USES ABSOLUTE PRICE FEATURES: {absolute_in_model}")
+            print(f"   These features cause SEVERE drift between training and live!")
+            print(f"   ACTION: Retrain model with: python scripts/train_v3_dynamic.py --days 60 --test_days 14")
     
     elif bt_signals.sum() > 0 and lv_signals.sum() > 0:
         print(f"\n✅ Both backtest and live generate signals!")

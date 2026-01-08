@@ -23,6 +23,9 @@ from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.features.feature_engine import FeatureEngine
+from src.utils.constants import (
+    CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES
+)
 from train_mtf import MTFFeatureEngine
 
 # ============================================================
@@ -55,12 +58,12 @@ PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
 
-# ✅ FIX: Increased LOOKBACK to ensure stable feature calculation
-# EMA-200 needs ~1000 bars to stabilize
-# Note: After align_timeframes() and dropna(), we get fewer rows than LOOKBACK
-# With LOOKBACK=3000, we get ~800-1000 usable rows after processing
-LOOKBACK = 3000  # Increased from 2000 to ensure enough data after feature alignment
-WARMUP_BARS = 200  # ✅ REDUCED from 500: Since normalization is disabled, only need EMA-200 warmup
+# ✅ FIX: LOOKBACK determines how many M1 bars to fetch from API
+# After align_timeframes() and dropna(), we get fewer rows than LOOKBACK
+# Example: LOOKBACK=3000 M1 bars → ~200-500 aligned rows (depends on M5/M15 alignment)
+# CRITICAL: With too few bars, volume_ratio features differ significantly from backtest
+LOOKBACK = 3000  # 3000 M1 bars → ~500 aligned rows → enough for analysis
+WARMUP_BARS = 50  # ✅ First 50 bars may have unstable EMA values, skip them
 MIN_ROWS_FOR_PREDICTION = 2  # Need at least 2 rows: current (forming) and last closed candle
 
 # Timeframe multipliers for data alignment
@@ -824,6 +827,11 @@ def prepare_features(data, mtf_fe):
             for col in m15_cols[:10]:
                 val = last_row[col]
                 logger.debug(f"    {col}: {val:.6f}" if pd.notna(val) else f"    {col}: NaN")
+            
+            # 🔍 CRITICAL DEBUG: Check M15 source data timing
+            logger.debug(f"[M15_SOURCE] Raw M15 last 3 candles:")
+            for idx, row in m15.tail(3).iterrows():
+                logger.debug(f"    {idx} | C:{row['close']:.6f}")
         
         # 🔍 DEBUG: Check key M1 features BEFORE join  
         m1_cols = [c for c in ft.columns if c.startswith('m1_')]
@@ -858,14 +866,18 @@ def prepare_features(data, mtf_fe):
         logger.debug(f"[PREPARE_FEATURES] Dropped {before_dropna - len(ft)} rows with NaN in critical cols")
         
         # ✅ FIXED: Exclude ALL cumsum/window-dependent features (same as training)
-        cumsum_patterns = [
-            'bars_since_swing', 'consecutive_up', 'consecutive_down',
-            'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
-        ]
-        cols_to_drop = [c for c in ft.columns if any(p in c.lower() for p in cumsum_patterns)]
+        # Uses centralized constants from src/utils/constants.py
+        cols_to_drop = [c for c in ft.columns if any(p in c.lower() for p in CUMSUM_PATTERNS)]
         if cols_to_drop:
             logger.debug(f"Excluding cumsum-dependent features: {cols_to_drop}")
             ft = ft.drop(columns=cols_to_drop)
+        
+        # ✅ Exclude absolute price-based features (same as training)
+        # Uses centralized constants from src/utils/constants.py
+        absolute_cols_to_drop = [c for c in ft.columns if c in ABSOLUTE_PRICE_FEATURES]
+        if absolute_cols_to_drop:
+            logger.debug(f"Excluding absolute price features: {absolute_cols_to_drop}")
+            ft = ft.drop(columns=absolute_cols_to_drop)
         
         # Only forward-fill for non-critical columns
         non_critical = [c for c in ft.columns if c not in critical_cols]
@@ -1189,6 +1201,14 @@ def main():
                             # Validate features and fill missing with 0
                             missing_features = [f for f in models['features'] if f not in row.columns]
                             if missing_features:
+                                # ✅ Check if missing features are absolute price features (model needs retraining)
+                                # Use centralized constant for checking
+                                absolute_missing = [f for f in missing_features if f in ABSOLUTE_PRICE_FEATURES]
+                                if absolute_missing:
+                                    logger.warning(f"⚠️ Model expects ABSOLUTE price features: {absolute_missing}")
+                                    logger.warning("⚠️ These features cause live/backtest discrepancy!")
+                                    logger.warning("⚠️ Please RETRAIN model with: python scripts/train_v3_dynamic.py --days 60 --test_days 14")
+                                    
                                 logger.debug(f"Missing features for {pair}: {missing_features}")
                                 # Fill missing features with 0 (these are typically volume-related)
                                 for mf in missing_features:
@@ -1366,6 +1386,45 @@ def main():
                     # Summary after scan
                     logger.info("=" * 70)
                     logger.info(f"📊 Scan complete: {signals_checked} pairs checked, {signals_found} signals found")
+                    
+                    # 🆕 CONFIDENCE TABLE - показываем confidence для КАЖДОЙ пары
+                    if scan_stats['predictions']:
+                        logger.info("")
+                        logger.info("📋 CONFIDENCE TABLE (all pairs):")
+                        logger.info("-" * 70)
+                        logger.info(f"{'Pair':<20} | {'Direction':<10} | {'Conf':>6} | {'Timing':>6} | {'Strength':>8} | Status")
+                        logger.info("-" * 70)
+                        
+                        # Сортируем по confidence (от большего к меньшему)
+                        sorted_preds = sorted(scan_stats['predictions'], 
+                                             key=lambda x: x.get('confidence', 0), 
+                                             reverse=True)
+                        
+                        for pred in sorted_preds:
+                            pair_short = pred['pair'].replace('/USDT:USDT', '').replace('USDT:', '')
+                            direction = pred.get('direction', 'N/A')
+                            conf = pred.get('confidence', 0)
+                            timing = pred.get('timing', 0)
+                            strength = pred.get('strength', 0)
+                            passes = pred.get('passes_all', False)
+                            
+                            # Определяем статус
+                            if direction == 'SIDEWAYS':
+                                status = "⏸️ SIDEWAYS"
+                            elif passes:
+                                status = "✅ SIGNAL"
+                            elif conf < MIN_CONF:
+                                status = f"❌ Conf<{MIN_CONF}"
+                            elif timing < MIN_TIMING:
+                                status = f"❌ Tim<{MIN_TIMING}"
+                            elif strength < MIN_STRENGTH:
+                                status = f"❌ Str<{MIN_STRENGTH}"
+                            else:
+                                status = "❌ Other"
+                            
+                            logger.info(f"{pair_short:<20} | {direction:<10} | {conf:>6.2f} | {timing:>6.2f} | {strength:>8.1f} | {status}")
+                        
+                        logger.info("-" * 70)
                     
                     # 🔍 Show rejection breakdown on INFO level for diagnostics
                     if scan_stats['pairs_scanned'] > 0 and signals_found == 0:
