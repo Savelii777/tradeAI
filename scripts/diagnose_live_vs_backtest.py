@@ -232,6 +232,12 @@ def diagnose_pair(pair_name: str, lookback_live: int = 1000, lookback_backtest: 
         bt_clean = bt_vals[valid_mask]
         lv_clean = lv_vals[valid_mask]
         
+        # Convert boolean to float to avoid "numpy boolean subtract" error
+        if bt_clean.dtype == bool:
+            bt_clean = bt_clean.astype(float)
+        if lv_clean.dtype == bool:
+            lv_clean = lv_clean.astype(float)
+        
         diff = (bt_clean - lv_clean).abs()
         mean_diff = diff.mean()
         max_diff = diff.max()
