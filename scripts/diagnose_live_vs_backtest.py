@@ -29,6 +29,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from train_mtf import MTFFeatureEngine
 from src.features.feature_engine import FeatureEngine
+from src.utils.constants import (
+    CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES
+)
 
 # ============================================================
 # CONFIG
@@ -47,24 +50,6 @@ M5_TO_M15_RATIO = 3  # M15 has 3x fewer candles than M5
 
 # Minimum valid samples required for feature comparison
 MIN_VALID_SAMPLES = 10
-
-# Cumsum-dependent features that should be excluded
-# These features depend on data window start and produce different values on live vs backtest
-CUMSUM_PATTERNS = [
-    'bars_since_swing', 'consecutive_up', 'consecutive_down',
-    'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
-]
-
-# ⚠️ NEW: Absolute price-based features that cause live/backtest discrepancy
-# These features have values that depend on current price level (e.g. $500 vs $420)
-# Model trained on old price levels will see completely different values on live
-ABSOLUTE_PRICE_FEATURES = [
-    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
-    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
-    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
-    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
-    'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
-]
 
 
 # ============================================================

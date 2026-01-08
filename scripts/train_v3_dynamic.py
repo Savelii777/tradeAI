@@ -45,6 +45,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.features.feature_engine import FeatureEngine
+from src.utils.constants import (
+    CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES, DEFAULT_EXCLUDE_FEATURES
+)
 from train_mtf import MTFFeatureEngine
 
 
@@ -762,31 +765,15 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
         
         # Train models on THIS period
         train_df = pd.concat(all_train).dropna()
-        exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
-                   'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change',
-                   'vol_sma_20', 'm15_volume_ma', 'm15_atr', 'vwap']
         
-        # ✅ NEW: Exclude absolute price-based features (same as main training)
-        absolute_price_patterns = [
-            'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
-            'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
-            'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
-            'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
-            'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
-        ]
-        
-        # Исключаем ВСЕ cumsum/window-зависимые фичи - их значения зависят от начала окна данных!
-        # Эти фичи работают на бэктесте, но ЛОМАЮТСЯ на лайве из-за разной длины данных
-        cumsum_patterns = [
-            'bars_since_swing', 'consecutive_up', 'consecutive_down',
-            'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
-        ]
+        # Use centralized constants for feature exclusion
+        exclude = list(DEFAULT_EXCLUDE_FEATURES)
         
         # Combine all exclusion patterns
-        all_exclude = set(exclude) | set(absolute_price_patterns)
+        all_exclude = set(exclude) | set(ABSOLUTE_PRICE_FEATURES)
         
         features = [c for c in train_df.columns if c not in all_exclude 
-                    and not any(p in c.lower() for p in cumsum_patterns)]
+                    and not any(p in c.lower() for p in CUMSUM_PATTERNS)]
         
         X_train = train_df[features]
         y_train = {
@@ -980,42 +967,15 @@ def main():
     # Train
     train_df = pd.concat(all_train).dropna()
     
-    # ✅ FIX: Exclude ABSOLUTE volume/price features that break when market regime changes
-    # (e.g. Volume dropped 10x in Jan 2026 vs Dec 2025, breaking absolute thresholds)
-    # ✅ FIX v2: Also exclude absolute EMA/BB values - use *_dist versions instead!
-    # Example: m5_ema_200 was 500 during training, now 420 on live = model sees different data
-    exclude = ['pair', 'target_dir', 'target_timing', 'target_strength', 
-               'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change',
-               'vol_sma_20', 'm15_volume_ma', 'm15_atr', 'vwap']
-    
-    # ✅ NEW: Exclude absolute price-based features (EMA values, BB levels, volume MA)
-    # These depend on current price level which changes over time
-    # We keep only NORMALIZED versions (*_dist, *_ratio, *_position, *_pct)
-    absolute_price_patterns = [
-        'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
-        'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
-        'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
-        'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
-        'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
-    ]
-               
-    # Исключаем ВСЕ cumsum/window-зависимые фичи - их значения зависят от начала окна данных!
-    # Эти фичи работают на бэктесте, но ЛОМАЮТСЯ на лайве из-за разной длины данных:
-    # - obv: cumsum() от начала данных
-    # - volume_delta_cumsum: аналогично
-    # - swing_high_price/swing_low_price: ffill() от первого свинга
-    # - bars_since_swing: cumsum()
-    # - consecutive_up/down: groupby().cumsum()
-    cumsum_patterns = [
-        'bars_since_swing', 'consecutive_up', 'consecutive_down',
-        'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
-    ]
+    # Use centralized constants for feature exclusion
+    # These exclude absolute price features, cumsum-dependent features, and raw OHLCV
+    exclude = list(DEFAULT_EXCLUDE_FEATURES)
     
     # Combine all exclusion patterns
-    all_exclude = set(exclude) | set(absolute_price_patterns)
+    all_exclude = set(exclude) | set(ABSOLUTE_PRICE_FEATURES)
     
     features = [c for c in train_df.columns if c not in all_exclude 
-                and not any(p in c.lower() for p in cumsum_patterns)]
+                and not any(p in c.lower() for p in CUMSUM_PATTERNS)]
     
     X_train = train_df[features]
     y_train = {

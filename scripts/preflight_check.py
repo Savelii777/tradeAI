@@ -41,6 +41,16 @@ except ImportError as e:
     print("Please install requirements: pip install numpy pandas joblib")
     sys.exit(1)
 
+# Import centralized constants for reference
+try:
+    from src.utils.constants import (
+        CUMSUM_PATTERNS as CONST_CUMSUM_PATTERNS,
+        ABSOLUTE_PRICE_FEATURES as CONST_ABSOLUTE_FEATURES
+    )
+except ImportError:
+    CONST_CUMSUM_PATTERNS = []
+    CONST_ABSOLUTE_FEATURES = []
+
 
 # ============================================================
 # CONFIGURATION
@@ -49,8 +59,9 @@ except ImportError as e:
 DEFAULT_MODEL_DIR = Path(__file__).parent.parent / 'models' / 'v8_improved'
 LIVE_SCRIPT_PATH = Path(__file__).parent / 'live_trading_mexc_v8.py'
 
-# Dangerous patterns that should NOT be in feature names
-CUMSUM_PATTERNS = [
+# Dangerous patterns that should NOT be in feature names (for pattern matching)
+# Note: these are patterns for substring matching, not exact names
+CUMSUM_PATTERNS_CHECK = [
     'obv',
     'cumsum',
     'bars_since_swing',
@@ -61,7 +72,7 @@ CUMSUM_PATTERNS = [
     'volume_delta_cumsum',
 ]
 
-# Absolute value patterns that may cause issues
+# Absolute value patterns that may cause issues (regex patterns)
 # ⚠️ These features have values that depend on current price level
 # and will differ between backtest (e.g. $500) and live (e.g. $420)
 ABSOLUTE_PATTERNS = [
@@ -178,7 +189,7 @@ def check_cumsum_features(model_dir: Path, verbose: bool = False) -> CheckResult
     dangerous = []
     
     for feat in features:
-        for pattern in CUMSUM_PATTERNS:
+        for pattern in CUMSUM_PATTERNS_CHECK:
             if pattern.lower() in feat.lower():
                 dangerous.append(feat)
                 break

@@ -131,3 +131,41 @@ SESSION_TIMES = {
     TradingSession.EUROPEAN: {"start": 7, "end": 16},  # 07:00 - 16:00 UTC
     TradingSession.AMERICAN: {"start": 13, "end": 22},  # 13:00 - 22:00 UTC
 }
+
+# ============================================================
+# FEATURE EXCLUSION PATTERNS
+# ============================================================
+# These features should be excluded from training and live prediction
+# because they cause backtest vs live discrepancy
+
+# Cumsum-dependent features: values depend on data window start position
+# In backtest: data starts from 2017 → cumsum accumulates for 8 years
+# In live: data starts from last 1000 candles → cumsum is 1000x smaller
+CUMSUM_PATTERNS = [
+    'bars_since_swing',       # cumsum() from start of data
+    'consecutive_up',         # groupby().cumsum()
+    'consecutive_down',       # groupby().cumsum()
+    'obv',                    # cumsum() from start of data
+    'volume_delta_cumsum',    # rolling cumsum
+    'swing_high_price',       # ffill() from first swing
+    'swing_low_price',        # ffill() from first swing
+]
+
+# Absolute price-based features: values depend on current price level
+# In training: price was $500 → m5_ema_200 = 500
+# In live: price is $420 → m5_ema_200 = 420 (completely different!)
+# Model sees different values and becomes "confused" → low confidence
+ABSOLUTE_PRICE_FEATURES = [
+    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
+    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
+    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
+    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
+    'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
+]
+
+# Features to exclude from training (in addition to targets and raw OHLCV)
+DEFAULT_EXCLUDE_FEATURES = [
+    'pair', 'target_dir', 'target_timing', 'target_strength',
+    'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change',
+    'vol_sma_20', 'm15_volume_ma', 'm15_atr', 'vwap',
+]

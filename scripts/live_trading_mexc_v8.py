@@ -23,6 +23,9 @@ from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.features.feature_engine import FeatureEngine
+from src.utils.constants import (
+    CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES
+)
 from train_mtf import MTFFeatureEngine
 
 # ============================================================
@@ -858,26 +861,15 @@ def prepare_features(data, mtf_fe):
         logger.debug(f"[PREPARE_FEATURES] Dropped {before_dropna - len(ft)} rows with NaN in critical cols")
         
         # ✅ FIXED: Exclude ALL cumsum/window-dependent features (same as training)
-        cumsum_patterns = [
-            'bars_since_swing', 'consecutive_up', 'consecutive_down',
-            'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
-        ]
-        cols_to_drop = [c for c in ft.columns if any(p in c.lower() for p in cumsum_patterns)]
+        # Uses centralized constants from src/utils/constants.py
+        cols_to_drop = [c for c in ft.columns if any(p in c.lower() for p in CUMSUM_PATTERNS)]
         if cols_to_drop:
             logger.debug(f"Excluding cumsum-dependent features: {cols_to_drop}")
             ft = ft.drop(columns=cols_to_drop)
         
-        # ✅ NEW: Exclude absolute price-based features (same as training)
-        # These features depend on price level which changes over time
-        # Model expects normalized versions (*_dist, *_ratio, *_position, *_pct)
-        absolute_price_features = [
-            'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
-            'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
-            'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
-            'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
-            'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
-        ]
-        absolute_cols_to_drop = [c for c in ft.columns if c in absolute_price_features]
+        # ✅ Exclude absolute price-based features (same as training)
+        # Uses centralized constants from src/utils/constants.py
+        absolute_cols_to_drop = [c for c in ft.columns if c in ABSOLUTE_PRICE_FEATURES]
         if absolute_cols_to_drop:
             logger.debug(f"Excluding absolute price features: {absolute_cols_to_drop}")
             ft = ft.drop(columns=absolute_cols_to_drop)
@@ -1205,14 +1197,8 @@ def main():
                             missing_features = [f for f in models['features'] if f not in row.columns]
                             if missing_features:
                                 # ✅ Check if missing features are absolute price features (model needs retraining)
-                                absolute_price_features_set = {
-                                    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',
-                                    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',
-                                    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',
-                                    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',
-                                    'm5_volume_delta', 'm5_volume_trend',
-                                }
-                                absolute_missing = [f for f in missing_features if f in absolute_price_features_set]
+                                # Use centralized constant for checking
+                                absolute_missing = [f for f in missing_features if f in ABSOLUTE_PRICE_FEATURES]
                                 if absolute_missing:
                                     logger.warning(f"⚠️ Model expects ABSOLUTE price features: {absolute_missing}")
                                     logger.warning("⚠️ These features cause live/backtest discrepancy!")
