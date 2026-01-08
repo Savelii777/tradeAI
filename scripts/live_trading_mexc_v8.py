@@ -58,14 +58,12 @@ PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
 
-# ✅ FIX: Increased LOOKBACK to ensure stable feature calculation
-# EMA-200 needs ~1000 bars to stabilize
-# Note: After align_timeframes() and dropna(), we get fewer rows than LOOKBACK
-# With LOOKBACK=10000, we get enough data for volume ratio calculations
-# CRITICAL: volume_ratio_20, m5_volume_ratio_10 etc. depend on data window size
-# With 3000 bars, these features differ by 500-2500% from backtest values!
-LOOKBACK = 1000  # Increased from 3000 to match backtest feature values
-WARMUP_BARS = 200  # ✅ REDUCED from 500: Since normalization is disabled, only need EMA-200 warmup
+# ✅ FIX: LOOKBACK determines how many M1 bars to fetch from API
+# After align_timeframes() and dropna(), we get fewer rows than LOOKBACK
+# Example: LOOKBACK=3000 M1 bars → ~200-500 aligned rows (depends on M5/M15 alignment)
+# CRITICAL: With too few bars, volume_ratio features differ significantly from backtest
+LOOKBACK = 3000  # 3000 M1 bars → ~500 aligned rows → enough for analysis
+WARMUP_BARS = 50  # ✅ First 50 bars may have unstable EMA values, skip them
 MIN_ROWS_FOR_PREDICTION = 2  # Need at least 2 rows: current (forming) and last closed candle
 
 # Timeframe multipliers for data alignment
