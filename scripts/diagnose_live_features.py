@@ -318,7 +318,82 @@ def main():
     print(f"   Features with Inf: {len(inf_features)}")
     
     # ================================================================
-    # 7. CONCLUSION
+    # 7. COMPARE WITH CSV DATA (BACKTEST STYLE)
+    # ================================================================
+    print("\n" + "="*70)
+    print("STEP 7: Comparing with CSV data (BACKTEST style)")
+    print("="*70)
+    
+    # Load CSV data for comparison
+    try:
+        m1_csv = pd.read_csv(DATA_DIR / f"{pair_csv}_1m.csv", index_col=0, parse_dates=True)
+        m5_csv = pd.read_csv(DATA_DIR / f"{pair_csv}_5m.csv", index_col=0, parse_dates=True)
+        m15_csv = pd.read_csv(DATA_DIR / f"{pair_csv}_15m.csv", index_col=0, parse_dates=True)
+        
+        print(f"  Loaded CSV: M1={len(m1_csv)}, M5={len(m5_csv)}, M15={len(m15_csv)}")
+        print(f"  CSV range: {m5_csv.index[0]} to {m5_csv.index[-1]}")
+        
+        # Prepare features from CSV (backtest style - full data)
+        ft_csv = prepare_features_live_style(m1_csv, m5_csv, m15_csv, mtf_fe)
+        
+        if ft_csv is not None and len(ft_csv) > 0:
+            # Get same timestamp row from CSV
+            target_ts = ft_live.index[-2]
+            
+            # Find closest match in CSV
+            time_diffs = abs(ft_csv.index - target_ts)
+            closest_idx = time_diffs.argmin()
+            csv_row = ft_csv.iloc[[closest_idx]]
+            
+            print(f"\n  Comparing features at similar timestamps:")
+            print(f"    LIVE:  {target_ts}")
+            print(f"    CSV:   {ft_csv.index[closest_idx]}")
+            
+            # Compare feature values
+            diffs = []
+            for f in model_features:
+                if f in row.columns and f in csv_row.columns:
+                    live_val = float(row[f].values[0])
+                    csv_val = float(csv_row[f].values[0])
+                    
+                    if csv_val != 0:
+                        pct_diff = abs(live_val - csv_val) / abs(csv_val) * 100
+                    else:
+                        pct_diff = abs(live_val - csv_val) * 100 if live_val != csv_val else 0
+                    
+                    diffs.append({
+                        'feature': f,
+                        'live': live_val,
+                        'csv': csv_val,
+                        'abs_diff': abs(live_val - csv_val),
+                        'pct_diff': pct_diff
+                    })
+            
+            # Sort by pct_diff
+            diffs_sorted = sorted(diffs, key=lambda x: x['pct_diff'], reverse=True)
+            
+            print("\n  📊 TOP 20 features with LARGEST difference:")
+            print("  " + "-"*80)
+            for d in diffs_sorted[:20]:
+                print(f"    {d['feature'][:40]:<40} | LIVE: {d['live']:>10.4f} | CSV: {d['csv']:>10.4f} | Diff: {d['pct_diff']:>6.1f}%")
+            
+            # Check if any critical features differ significantly
+            critical_diffs = [d for d in diffs_sorted if d['pct_diff'] > 50]
+            
+            if critical_diffs:
+                print(f"\n  ⚠️ {len(critical_diffs)} features differ by >50%!")
+                print("  These may be causing confidence discrepancy.")
+        
+    except FileNotFoundError as e:
+        print(f"  Could not load CSV data: {e}")
+        print("  Skipping CSV comparison")
+    except Exception as e:
+        print(f"  Error comparing with CSV: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # ================================================================
+    # 8. CONCLUSION
     # ================================================================
     print("\n" + "="*70)
     print("CONCLUSION")
@@ -343,10 +418,16 @@ SOLUTION:
         print(f"""
 ✅ All features present - no missing features problem.
 
-If confidence is still low, the issue may be:
-1. Current market conditions differ from training period
-2. Feature values are in different ranges (check feature scaling)
-3. Model is correctly predicting SIDEWAYS for this pair/period
+If confidence is still low, check STEP 7 above for features that differ
+significantly between LIVE and CSV data. Large differences indicate
+that the model is seeing different feature distributions than during training.
+
+Possible causes:
+1. Data window length affects some features (not just cumsum)
+2. Different data preprocessing between backtest and live
+3. API data vs CSV data discrepancies
+
+SOLUTION: Ensure feature generation uses EXACTLY the same logic in both.
 """)
 
 
