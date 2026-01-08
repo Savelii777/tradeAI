@@ -189,18 +189,37 @@ def main():
     print(f"VERIFY LOOKBACK FIX: {pair}")
     print("="*70)
     
-    mtf_fe = MTFFeatureEngine()
+    try:
+        mtf_fe = MTFFeatureEngine()
+    except Exception as e:
+        print(f"❌ Error initializing MTFFeatureEngine: {e}")
+        import traceback
+        traceback.print_exc()
+        return
     
     # 1. Load CSV data for backtest reference
     print("\n📊 Loading CSV data for backtest reference...")
-    m1_csv, m5_csv, m15_csv = load_csv_data(pair_csv)
-    if m1_csv is None:
-        print(f"❌ CSV data not found for {pair_csv}")
+    try:
+        m1_csv, m5_csv, m15_csv = load_csv_data(pair_csv)
+        if m1_csv is None:
+            print(f"❌ CSV data not found for {pair_csv}")
+            print(f"   Expected files in: {DATA_DIR}")
+            print(f"   Looking for: {pair_csv}_1m.csv, {pair_csv}_5m.csv, {pair_csv}_15m.csv")
+            return
+        
+        print(f"  M1: {len(m1_csv)} candles")
+        print(f"  M5: {len(m5_csv)} candles")
+        print(f"  M15: {len(m15_csv)} candles")
+        
+        ft_csv = prepare_features(m1_csv, m5_csv, m15_csv, mtf_fe)
+        csv_last_row = ft_csv.iloc[-1]
+        print(f"  CSV range: {ft_csv.index[0]} to {ft_csv.index[-1]}")
+        
+    except Exception as e:
+        print(f"❌ Error loading/preparing CSV data: {e}")
+        import traceback
+        traceback.print_exc()
         return
-    
-    ft_csv = prepare_features(m1_csv, m5_csv, m15_csv, mtf_fe)
-    csv_last_row = ft_csv.iloc[-1]
-    print(f"  CSV range: {ft_csv.index[0]} to {ft_csv.index[-1]}")
     
     # 2. Test different LOOKBACK values
     lookback_values = [3000, 5000, 10000]
