@@ -54,9 +54,12 @@ MODEL_DIR = Path("models/v8_improved")
 PAIRS_FILE = Path("config/pairs_list.json")
 TRADES_FILE = Path("active_trades_mexc.json")
 TIMEFRAMES = ['1m', '5m', '15m']
-LOOKBACK = 1000  # ✅ UPDATED: Reduced to 1000 to speed up scanning (fits in 1 API request). 
-                 # 3000 took ~6 mins to scan, leading to late entries.
-                 # 1000 is still enough for EMA-200 convergence (5x period).
+
+# ✅ FIX: Increased LOOKBACK to ensure stable feature calculation
+# EMA-200 needs ~1000 bars to stabilize, rolling normalization needs 500+
+# Previous value of 1000 caused feature drift between backtest and live
+LOOKBACK = 2000  # Increased from 1000 to ensure feature stability
+WARMUP_BARS = 500  # ✅ NEW: Skip first 500 bars after feature calculation (warmup period)
 
 # V8 IMPROVED Thresholds (UPDATED for new Timing model)
 MIN_CONF = 0.50       # Direction confidence
@@ -1113,6 +1116,16 @@ def main():
                                 continue
                             
                             logger.debug(f"      Features prepared: {len(df)} rows, {len(df.columns)} columns")
+                            
+                            # ✅ FIX: Skip warmup rows - first WARMUP_BARS have unstable features
+                            # EMA-200, rolling stats, etc. need time to stabilize
+                            if len(df) < WARMUP_BARS + 2:
+                                logger.warning(f"      Not enough data after warmup ({len(df)} < {WARMUP_BARS + 2})")
+                                continue
+                            
+                            # Only use data AFTER warmup period
+                            df = df.iloc[WARMUP_BARS:]
+                            logger.debug(f"      After warmup skip: {len(df)} rows")
                             
                             # Get last closed candle
                             row = df.iloc[[-2]]
