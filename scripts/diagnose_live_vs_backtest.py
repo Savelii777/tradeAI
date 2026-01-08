@@ -44,6 +44,9 @@ MIN_STRENGTH = 1.4
 M1_TO_M5_RATIO = 5  # M1 has 5x more candles than M5
 M5_TO_M15_RATIO = 3  # M15 has 3x fewer candles than M5
 
+# Minimum valid samples required for feature comparison
+MIN_VALID_SAMPLES = 10
+
 # Cumsum-dependent features that should be excluded
 # These features depend on data window start and produce different values on live vs backtest
 CUMSUM_PATTERNS = [
@@ -219,13 +222,27 @@ def diagnose_pair(pair_name: str, lookback_live: int = 1000, lookback_backtest: 
         bt_vals = ft_backtest_48h.loc[common_idx, feat]
         lv_vals = ft_live_48h.loc[common_idx, feat]
         
-        diff = (bt_vals - lv_vals).abs()
+        # Handle NaN values - skip features with too many NaN
+        valid_mask = bt_vals.notna() & lv_vals.notna()
+        if valid_mask.sum() < MIN_VALID_SAMPLES:
+            print(f"{feat:<35} | {'TOO_FEW':>12} | {'-':>12} | ⚠️ SKIP")
+            continue
+        
+        bt_clean = bt_vals[valid_mask]
+        lv_clean = lv_vals[valid_mask]
+        
+        diff = (bt_clean - lv_clean).abs()
         mean_diff = diff.mean()
         max_diff = diff.max()
         
         # Normalize by feature range
-        feat_range = bt_vals.abs().mean() + 1e-10
+        feat_range = bt_clean.abs().mean() + 1e-10
         mean_diff_pct = mean_diff / feat_range * 100
+        
+        # Handle NaN in computed values
+        if np.isnan(mean_diff_pct):
+            print(f"{feat:<35} | {'NaN':>12} | {'-':>12} | ⚠️ SKIP")
+            continue
         
         feature_diffs[feat] = {
             'mean_diff': mean_diff,
