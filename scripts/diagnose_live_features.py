@@ -108,7 +108,28 @@ def load_models():
 def prepare_features_live_style(m1, m5, m15, mtf_fe):
     """Prepare features EXACTLY like live script does"""
     
-    ft = mtf_fe.align_timeframes(m1, m5, m15)
+    # Pre-process data (same as live script)
+    for df in [m1, m5, m15]:
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index, utc=True)
+        df.sort_index(inplace=True)
+    
+    # Remove duplicates
+    m1 = m1[~m1.index.duplicated(keep='first')]
+    m5 = m5[~m5.index.duplicated(keep='first')]
+    m15 = m15[~m15.index.duplicated(keep='first')]
+    
+    print(f"  M1: {len(m1)} candles, {m1.index[0]} to {m1.index[-1]}")
+    print(f"  M5: {len(m5)} candles, {m5.index[0]} to {m5.index[-1]}")
+    print(f"  M15: {len(m15)} candles, {m15.index[0]} to {m15.index[-1]}")
+    
+    try:
+        ft = mtf_fe.align_timeframes(m1, m5, m15)
+    except Exception as e:
+        print(f"  Error in align_timeframes: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
     if len(ft) == 0:
         return None
     
