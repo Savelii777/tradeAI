@@ -1,5 +1,5 @@
 {
-  "count": 10,
+  "count": 20,
   "pairs": [
     {
       "symbol": "BTC/USDT:USDT",
@@ -47,12 +47,30 @@
       "type": "swap"
     },
     {
+      "symbol": "ZEC/USDT:USDT",
+      "base": "ZEC",
+      "quote": "USDT",
+      "volume_24h_usd": 316311223.3975,
+      "last_price": 406.92,
+      "change_24h": -2.14,
+      "type": "swap"
+    },
+    {
       "symbol": "LINK/USDT:USDT",
       "base": "LINK",
       "quote": "USDT",
       "volume_24h_usd": 246369353.6028,
       "last_price": 12.143,
       "change_24h": -1.08,
+      "type": "swap"
+    },
+    {
+      "symbol": "ADA/USDT:USDT",
+      "base": "ADA",
+      "quote": "USDT",
+      "volume_24h_usd": 237772535.4093,
+      "last_price": 0.3547,
+      "change_24h": -1.66,
       "type": "swap"
     },
     {
@@ -74,6 +92,69 @@
       "type": "swap"
     },
     {
+      "symbol": "HYPE/USDT:USDT",
+      "base": "HYPE",
+      "quote": "USDT",
+      "volume_24h_usd": 155958485.4015,
+      "last_price": 23.827,
+      "change_24h": -0.99,
+      "type": "swap"
+    },
+    {
+      "symbol": "BCH/USDT:USDT",
+      "base": "BCH",
+      "quote": "USDT",
+      "volume_24h_usd": 137543881.6176,
+      "last_price": 572.25,
+      "change_24h": -0.74,
+      "type": "swap"
+    },
+    {
+      "symbol": "AAVE/USDT:USDT",
+      "base": "AAVE",
+      "quote": "USDT",
+      "volume_24h_usd": 124624839.811,
+      "last_price": 148.68,
+      "change_24h": -1.02,
+      "type": "swap"
+    },
+    {
+      "symbol": "LTC/USDT:USDT",
+      "base": "LTC",
+      "quote": "USDT",
+      "volume_24h_usd": 123993991.4169,
+      "last_price": 75.74,
+      "change_24h": -1.17,
+      "type": "swap"
+    },
+    {
+      "symbol": "TAO/USDT:USDT",
+      "base": "TAO",
+      "quote": "USDT",
+      "volume_24h_usd": 123672229.694,
+      "last_price": 207.7,
+      "change_24h": -3.17,
+      "type": "swap"
+    },
+    {
+      "symbol": "ASTER/USDT:USDT",
+      "base": "ASTER",
+      "quote": "USDT",
+      "volume_24h_usd": 120431605.332,
+      "last_price": 0.6708,
+      "change_24h": -1.68,
+      "type": "swap"
+    },
+    {
+      "symbol": "UNI/USDT:USDT",
+      "base": "UNI",
+      "quote": "USDT",
+      "volume_24h_usd": 112180053.992,
+      "last_price": 5.671,
+      "change_24h": -1.04,
+      "type": "swap"
+    },
+    {
       "symbol": "PIPPIN/USDT:USDT",
       "base": "PIPPIN",
       "quote": "USDT",
@@ -89,6 +170,15 @@
       "volume_24h_usd": 98288887.61,
       "last_price": 3.852e-06,
       "change_24h": -1.78,
+      "type": "swap"
+    },
+    {
+      "symbol": "NEAR/USDT:USDT",
+      "base": "NEAR",
+      "quote": "USDT",
+      "volume_24h_usd": 82429949.166,
+      "last_price": 1.45,
+      "change_24h": -2.42,
       "type": "swap"
     }
   ]

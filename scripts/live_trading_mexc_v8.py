@@ -1387,6 +1387,45 @@ def main():
                     logger.info("=" * 70)
                     logger.info(f"📊 Scan complete: {signals_checked} pairs checked, {signals_found} signals found")
                     
+                    # 🆕 CONFIDENCE TABLE - показываем confidence для КАЖДОЙ пары
+                    if scan_stats['predictions']:
+                        logger.info("")
+                        logger.info("📋 CONFIDENCE TABLE (all pairs):")
+                        logger.info("-" * 70)
+                        logger.info(f"{'Pair':<20} | {'Direction':<10} | {'Conf':>6} | {'Timing':>6} | {'Strength':>8} | Status")
+                        logger.info("-" * 70)
+                        
+                        # Сортируем по confidence (от большего к меньшему)
+                        sorted_preds = sorted(scan_stats['predictions'], 
+                                             key=lambda x: x.get('confidence', 0), 
+                                             reverse=True)
+                        
+                        for pred in sorted_preds:
+                            pair_short = pred['pair'].replace('/USDT:USDT', '').replace('USDT:', '')
+                            direction = pred.get('direction', 'N/A')
+                            conf = pred.get('confidence', 0)
+                            timing = pred.get('timing', 0)
+                            strength = pred.get('strength', 0)
+                            passes = pred.get('passes_all', False)
+                            
+                            # Определяем статус
+                            if direction == 'SIDEWAYS':
+                                status = "⏸️ SIDEWAYS"
+                            elif passes:
+                                status = "✅ SIGNAL"
+                            elif conf < MIN_CONF:
+                                status = f"❌ Conf<{MIN_CONF}"
+                            elif timing < MIN_TIMING:
+                                status = f"❌ Tim<{MIN_TIMING}"
+                            elif strength < MIN_STRENGTH:
+                                status = f"❌ Str<{MIN_STRENGTH}"
+                            else:
+                                status = "❌ Other"
+                            
+                            logger.info(f"{pair_short:<20} | {direction:<10} | {conf:>6.2f} | {timing:>6.2f} | {strength:>8.1f} | {status}")
+                        
+                        logger.info("-" * 70)
+                    
                     # 🔍 Show rejection breakdown on INFO level for diagnostics
                     if scan_stats['pairs_scanned'] > 0 and signals_found == 0:
                         logger.info(f"   📈 SIDEWAYS: {scan_stats['sideways_count']}")
