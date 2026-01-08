@@ -2,12 +2,12 @@
 """
 Feature Distribution Comparison Script
 
-Сравнивает распределение фичей между тренировочными данными (бектест)
-и данными последних N часов (имитация лайва).
+Compares feature distributions between training data (backtest)
+and data from the last N hours (simulating live).
 
-Цель: выявить фичи которые могут вести себя по-разному в лайве.
+Goal: identify features that may behave differently in live.
 
-Использование:
+Usage:
     python scripts/compare_feature_distributions.py --pair BTC_USDT_USDT --hours 48
 """
 
@@ -29,6 +29,18 @@ except ImportError:
     print("Warning: Could not import MTFFeatureEngine from train_mtf")
     print("Make sure you're running from the scripts directory or project root")
     MTFFeatureEngine = None
+
+# Try to load model feature names
+try:
+    import joblib
+    MODEL_DIR = Path(__file__).parent.parent / 'models' / 'v8_improved'
+    FEATURE_NAMES_FILE = MODEL_DIR / 'feature_names.joblib'
+    if FEATURE_NAMES_FILE.exists():
+        MODEL_FEATURE_NAMES = set(joblib.load(FEATURE_NAMES_FILE))
+    else:
+        MODEL_FEATURE_NAMES = None
+except Exception:
+    MODEL_FEATURE_NAMES = None
 
 # ============================================================
 # CONFIG (can be overridden via command-line)
@@ -251,37 +263,74 @@ def compare_distributions(pair_name: str, recent_hours: int = 48, data_dir: Path
     print(f"Warning features: {len(results['features_warning'])}")
     print(f"Critical features: {len(results['features_critical'])}")
     
+    # Check which critical features are actually in the model
     if criticals_list:
-        print(f"\n❌ CRITICAL FEATURES (cumsum-dependent - MUST be excluded):")
+        in_model = []
+        excluded = []
         for item in criticals_list:
-            print(f"   {item['feature']}: {item['reason']}")
-            print(f"      Old mean: {item['old_mean']:.4f}, New mean: {item['new_mean']:.4f}")
+            if MODEL_FEATURE_NAMES and item['feature'] in MODEL_FEATURE_NAMES:
+                in_model.append(item)
+            else:
+                excluded.append(item)
+        
+        if in_model:
+            print(f"\n❌ CRITICAL: {len(in_model)} cumsum-dependent features IN MODEL (must retrain!):")
+            for item in in_model:
+                print(f"   {item['feature']}: {item['reason']}")
+                print(f"      Old mean: {item['old_mean']:.4f}, New mean: {item['new_mean']:.4f}")
+        
+        if excluded:
+            print(f"\n✅ {len(excluded)} cumsum-dependent features EXCLUDED from model (OK):")
+            for item in excluded:
+                print(f"   {item['feature']}")
+        
+        if MODEL_FEATURE_NAMES is None:
+            print(f"\n⚠️  Could not load feature_names.joblib to verify exclusion")
+            print(f"   Run: python scripts/preflight_check.py to verify")
     
     if warnings_list:
-        print(f"\n⚠️  WARNING FEATURES (distribution changed significantly):")
-        for item in sorted(warnings_list, key=lambda x: x['mean_diff'], reverse=True)[:15]:
-            print(f"   {item['feature']}:")
-            print(f"      Mean: {item['old_mean']:.4f} → {item['new_mean']:.4f} (diff: {item['mean_diff']*100:.1f}%)")
-            print(f"      KS p-value: {item['ks_pvalue']:.4f}")
+        # Filter warnings to only show features IN the model
+        if MODEL_FEATURE_NAMES:
+            warnings_in_model = [w for w in warnings_list if w['feature'] in MODEL_FEATURE_NAMES]
+            warnings_excluded = len(warnings_list) - len(warnings_in_model)
+        else:
+            warnings_in_model = warnings_list
+            warnings_excluded = 0
+        
+        if warnings_in_model:
+            print(f"\n⚠️  WARNING FEATURES IN MODEL (distribution changed significantly):")
+            for item in sorted(warnings_in_model, key=lambda x: x['mean_diff'], reverse=True)[:15]:
+                print(f"   {item['feature']}:")
+                print(f"      Mean: {item['old_mean']:.4f} → {item['new_mean']:.4f} (diff: {item['mean_diff']*100:.1f}%)")
+                print(f"      KS p-value: {item['ks_pvalue']:.4f}")
+        
+        if warnings_excluded > 0:
+            print(f"\n   ({warnings_excluded} warning features excluded from model - OK)")
     
     # Summary
     print(f"\n{'='*60}")
     print(f"SUMMARY")
     print(f"{'='*60}")
     
-    critical_count = len(results['features_critical'])
-    warning_count = len(results['features_warning'])
+    # Count only features that are IN the model
+    if MODEL_FEATURE_NAMES:
+        critical_in_model = len([c for c in results['features_critical'] if c in MODEL_FEATURE_NAMES])
+        warning_in_model = len([w for w in results['features_warning'] if w in MODEL_FEATURE_NAMES])
+        print(f"Model features: {len(MODEL_FEATURE_NAMES)}")
+    else:
+        critical_in_model = len(results['features_critical'])
+        warning_in_model = len(results['features_warning'])
     
-    if critical_count == 0 and warning_count < 10:
-        print(f"✅ Features look stable! Model should work similarly in live.")
-    elif critical_count > 0:
-        print(f"❌ CRITICAL: {critical_count} cumsum-dependent features found!")
-        print(f"   These MUST be excluded from the model.")
-    elif warning_count >= 10:
-        print(f"⚠️  WARNING: {warning_count} features have changed distributions.")
+    if critical_in_model == 0 and warning_in_model < 10:
+        print(f"✅ Model features look stable! Should work similarly in live.")
+    elif critical_in_model > 0:
+        print(f"❌ CRITICAL: {critical_in_model} cumsum-dependent features IN MODEL!")
+        print(f"   Retrain the model with train_v3_dynamic.py to exclude them.")
+    elif warning_in_model >= 10:
+        print(f"⚠️  WARNING: {warning_in_model} model features have changed distributions.")
         print(f"   Model may behave differently in live. Monitor closely.")
     else:
-        print(f"⚠️  CAUTION: Some features have changed ({warning_count}).")
+        print(f"⚠️  CAUTION: Some model features have changed ({warning_in_model}).")
         print(f"   Model should work but monitor for unexpected behavior.")
     
     return results
