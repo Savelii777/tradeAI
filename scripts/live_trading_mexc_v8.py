@@ -71,7 +71,13 @@ M1_TO_M5_RATIO = 5  # M1 has 5x more candles than M5
 M5_TO_M15_RATIO = 3  # M15 has 3x fewer candles than M5
 
 # V8 IMPROVED Thresholds (UPDATED for new Timing model)
-MIN_CONF = 0.50       # Direction confidence
+# ⚠️ REDUCED MIN_CONF from 0.50 to 0.40:
+# Anti-overfitting model parameters (n_estimators=100, max_depth=3, num_leaves=8)
+# produce intentionally "uncertain" predictions to prevent memorization.
+# With 3-class classification (SHORT/SIDEWAYS/LONG), a 40% confidence is 
+# actually 20% above random (33.3%) and still meaningful.
+# Other filters (timing >= 0.8 ATR, strength >= 1.4) provide additional quality control.
+MIN_CONF = 0.40       # Direction confidence (reduced from 0.50)
 MIN_TIMING = 0.8      # ✅ NEW! Timing now predicts ATR gain (0-5), threshold = 0.8 ATR minimum
 MIN_STRENGTH = 1.4    # Strength prediction
 
