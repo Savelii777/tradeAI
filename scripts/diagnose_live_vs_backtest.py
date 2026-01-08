@@ -14,6 +14,7 @@ Usage:
 
 import sys
 import argparse
+import traceback
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import warnings
@@ -171,7 +172,7 @@ def diagnose_pair(pair_name: str, lookback_live: int = 1000, lookback_backtest: 
     # ================================================================
     print(f"\n{'='*70}")
     print("TEST 1: Feature Value Comparison (Same Timestamp)")
-    print("='*70")
+    print("="*70)
     
     # Use last 48 hours for comparison
     comparison_end = m5.index[-1]
@@ -435,24 +436,39 @@ def main():
         
         results = []
         for pair in sorted(list(pairs))[:10]:  # Limit to 10 pairs
-            result = diagnose_pair(pair, args.lookback_live)
-            if result:
-                results.append(result)
+            try:
+                result = diagnose_pair(pair, args.lookback_live)
+                if result:
+                    results.append(result)
+            except Exception as e:
+                print(f"\n❌ ERROR processing {pair}: {e}")
+                traceback.print_exc()
+                print(f"Skipping {pair} and continuing with next pair...\n")
+                continue
         
         # Summary
         print(f"\n{'='*70}")
         print("OVERALL SUMMARY")
         print("="*70)
         
-        bt_total = sum(r['bt_signals'] for r in results)
-        lv_total = sum(r['lv_signals'] for r in results)
-        
-        print(f"Total Backtest signals: {bt_total}")
-        print(f"Total Live signals:     {lv_total}")
-        print(f"Difference:             {bt_total - lv_total}")
+        if results:
+            bt_total = sum(r['bt_signals'] for r in results)
+            lv_total = sum(r['lv_signals'] for r in results)
+            
+            print(f"Pairs analyzed: {len(results)}")
+            print(f"Total Backtest signals: {bt_total}")
+            print(f"Total Live signals:     {lv_total}")
+            print(f"Difference:             {bt_total - lv_total}")
+        else:
+            print("No pairs were successfully analyzed.")
         
     else:
-        diagnose_pair(args.pair, args.lookback_live)
+        try:
+            diagnose_pair(args.pair, args.lookback_live)
+        except Exception as e:
+            print(f"\n❌ ERROR: {e}")
+            traceback.print_exc()
+            return 1
     
     return 0
 
