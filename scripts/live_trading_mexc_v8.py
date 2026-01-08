@@ -60,6 +60,11 @@ TIMEFRAMES = ['1m', '5m', '15m']
 # Previous value of 1000 caused feature drift between backtest and live
 LOOKBACK = 2000  # Increased from 1000 to ensure feature stability
 WARMUP_BARS = 500  # ✅ NEW: Skip first 500 bars after feature calculation (warmup period)
+MIN_ROWS_FOR_PREDICTION = 2  # Need at least 2 rows: current (forming) and last closed candle
+
+# Timeframe multipliers for data alignment
+M1_TO_M5_RATIO = 5  # M1 has 5x more candles than M5
+M5_TO_M15_RATIO = 3  # M15 has 3x fewer candles than M5
 
 # V8 IMPROVED Thresholds (UPDATED for new Timing model)
 MIN_CONF = 0.50       # Direction confidence
@@ -1111,7 +1116,7 @@ def main():
                             # Prepare features
                             logger.debug(f"      Preparing features from {len(data)} timeframes...")
                             df = prepare_features(data, mtf_fe)
-                            if df is None or len(df) < 2:
+                            if df is None or len(df) < MIN_ROWS_FOR_PREDICTION:
                                 logger.warning(f"      Feature preparation failed or not enough rows")
                                 continue
                             
@@ -1119,8 +1124,8 @@ def main():
                             
                             # ✅ FIX: Skip warmup rows - first WARMUP_BARS have unstable features
                             # EMA-200, rolling stats, etc. need time to stabilize
-                            if len(df) < WARMUP_BARS + 2:
-                                logger.warning(f"      Not enough data after warmup ({len(df)} < {WARMUP_BARS + 2})")
+                            if len(df) < WARMUP_BARS + MIN_ROWS_FOR_PREDICTION:
+                                logger.warning(f"      Not enough data after warmup ({len(df)} < {WARMUP_BARS + MIN_ROWS_FOR_PREDICTION})")
                                 continue
                             
                             # Only use data AFTER warmup period

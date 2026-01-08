@@ -40,6 +40,17 @@ MIN_CONF = 0.50
 MIN_TIMING = 0.8
 MIN_STRENGTH = 1.4
 
+# Timeframe multipliers for data alignment
+M1_TO_M5_RATIO = 5  # M1 has 5x more candles than M5
+M5_TO_M15_RATIO = 3  # M15 has 3x fewer candles than M5
+
+# Cumsum-dependent features that should be excluded
+# These features depend on data window start and produce different values on live vs backtest
+CUMSUM_PATTERNS = [
+    'bars_since_swing', 'consecutive_up', 'consecutive_down',
+    'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
+]
+
 
 # ============================================================
 # HELPER FUNCTIONS (same as in training/live scripts)
@@ -92,12 +103,8 @@ def prepare_features_live(m1, m5, m15, mtf_engine):
     critical_cols = ['close', 'atr']
     ft = ft.dropna(subset=critical_cols)
     
-    # Exclude cumsum-dependent features
-    cumsum_patterns = [
-        'bars_since_swing', 'consecutive_up', 'consecutive_down',
-        'obv', 'volume_delta_cumsum', 'swing_high_price', 'swing_low_price'
-    ]
-    cols_to_drop = [c for c in ft.columns if any(p in c.lower() for p in cumsum_patterns)]
+    # Exclude cumsum-dependent features (use global constant)
+    cols_to_drop = [c for c in ft.columns if any(p in c.lower() for p in CUMSUM_PATTERNS)]
     if cols_to_drop:
         ft = ft.drop(columns=cols_to_drop, errors='ignore')
     
@@ -175,9 +182,9 @@ def diagnose_pair(pair_name: str, lookback_live: int = 1000, lookback_backtest: 
     
     # LIVE preparation: Use only last LOOKBACK candles (simulates live conditions)
     print(f"\nPreparing LIVE features (last {lookback_live} candles)...")
-    m1_live = m1.iloc[-lookback_live*5:]  # M1 has 5x more candles
+    m1_live = m1.iloc[-lookback_live * M1_TO_M5_RATIO:]  # M1 has 5x more candles than M5
     m5_live = m5.iloc[-lookback_live:]
-    m15_live = m15.iloc[-lookback_live//3:]
+    m15_live = m15.iloc[-lookback_live // M5_TO_M15_RATIO:]
     
     ft_live = prepare_features_live(m1_live, m5_live, m15_live, mtf_engine)
     ft_live_48h = ft_live[ft_live.index >= comparison_start]
