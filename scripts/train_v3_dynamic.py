@@ -297,15 +297,13 @@ def train_models(X_train, y_train, X_val, y_val):
 # PORTFOLIO BACKTEST (V7 Sniper)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.40, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
+                    min_conf: float = 0.50, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
                     
     """
     Generate all valid signals for a single pair.
     
     ✅ V8 IMPROVED: 
     - Timing threshold changed from 0.55 → 0.8 ATR (R-multiple gain)
-    - Confidence threshold reduced from 0.50 → 0.40 (anti-overfitting model 
-      produces intentionally uncertain predictions; 40% is still 20% above random)
     """
     signals = []
     
