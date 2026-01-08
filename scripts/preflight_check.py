@@ -114,7 +114,7 @@ EXPECTED_HYPERPARAMS = {
 
 # Live script configuration requirements
 LIVE_CONFIG_CHECKS = {
-    'LOOKBACK': {'min': 1000, 'max': 5000},
+    'LOOKBACK': {'min': 1000, 'max': 15000},  # Increased max: volume ratios need more data
     'MIN_CONF': {'min': 0.4, 'max': 0.7},
     'MIN_TIMING': {'min': 0.5, 'max': 1.5},
     'MIN_STRENGTH': {'min': 1.0, 'max': 2.5},
