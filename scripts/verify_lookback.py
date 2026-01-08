@@ -112,49 +112,24 @@ def fetch_binance_data(pair, timeframe, limit):
 
 
 def prepare_features(m1, m5, m15, mtf_fe):
-    """Prepare features (same as live script)"""
-    m5 = add_volume_features(m5.copy())
-    m5['atr'] = atr(m5, period=14)
+    """Prepare features (same as live script using align_timeframes)"""
+    # Add volume features to M5 before processing
+    m5_prepared = add_volume_features(m5.copy())
+    m5_prepared['atr'] = atr(m5_prepared, period=14)
     
-    # Prepare M15 features
-    m15_prepared = m15.copy()
-    m15_prepared['m15_close'] = m15_prepared['close']
-    m15_prepared['m15_volume'] = m15_prepared['volume']
-    m15_prepared['m15_atr'] = atr(m15_prepared, period=14)
-    m15_prepared['m15_volume_ma'] = m15_prepared['volume'].rolling(20).mean()
-    m15_prepared['m15_volume_ratio'] = m15_prepared['volume'] / m15_prepared['m15_volume_ma']
-    m15_prepared['m15_momentum'] = m15_prepared['close'].pct_change(5).clip(-1, 1) * 100
-    m15_prepared['m15_trend'] = (m15_prepared['close'] - m15_prepared['close'].rolling(50).mean()) / m15_prepared['close'].rolling(50).mean() * 100
+    # Use MTFFeatureEngine.align_timeframes - this is the same method used in live
+    combined = mtf_fe.align_timeframes(m1, m5_prepared, m15)
     
-    # Generate M5 features
-    ft_m5 = mtf_fe.generate_m5_features(m5)
-    
-    # Generate M1 features
-    ft_m1 = mtf_fe.generate_m1_features(m1, prefix='m1_')
-    if 'm1_ts' in ft_m1.columns:
-        ft_m1 = ft_m1.drop(columns=['m1_ts'])
-    if 'ts' in ft_m1.columns:
-        ft_m1 = ft_m1.drop(columns=['ts'])
-    ft_m1.columns = [f'{c}_last' if not c.startswith('m1_') else c for c in ft_m1.columns]
-    
-    # Merge all
-    combined = ft_m5.copy()
-    
-    # Merge M15
-    combined = combined.merge(
-        m15_prepared[['m15_close', 'm15_volume', 'm15_atr', 'm15_volume_ma', 'm15_volume_ratio', 'm15_momentum', 'm15_trend']],
-        left_index=True, right_index=True, how='left'
-    )
-    
-    # Merge M1
-    combined = combined.merge(ft_m1, left_index=True, right_index=True, how='left')
-    
-    # Add volume features from m5
+    # Add volume features from prepared m5 (these are added after align_timeframes in live)
     for col in ['vol_sma_20', 'vol_ratio', 'vol_zscore', 'vwap', 'price_vs_vwap', 'vol_momentum']:
-        if col in m5.columns:
-            combined[col] = m5[col]
+        if col in m5_prepared.columns:
+            # Align to combined index
+            combined[col] = m5_prepared[col].reindex(combined.index)
     
-    combined['atr'] = m5['atr'] if 'atr' in m5.columns else atr(m5)
+    if 'atr' in m5_prepared.columns:
+        combined['atr'] = m5_prepared['atr'].reindex(combined.index)
+    else:
+        combined['atr'] = atr(m5_prepared).reindex(combined.index)
     
     combined = combined.dropna()
     
