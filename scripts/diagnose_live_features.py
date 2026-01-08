@@ -34,7 +34,7 @@ from src.utils.constants import (
 # ============================================================
 MODEL_DIR = Path(__file__).parent.parent / 'models' / 'v8_improved'
 DATA_DIR = Path(__file__).parent.parent / 'data' / 'candles'
-LOOKBACK = 3000
+DEFAULT_LOOKBACK = 10000  # Match live_trading_mexc_v8.py
 
 
 def add_volume_features(df):
@@ -58,7 +58,7 @@ def calculate_atr(df, period=14):
     return tr.ewm(span=period, adjust=False).mean()
 
 
-def fetch_binance_data(pair, timeframe, limit=LOOKBACK):
+def fetch_binance_data(pair, timeframe, limit=DEFAULT_LOOKBACK):
     """Fetch data from Binance (same as live script)"""
     exchange = ccxt.binance({'enableRateLimit': True})
     
@@ -162,9 +162,12 @@ def prepare_features_live_style(m1, m5, m15, mtf_fe):
 def main():
     parser = argparse.ArgumentParser(description='Diagnose live features')
     parser.add_argument('--pair', type=str, default='BTC/USDT:USDT', help='Pair to analyze')
+    parser.add_argument('--lookback', type=int, default=DEFAULT_LOOKBACK, 
+                       help=f'Number of candles to fetch (default: {DEFAULT_LOOKBACK})')
     args = parser.parse_args()
     
     pair = args.pair
+    lookback = args.lookback
     pair_csv = pair.replace('/', '_').replace(':', '_')
     
     print("="*70)
@@ -182,13 +185,13 @@ def main():
     # 1. FETCH LIVE DATA (same as live script)
     # ================================================================
     print("\n" + "="*70)
-    print("STEP 1: Fetching LIVE data from Binance API")
+    print(f"STEP 1: Fetching LIVE data from Binance API (lookback={lookback})")
     print("="*70)
     
     try:
-        m1_live = fetch_binance_data(pair, '1m', LOOKBACK)
-        m5_live = fetch_binance_data(pair, '5m', LOOKBACK)
-        m15_live = fetch_binance_data(pair, '15m', LOOKBACK)
+        m1_live = fetch_binance_data(pair, '1m', lookback)
+        m5_live = fetch_binance_data(pair, '5m', lookback)
+        m15_live = fetch_binance_data(pair, '15m', lookback)
     except Exception as e:
         print(f"Error fetching live data: {e}")
         print("Make sure you have internet connection")
