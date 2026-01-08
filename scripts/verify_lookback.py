@@ -10,7 +10,7 @@ Usage:
     
 Expected result:
     With LOOKBACK=10000, features should be within 50% of backtest values
-    (vs 500-2500% difference with LOOKBACK=3000)
+    (vs 500-2500% difference with LOOKBACK=1000)
 """
 
 import sys
@@ -34,7 +34,7 @@ from train_mtf import MTFFeatureEngine
 # ============================================================
 DATA_DIR = Path(__file__).parent.parent / 'data' / 'candles'
 
-# Key features that showed >500% difference at LOOKBACK=3000
+# Key features that showed >500% difference at LOOKBACK=1000
 KEY_FEATURES = [
     'm5_volume_ratio_20',
     'm5_volume_ratio_10', 
@@ -197,7 +197,7 @@ def main():
         return
     
     # 2. Test different LOOKBACK values
-    lookback_values = [3000, 5000, 10000]
+    lookback_values = [1000, 5000, 10000]
     
     print("\n" + "="*70)
     print("COMPARING LOOKBACK VALUES")
@@ -264,16 +264,16 @@ def main():
             print(f"{lookback:<10} | {avg_diff:>10.1f}% | {max_diff:>10.1f}% | {status}")
     
     print("\n" + "="*70)
-    print("DETAILED FEATURE COMPARISON (LOOKBACK=10000 vs 3000)")
+    print("DETAILED FEATURE COMPARISON (LOOKBACK=10000 vs 1000)")
     print("="*70)
     
-    if 10000 in results and 3000 in results:
-        print(f"\n{'Feature':<30} | {'3000':<12} | {'10000':<12} | {'Improvement':<12}")
+    if 10000 in results and 1000 in results:
+        print(f"\n{'Feature':<30} | {'1000':<12} | {'10000':<12} | {'Improvement':<12}")
         print("-"*75)
         
         for feat in KEY_FEATURES:
-            if feat in results[3000] and feat in results[10000]:
-                diff_3k = results[3000][feat]['diff_pct']
+            if feat in results[1000] and feat in results[10000]:
+                diff_3k = results[1000][feat]['diff_pct']
                 diff_10k = results[10000][feat]['diff_pct']
                 improvement = (diff_3k - diff_10k) / diff_3k * 100 if diff_3k > 0 else 0
                 

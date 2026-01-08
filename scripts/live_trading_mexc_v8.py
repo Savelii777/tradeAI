@@ -64,7 +64,7 @@ TIMEFRAMES = ['1m', '5m', '15m']
 # With LOOKBACK=10000, we get enough data for volume ratio calculations
 # CRITICAL: volume_ratio_20, m5_volume_ratio_10 etc. depend on data window size
 # With 3000 bars, these features differ by 500-2500% from backtest values!
-LOOKBACK = 10000  # Increased from 3000 to match backtest feature values
+LOOKBACK = 1000  # Increased from 3000 to match backtest feature values
 WARMUP_BARS = 200  # ✅ REDUCED from 500: Since normalization is disabled, only need EMA-200 warmup
 MIN_ROWS_FOR_PREDICTION = 2  # Need at least 2 rows: current (forming) and last closed candle
 
