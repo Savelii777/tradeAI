@@ -468,12 +468,16 @@ cd scripts && python test_backtest_vs_live.py
 ### Обязательные Проверки
 
 ```
-[ ] 1. python scripts/validate_live_readiness.py - ВСЕ проверки пройдены
-[ ] 2. python scripts/compare_feature_distributions.py - нет CRITICAL фичей
+[ ] 1. python scripts/preflight_check.py - ВСЕ проверки пройдены
+[ ] 2. python scripts/compare_feature_distributions.py - нет CRITICAL фичей В МОДЕЛИ
 [ ] 3. Модели обучены с --walk-forward флагом
 [ ] 4. Walk-Forward Win Rate >= 60%
 [ ] 5. LOOKBACK >= 1000 в live_trading_mexc_v8.py
 ```
+
+**Важно:** `compare_feature_distributions.py` анализирует ВСЕ генерируемые фичи.
+Cumsum-зависимые фичи (OBV, bars_since_swing и т.д.) будут показаны, но если они 
+**ИСКЛЮЧЕНЫ из модели** (проверяется через `feature_names.joblib`) - это OK!
 
 ### Перед Реальными Деньгами
 
