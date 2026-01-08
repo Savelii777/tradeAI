@@ -340,8 +340,14 @@ def main():
             # Get same timestamp row from CSV
             target_ts = ft_live.index[-2]
             
+            # Normalize timezone - remove tz from target_ts if CSV is tz-naive
+            if ft_csv.index.tz is None and hasattr(target_ts, 'tz') and target_ts.tz is not None:
+                target_ts_naive = target_ts.tz_localize(None)
+            else:
+                target_ts_naive = target_ts
+            
             # Find closest match in CSV
-            time_diffs = abs(ft_csv.index - target_ts)
+            time_diffs = abs(ft_csv.index - target_ts_naive)
             closest_idx = time_diffs.argmin()
             csv_row = ft_csv.iloc[[closest_idx]]
             
