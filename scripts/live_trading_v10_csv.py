@@ -115,7 +115,7 @@ class Config:
     MEXC_BASE_URL = "https://contract.mexc.com"
     
     # Performance optimization
-    MAX_WORKERS = 10  # Parallel threads for API fetching
+    MAX_WORKERS = 20  # Parallel threads for API fetching (match number of pairs)
     FEATURE_CACHE_SIZE = 50  # Number of rows to keep in incremental update
     
     @classmethod
