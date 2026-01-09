@@ -510,7 +510,7 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
     signals.sort(key=lambda x: (x['timestamp'], -x['score']))
     
     executed_trades = []
-    last_exit_time = pd.Timestamp.min
+    last_exit_time = pd.Timestamp.min.tz_localize('UTC')  # Must be timezone-aware (UTC)
     balance = initial_balance
     
     print(f"Processing {len(signals)} potential signals...")
@@ -956,7 +956,9 @@ def main():
         m5_train = m5[(m5.index >= train_start) & (m5.index < train_end)]
         m15_train = m15[(m15.index >= train_start) & (m15.index < train_end)]
         
-        if len(m5_train) < 500: continue
+        if len(m5_train) < 500:
+            print(f"  ⚠️ {pair}: Skipped (only {len(m5_train)} 5m candles, need 500)")
+            continue
         
         ft_train = mtf_fe.align_timeframes(m1_train, m5_train, m15_train)
         ft_train = ft_train.join(m5_train[['open', 'high', 'low', 'close', 'volume']])
