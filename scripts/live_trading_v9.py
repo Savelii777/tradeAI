@@ -529,7 +529,7 @@ class PortfolioManager:
             'pair': signal['pair'],
             'direction': signal['direction'],
             'entry_price': entry_price,
-            'entry_time': datetime.now(),
+            'entry_time': datetime.now(timezone.utc),
             'stop_loss': stop_loss,
             'stop_distance': stop_distance,
             'position_value': position_value,
@@ -564,7 +564,7 @@ class PortfolioManager:
         pos = self.position
         
         # Time limit check
-        duration = datetime.now() - pos['entry_time']
+        duration = datetime.now(timezone.utc) - pos['entry_time']
         if duration > timedelta(minutes=Config.MAX_HOLDING_BARS * 5):
             self.close_position(current_price, "Time Limit")
             return
@@ -737,7 +737,7 @@ class PortfolioManager:
             'roe': roe,
             'reason': reason,
             'bars_held': pos.get('bars_held', 0),
-            'time': datetime.now().isoformat()
+            'time': datetime.now(timezone.utc).isoformat()
         })
         
         emoji = "✅" if net > 0 else "❌"

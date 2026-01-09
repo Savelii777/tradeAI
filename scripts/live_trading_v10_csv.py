@@ -730,7 +730,7 @@ class PortfolioManager:
         
         self.position = {
             'pair': signal['pair'], 'direction': signal['direction'],
-            'entry_price': entry_price, 'entry_time': datetime.now(),
+            'entry_price': entry_price, 'entry_time': datetime.now(timezone.utc),
             'stop_loss': stop_loss, 'stop_distance': stop_distance,
             'position_value': position_value, 'leverage': leverage,
             'mexc_symbol': mexc_symbol, 'volume': volume,
