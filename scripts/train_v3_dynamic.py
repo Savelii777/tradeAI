@@ -510,7 +510,7 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
     signals.sort(key=lambda x: (x['timestamp'], -x['score']))
     
     executed_trades = []
-    last_exit_time = pd.Timestamp.min
+    last_exit_time = pd.Timestamp.min.tz_localize('UTC')  # Must be timezone-aware (UTC)
     balance = initial_balance
     
     print(f"Processing {len(signals)} potential signals...")
@@ -688,7 +688,7 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
     print("="*70)
     
     # Define periods (each period: 15 days train, 7 days test)
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     periods = []
     
     # Create 4 rolling windows going backwards in time
@@ -727,7 +727,25 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
                 m1 = pd.read_csv(data_dir / f"{pair_name}_1m.csv", parse_dates=['timestamp'], index_col='timestamp')
                 m5 = pd.read_csv(data_dir / f"{pair_name}_5m.csv", parse_dates=['timestamp'], index_col='timestamp')
                 m15 = pd.read_csv(data_dir / f"{pair_name}_15m.csv", parse_dates=['timestamp'], index_col='timestamp')
+                
+                # Ensure timezone-aware indices (UTC) for comparison with timezone-aware datetimes
+                # Handle both tz-naive and tz-aware indices
+                if m1.index.tz is None:
+                    m1.index = m1.index.tz_localize('UTC')
+                else:
+                    m1.index = m1.index.tz_convert('UTC')
+                if m5.index.tz is None:
+                    m5.index = m5.index.tz_localize('UTC')
+                else:
+                    m5.index = m5.index.tz_convert('UTC')
+                if m15.index.tz is None:
+                    m15.index = m15.index.tz_localize('UTC')
+                else:
+                    m15.index = m15.index.tz_convert('UTC')
             except FileNotFoundError:
+                continue
+            except Exception as e:
+                print(f"    ⚠️ {pair}: Error loading data: {e}")
                 continue
             
             # Filter TRAIN data
@@ -915,11 +933,30 @@ def main():
             m1 = pd.read_csv(data_dir / f"{pair_name}_1m.csv", parse_dates=['timestamp'], index_col='timestamp')
             m5 = pd.read_csv(data_dir / f"{pair_name}_5m.csv", parse_dates=['timestamp'], index_col='timestamp')
             m15 = pd.read_csv(data_dir / f"{pair_name}_15m.csv", parse_dates=['timestamp'], index_col='timestamp')
+            
+            # Ensure timezone-aware indices (UTC) for comparison with timezone-aware datetimes
+            # Handle both tz-naive and tz-aware indices
+            if m1.index.tz is None:
+                m1.index = m1.index.tz_localize('UTC')
+            else:
+                m1.index = m1.index.tz_convert('UTC')
+            if m5.index.tz is None:
+                m5.index = m5.index.tz_localize('UTC')
+            else:
+                m5.index = m5.index.tz_convert('UTC')
+            if m15.index.tz is None:
+                m15.index = m15.index.tz_localize('UTC')
+            else:
+                m15.index = m15.index.tz_convert('UTC')
         except FileNotFoundError:
+            print(f"  ⚠️ {pair}: CSV files not found, skipping")
+            continue
+        except Exception as e:
+            print(f"  ⚠️ {pair}: Error loading data: {e}")
             continue
         
         # SPLIT LOGIC
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if args.reverse:
             # Train on LAST 30 days (Recent)
             # Test on PREVIOUS 30 days (Older)
@@ -940,7 +977,14 @@ def main():
         m5_train = m5[(m5.index >= train_start) & (m5.index < train_end)]
         m15_train = m15[(m15.index >= train_start) & (m15.index < train_end)]
         
-        if len(m5_train) < 500: continue
+        if len(m5_train) < 500:
+            # Show available data range to help debug
+            data_start = m5.index.min() if len(m5) > 0 else "empty"
+            data_end = m5.index.max() if len(m5) > 0 else "empty"
+            print(f"  ⚠️ {pair}: Skipped (only {len(m5_train)} 5m candles in range, need 500)")
+            print(f"      Data range: {data_start} to {data_end}")
+            print(f"      Requested : {train_start} to {train_end}")
+            continue
         
         ft_train = mtf_fe.align_timeframes(m1_train, m5_train, m15_train)
         ft_train = ft_train.join(m5_train[['open', 'high', 'low', 'close', 'volume']])
@@ -1046,8 +1090,8 @@ def main():
         print("Fetching Dec 25 Data from Binance...")
         
         # Fetch from Dec 23 to Dec 26 to ensure we have history for indicators
-        fetch_start = datetime(2025, 12, 23)
-        fetch_end = datetime(2025, 12, 26)
+        fetch_start = datetime(2025, 12, 23, tzinfo=timezone.utc)
+        fetch_end = datetime(2025, 12, 26, tzinfo=timezone.utc)
         
         dec25_features = {}
         dec25_dfs = {}
@@ -1069,7 +1113,7 @@ def main():
             ft['pair'] = pair
             
             # Filter for Dec 25 ONLY for the backtest part
-            dec25_mask = (ft.index >= datetime(2025, 12, 25)) & (ft.index < datetime(2025, 12, 26))
+            dec25_mask = (ft.index >= datetime(2025, 12, 25, tzinfo=timezone.utc)) & (ft.index < datetime(2025, 12, 26, tzinfo=timezone.utc))
             ft_dec25 = ft[dec25_mask]
             
             if len(ft_dec25) > 0:
@@ -1102,8 +1146,8 @@ def main():
         print("Fetching Dec 26 Data from Binance...")
         
         # Fetch from Dec 24 to Dec 27 to ensure we have history for indicators
-        fetch_start = datetime(2025, 12, 24)
-        fetch_end = datetime(2025, 12, 27)
+        fetch_start = datetime(2025, 12, 24, tzinfo=timezone.utc)
+        fetch_end = datetime(2025, 12, 27, tzinfo=timezone.utc)
         
         dec26_features = {}
         dec26_dfs = {}
@@ -1124,7 +1168,7 @@ def main():
             ft['pair'] = pair
             
             # Filter for Dec 26 ONLY for the backtest part
-            dec26_mask = (ft.index >= datetime(2025, 12, 26)) & (ft.index < datetime(2025, 12, 27))
+            dec26_mask = (ft.index >= datetime(2025, 12, 26, tzinfo=timezone.utc)) & (ft.index < datetime(2025, 12, 27, tzinfo=timezone.utc))
             ft_dec26 = ft[dec26_mask]
             
             if len(ft_dec26) > 0:
