@@ -688,7 +688,7 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
     print("="*70)
     
     # Define periods (each period: 15 days train, 7 days test)
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     periods = []
     
     # Create 4 rolling windows going backwards in time
@@ -727,6 +727,14 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
                 m1 = pd.read_csv(data_dir / f"{pair_name}_1m.csv", parse_dates=['timestamp'], index_col='timestamp')
                 m5 = pd.read_csv(data_dir / f"{pair_name}_5m.csv", parse_dates=['timestamp'], index_col='timestamp')
                 m15 = pd.read_csv(data_dir / f"{pair_name}_15m.csv", parse_dates=['timestamp'], index_col='timestamp')
+                
+                # Ensure timezone-aware indices (UTC) for comparison with timezone-aware datetimes
+                if m1.index.tz is None:
+                    m1.index = m1.index.tz_localize('UTC')
+                if m5.index.tz is None:
+                    m5.index = m5.index.tz_localize('UTC')
+                if m15.index.tz is None:
+                    m15.index = m15.index.tz_localize('UTC')
             except FileNotFoundError:
                 continue
             
@@ -915,11 +923,19 @@ def main():
             m1 = pd.read_csv(data_dir / f"{pair_name}_1m.csv", parse_dates=['timestamp'], index_col='timestamp')
             m5 = pd.read_csv(data_dir / f"{pair_name}_5m.csv", parse_dates=['timestamp'], index_col='timestamp')
             m15 = pd.read_csv(data_dir / f"{pair_name}_15m.csv", parse_dates=['timestamp'], index_col='timestamp')
+            
+            # Ensure timezone-aware indices (UTC) for comparison with timezone-aware datetimes
+            if m1.index.tz is None:
+                m1.index = m1.index.tz_localize('UTC')
+            if m5.index.tz is None:
+                m5.index = m5.index.tz_localize('UTC')
+            if m15.index.tz is None:
+                m15.index = m15.index.tz_localize('UTC')
         except FileNotFoundError:
             continue
         
         # SPLIT LOGIC
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if args.reverse:
             # Train on LAST 30 days (Recent)
             # Test on PREVIOUS 30 days (Older)
@@ -1046,8 +1062,8 @@ def main():
         print("Fetching Dec 25 Data from Binance...")
         
         # Fetch from Dec 23 to Dec 26 to ensure we have history for indicators
-        fetch_start = datetime(2025, 12, 23)
-        fetch_end = datetime(2025, 12, 26)
+        fetch_start = datetime(2025, 12, 23, tzinfo=timezone.utc)
+        fetch_end = datetime(2025, 12, 26, tzinfo=timezone.utc)
         
         dec25_features = {}
         dec25_dfs = {}
@@ -1069,7 +1085,7 @@ def main():
             ft['pair'] = pair
             
             # Filter for Dec 25 ONLY for the backtest part
-            dec25_mask = (ft.index >= datetime(2025, 12, 25)) & (ft.index < datetime(2025, 12, 26))
+            dec25_mask = (ft.index >= datetime(2025, 12, 25, tzinfo=timezone.utc)) & (ft.index < datetime(2025, 12, 26, tzinfo=timezone.utc))
             ft_dec25 = ft[dec25_mask]
             
             if len(ft_dec25) > 0:
@@ -1102,8 +1118,8 @@ def main():
         print("Fetching Dec 26 Data from Binance...")
         
         # Fetch from Dec 24 to Dec 27 to ensure we have history for indicators
-        fetch_start = datetime(2025, 12, 24)
-        fetch_end = datetime(2025, 12, 27)
+        fetch_start = datetime(2025, 12, 24, tzinfo=timezone.utc)
+        fetch_end = datetime(2025, 12, 27, tzinfo=timezone.utc)
         
         dec26_features = {}
         dec26_dfs = {}
@@ -1124,7 +1140,7 @@ def main():
             ft['pair'] = pair
             
             # Filter for Dec 26 ONLY for the backtest part
-            dec26_mask = (ft.index >= datetime(2025, 12, 26)) & (ft.index < datetime(2025, 12, 27))
+            dec26_mask = (ft.index >= datetime(2025, 12, 26, tzinfo=timezone.utc)) & (ft.index < datetime(2025, 12, 27, tzinfo=timezone.utc))
             ft_dec26 = ft[dec26_mask]
             
             if len(ft_dec26) > 0:
