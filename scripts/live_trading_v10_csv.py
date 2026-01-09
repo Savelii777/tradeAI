@@ -162,13 +162,16 @@ class CSVDataManager:
     PARQUET SUPPORT (10x faster than CSV):
     - First tries to load from .parquet files
     - Falls back to .csv if parquet not found
-    - Saves in PARQUET format for 10x faster loading
+    - Saves ONLY to Parquet (NEVER overwrites CSV training data!)
     - Converts existing CSV to Parquet on first load
     
+    IMPORTANT: CSV files are READ-ONLY to protect training data.
+    All updates are saved to Parquet files only.
+    
     Features:
-    - Loads existing data from training
+    - Loads existing data from training CSVs (read-only)
     - Fetches only missing candles from API
-    - Appends new data
+    - Appends new data to Parquet files
     - Returns full history for feature calculation
     - Validates data integrity at startup
     - Caches data for fast trading loop
@@ -275,7 +278,12 @@ class CSVDataManager:
         logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
     
     def save_csv(self, pair: str, timeframe: str, df: pd.DataFrame):
-        """Save DataFrame to file (Parquet if enabled, otherwise CSV)."""
+        """
+        Save DataFrame to file (Parquet ONLY to protect training CSVs).
+        
+        IMPORTANT: This method NEVER overwrites CSV files to protect training data.
+        CSVs are only read, never written. All updates go to Parquet files.
+        """
         # Make a copy to avoid modifying the original DataFrame
         df = df.copy()
         
@@ -291,21 +299,15 @@ class CSVDataManager:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        if self.USE_PARQUET:
-            # Save to Parquet (10x faster reads)
-            filepath = self._get_parquet_path(pair, timeframe)
-            try:
-                df.to_parquet(filepath, engine='pyarrow')
-                logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
-                return
-            except Exception as e:
-                logger.warning(f"⚠️ Could not save as Parquet: {e}")
-                logger.warning("  Falling back to CSV format")
-        
-        # Save to CSV (fallback or default)
-        filepath = self._get_csv_path(pair, timeframe)
-        df.to_csv(filepath)
-        logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
+        # ALWAYS save to Parquet to protect training CSVs
+        filepath = self._get_parquet_path(pair, timeframe)
+        try:
+            df.to_parquet(filepath, engine='pyarrow')
+            logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
+        except Exception as e:
+            # Log error but DO NOT fall back to CSV - protect training data!
+            logger.error(f"⚠️ Could not save data for {pair} {timeframe}: {e}")
+            logger.error("  Parquet save failed. Training CSV files are protected (not overwritten).")
     
     def fetch_missing_candles(self, pair: str, timeframe: str, 
                                existing_df: Optional[pd.DataFrame]) -> pd.DataFrame:
