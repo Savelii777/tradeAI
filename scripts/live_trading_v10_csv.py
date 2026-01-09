@@ -965,44 +965,27 @@ def process_pair_for_signal(
     
     This function is designed to be called in parallel.
     
+    IMPORTANT: Uses FULL data for feature calculation to match backtest exactly!
+    Only API fetching is optimized (fast_update_candle), not feature calculation.
+    
     Returns:
         Dict with signal info if signal found, None otherwise
     """
     try:
-        # FAST UPDATE: Only fetch latest candle (uses cache)
+        # FAST UPDATE: Only fetch latest candle from API (uses cache for CSV data)
         data = csv_manager.fast_update_candle(pair)
         if data is None:
             return None
         
-        # Check if we have cached features - use incremental update
-        cached_features = csv_manager.get_cached_features(pair)
-        
-        if cached_features is not None and len(cached_features) > 100:
-            # INCREMENTAL UPDATE: Only recalculate last N rows
-            # Get the last 50 rows of data for feature calculation
-            m1 = data['1m'].iloc[-250:] if len(data['1m']) > 250 else data['1m']
-            m5 = data['5m'].iloc[-50:] if len(data['5m']) > 50 else data['5m']
-            m15 = data['15m'].iloc[-20:] if len(data['15m']) > 20 else data['15m']
-            
-            # Quick feature update for last rows
-            mini_data = {'1m': m1, '5m': m5, '15m': m15}
-            df = prepare_features(mini_data, mtf_fe)
-            
-            if df is None or len(df) < 2:
-                # Fallback to cached
-                df = cached_features
-            else:
-                # Merge: keep old features, update last rows
-                # This preserves rolling indicators from full history
-                csv_manager.cache_features(pair, df)
-        else:
-            # Full calculation for first time
-            df = prepare_features(data, mtf_fe)
-            if df is not None and len(df) >= 2:
-                csv_manager.cache_features(pair, df)
+        # FULL FEATURE CALCULATION - same as backtest!
+        # We MUST use full data for correct rolling indicators (EMA-200, etc.)
+        df = prepare_features(data, mtf_fe)
         
         if df is None or len(df) < 2:
             return None
+        
+        # Cache features for reference
+        csv_manager.cache_features(pair, df)
         
         # Get last closed candle
         row = df.iloc[[-2]].copy()
