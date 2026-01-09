@@ -132,7 +132,9 @@ class Config:
     MEXC_BASE_URL = "https://contract.mexc.com"
     
     # Performance optimization
-    MAX_WORKERS = 20  # Parallel threads for API fetching (match number of pairs)
+    # Note: 8 workers is optimal for M2 chip (8 cores)
+    # More workers = more context switching overhead + API rate limits
+    MAX_WORKERS = 8  # Parallel threads for scanning (match CPU cores)
     FEATURE_CACHE_SIZE = 50  # Number of rows to keep in incremental update
     
     @classmethod
