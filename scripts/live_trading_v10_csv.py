@@ -134,12 +134,21 @@ class CSVDataManager:
     - Fetches only missing candles from API
     - Appends new data to CSV
     - Returns full history for feature calculation
+    - Validates data integrity at startup
+    - Caches data for fast trading loop
     """
+    
+    # Required columns for valid OHLCV data
+    REQUIRED_COLUMNS = ['open', 'high', 'low', 'close', 'volume']
     
     def __init__(self, data_dir: Path, binance: ccxt.Exchange):
         self.data_dir = data_dir
         self.binance = binance
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Cache for validated and loaded data (for fast trading loop)
+        self._data_cache: Dict[str, Dict[str, pd.DataFrame]] = {}
+        self._features_cache: Dict[str, pd.DataFrame] = {}
         
         logger.info(f"📂 CSV Data Manager initialized: {self.data_dir}")
     
@@ -267,7 +276,135 @@ class CSVDataManager:
                 logger.warning(f"Insufficient data for {pair} {tf}: {len(data.get(tf, []))}")
                 return None
         
+        # Cache the data for fast access during trading
+        self._data_cache[pair] = data
+        
         return data
+    
+    def validate_csv_data(self, pair: str) -> tuple[bool, list]:
+        """
+        Validate CSV data integrity at startup.
+        
+        Checks:
+        1. All required columns exist
+        2. No duplicate timestamps
+        3. Data types are correct (numeric OHLCV)
+        4. No NaN values in critical columns
+        5. Timestamps are monotonically increasing
+        6. Price data is valid (positive values, high >= low)
+        
+        Returns:
+            (is_valid, list of issues found)
+        """
+        issues = []
+        
+        for tf in Config.TIMEFRAMES:
+            df = self.load_csv(pair, tf)
+            
+            if df is None:
+                issues.append(f"{tf}: CSV file not found")
+                continue
+            
+            # Check required columns
+            missing_cols = [c for c in self.REQUIRED_COLUMNS if c not in df.columns]
+            if missing_cols:
+                issues.append(f"{tf}: Missing columns: {missing_cols}")
+                continue
+            
+            # Check for duplicates
+            dup_count = df.index.duplicated().sum()
+            if dup_count > 0:
+                issues.append(f"{tf}: {dup_count} duplicate timestamps (will be cleaned)")
+                # Auto-fix duplicates
+                df = df[~df.index.duplicated(keep='first')]
+                self.save_csv(pair, tf, df)
+            
+            # Check data types
+            for col in self.REQUIRED_COLUMNS:
+                if not pd.api.types.is_numeric_dtype(df[col]):
+                    issues.append(f"{tf}: Column '{col}' is not numeric")
+            
+            # Check for NaN in OHLCV
+            nan_counts = df[self.REQUIRED_COLUMNS].isna().sum()
+            nan_cols = nan_counts[nan_counts > 0]
+            if len(nan_cols) > 0:
+                issues.append(f"{tf}: NaN values in {dict(nan_cols)}")
+            
+            # Check timestamp order
+            if not df.index.is_monotonic_increasing:
+                issues.append(f"{tf}: Timestamps not sorted (will be fixed)")
+                df = df.sort_index()
+                self.save_csv(pair, tf, df)
+            
+            # Check valid prices (positive, high >= low)
+            invalid_prices = (df['high'] < df['low']).sum()
+            if invalid_prices > 0:
+                issues.append(f"{tf}: {invalid_prices} candles with high < low")
+            
+            negative_prices = (df[['open', 'high', 'low', 'close']] <= 0).any(axis=1).sum()
+            if negative_prices > 0:
+                issues.append(f"{tf}: {negative_prices} candles with negative/zero prices")
+        
+        is_valid = len([i for i in issues if "not found" in i or "Missing columns" in i]) == 0
+        
+        return is_valid, issues
+    
+    def fast_update_candle(self, pair: str) -> Optional[Dict[str, pd.DataFrame]]:
+        """
+        FAST update for trading loop - only fetches the latest candle.
+        
+        Uses cached data and appends only the newest candle.
+        Much faster than get_updated_data() which processes everything.
+        
+        Returns cached data with latest candle appended.
+        """
+        # Use cached data if available
+        if pair not in self._data_cache:
+            # First time - do full load
+            return self.get_updated_data(pair)
+        
+        data = self._data_cache[pair]
+        
+        for tf in Config.TIMEFRAMES:
+            existing = data.get(tf)
+            if existing is None:
+                continue
+            
+            try:
+                # Fetch only last 2 candles (current forming + last closed)
+                candles = self.binance.fetch_ohlcv(pair, tf, limit=2)
+                
+                if not candles:
+                    continue
+                
+                # Convert to DataFrame
+                new_df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                new_df['timestamp'] = pd.to_datetime(new_df['timestamp'], unit='ms', utc=True)
+                new_df.set_index('timestamp', inplace=True)
+                
+                # Append/update only new candles
+                combined = pd.concat([existing, new_df])
+                combined = combined[~combined.index.duplicated(keep='last')]
+                combined.sort_index(inplace=True)
+                
+                data[tf] = combined
+                
+            except Exception as e:
+                logger.debug(f"Error updating {pair} {tf}: {e}")
+                continue
+        
+        # Update cache
+        self._data_cache[pair] = data
+        
+        return data
+    
+    def cache_features(self, pair: str, features: pd.DataFrame):
+        """Cache calculated features for a pair."""
+        self._features_cache[pair] = features
+    
+    def get_cached_features(self, pair: str) -> Optional[pd.DataFrame]:
+        """Get cached features for a pair."""
+        return self._features_cache.get(pair)
 
 
 # ============================================================
@@ -671,9 +808,11 @@ def startup_data_sync(csv_manager: CSVDataManager, pairs: list, mtf_fe: MTFFeatu
     STARTUP PHASE: Download ALL missing data for ALL pairs BEFORE trading.
     
     This ensures:
-    1. All CSV files are up to date
-    2. Features are pre-calculated and verified
-    3. No trading happens until data is ready
+    1. All CSV files are validated (no duplicates, correct format)
+    2. All CSV files are up to date
+    3. Features are pre-calculated and verified
+    4. Data is cached for fast trading loop
+    5. No trading happens until everything is ready
     
     Returns:
         Dict mapping pair -> latest features DataFrame
@@ -681,15 +820,46 @@ def startup_data_sync(csv_manager: CSVDataManager, pairs: list, mtf_fe: MTFFeatu
     # Constants for startup validation
     MIN_FEATURES_ROWS = 10  # Minimum rows needed for valid features
     MAX_MISSING_FEATURES_WARNING = 10  # Warn if more features are missing
-    API_RATE_LIMIT_DELAY = 0.5  # Seconds between API calls to avoid rate limits
+    API_RATE_LIMIT_DELAY = 0.3  # Seconds between API calls to avoid rate limits
     MIN_FEATURE_MATCH_PCT = 90.0  # Minimum percentage of features that must match
     
     logger.info("=" * 70)
-    logger.info("🔄 STARTUP: Synchronizing data for all pairs...")
+    logger.info("🔄 STARTUP PHASE 1: Validating CSV data...")
     logger.info("=" * 70)
     
     ready_pairs = {}
     failed_pairs = []
+    validation_issues = {}
+    
+    # PHASE 1: Validate all CSV files first
+    for i, pair in enumerate(pairs):
+        logger.info(f"[{i+1}/{len(pairs)}] Validating {pair}...")
+        
+        is_valid, issues = csv_manager.validate_csv_data(pair)
+        
+        if issues:
+            validation_issues[pair] = issues
+            for issue in issues:
+                logger.warning(f"  ⚠️ {issue}")
+        
+        if is_valid:
+            logger.info(f"  ✅ Data format OK")
+        else:
+            logger.error(f"  ❌ Critical validation failed")
+            failed_pairs.append(pair)
+    
+    # Report validation summary
+    logger.info("\n" + "=" * 70)
+    if validation_issues:
+        logger.info(f"📊 Validation: {len(pairs) - len(failed_pairs)}/{len(pairs)} pairs OK")
+        logger.info(f"   Issues found and auto-fixed where possible")
+    else:
+        logger.info("📊 Validation: All pairs OK - no issues found!")
+    
+    # PHASE 2: Sync data and calculate features
+    logger.info("=" * 70)
+    logger.info("🔄 STARTUP PHASE 2: Syncing data and calculating features...")
+    logger.info("=" * 70)
     
     for i, pair in enumerate(pairs):
         logger.info(f"\n[{i+1}/{len(pairs)}] Processing {pair}...")
@@ -858,22 +1028,26 @@ def main():
             # Scan for signals
             if not portfolio.position:
                 logger.info("=" * 70)
-                logger.info("🔍 Scanning for signals (CSV-based features)...")
+                logger.info("🔍 FAST SCAN: Fetching latest candles only...")
+                scan_start = time.time()
                 
                 for pair in active_pairs:
                     try:
-                        # Get updated data from CSV + API
-                        data = csv_manager.get_updated_data(pair)
+                        # FAST UPDATE: Only fetch latest candle (not full re-process)
+                        data = csv_manager.fast_update_candle(pair)
                         if data is None:
                             continue
                         
-                        # Prepare features from FULL CSV data
+                        # Prepare features from cached + updated data
                         df = prepare_features(data, mtf_fe)
                         if df is None or len(df) < 2:
                             continue
                         
+                        # Cache features for next iteration
+                        csv_manager.cache_features(pair, df)
+                        
                         # Get last closed candle
-                        row = df.iloc[[-2]]
+                        row = df.iloc[[-2]].copy()
                         
                         # Fill missing features
                         for f in models['features']:
@@ -919,6 +1093,8 @@ def main():
                         logger.debug(f"Error processing {pair}: {e}")
                         continue
                 
+                scan_time = time.time() - scan_start
+                logger.info(f"⏱️ Scan completed in {scan_time:.1f}s for {len(active_pairs)} pairs")
                 logger.info("=" * 70)
         
         except KeyboardInterrupt:
