@@ -665,6 +665,114 @@ def wait_until_candle_close(timeframe_minutes: int = 5) -> datetime:
     return next_close
 
 
+def startup_data_sync(csv_manager: CSVDataManager, pairs: list, mtf_fe: MTFFeatureEngine, 
+                       models: Dict) -> Dict[str, pd.DataFrame]:
+    """
+    STARTUP PHASE: Download ALL missing data for ALL pairs BEFORE trading.
+    
+    This ensures:
+    1. All CSV files are up to date
+    2. Features are pre-calculated and verified
+    3. No trading happens until data is ready
+    
+    Returns:
+        Dict mapping pair -> latest features DataFrame
+    """
+    # Constants for startup validation
+    MIN_FEATURES_ROWS = 10  # Minimum rows needed for valid features
+    MAX_MISSING_FEATURES_WARNING = 10  # Warn if more features are missing
+    API_RATE_LIMIT_DELAY = 0.5  # Seconds between API calls to avoid rate limits
+    MIN_FEATURE_MATCH_PCT = 90.0  # Minimum percentage of features that must match
+    
+    logger.info("=" * 70)
+    logger.info("🔄 STARTUP: Synchronizing data for all pairs...")
+    logger.info("=" * 70)
+    
+    ready_pairs = {}
+    failed_pairs = []
+    
+    for i, pair in enumerate(pairs):
+        logger.info(f"\n[{i+1}/{len(pairs)}] Processing {pair}...")
+        
+        try:
+            # Step 1: Load CSV and fetch missing candles
+            data = csv_manager.get_updated_data(pair)
+            
+            if data is None:
+                logger.warning(f"  ❌ No data available for {pair}")
+                failed_pairs.append(pair)
+                continue
+            
+            # Log data stats
+            for tf in ['1m', '5m', '15m']:
+                df = data.get(tf)
+                if df is not None and len(df) > 0:
+                    logger.info(f"  {tf.upper()}: {len(df)} candles, {df.index[0]} to {df.index[-1]}")
+            
+            # Step 2: Calculate features from FULL CSV
+            features = prepare_features(data, mtf_fe)
+            
+            if features is None or len(features) < MIN_FEATURES_ROWS:
+                logger.warning(f"  ❌ Could not prepare features for {pair} (need at least {MIN_FEATURES_ROWS} rows)")
+                failed_pairs.append(pair)
+                continue
+            
+            # Step 3: Verify feature consistency with model
+            model_features = set(models['features'])
+            available_features = set(features.columns)
+            matching = model_features.intersection(available_features)
+            missing_features = model_features - available_features
+            match_pct = len(matching) / len(model_features) * 100
+            
+            if match_pct < MIN_FEATURE_MATCH_PCT:
+                logger.warning(f"  ❌ Feature match too low: {match_pct:.1f}% (need {MIN_FEATURE_MATCH_PCT}%)")
+                failed_pairs.append(pair)
+                continue
+            
+            if len(missing_features) > MAX_MISSING_FEATURES_WARNING:
+                logger.warning(f"  ⚠️ {len(missing_features)} missing features (will use 0.0)")
+            
+            # Step 4: Test prediction on last closed candle
+            # Use -1 if only 1 row, -2 for second-to-last (last closed candle)
+            row_idx = -2 if len(features) >= 2 else -1
+            row = features.iloc[[row_idx]].copy()
+            
+            # Fill missing features with 0
+            for f in models['features']:
+                if f not in row.columns:
+                    row[f] = 0.0
+            
+            X = row[models['features']].values.astype(np.float64)
+            X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+            
+            dir_proba = models['direction'].predict_proba(X)
+            dir_conf = float(np.max(dir_proba))
+            timing = float(models['timing'].predict(X)[0])
+            strength = float(models['strength'].predict(X)[0])
+            
+            logger.info(f"  ✅ Ready! Features: {match_pct:.0f}% | Conf: {dir_conf:.2f} | Tim: {timing:.2f} | Str: {strength:.1f}")
+            
+            ready_pairs[pair] = features
+            
+            # Rate limit delay between pairs
+            time.sleep(API_RATE_LIMIT_DELAY)
+            
+        except Exception as e:
+            logger.error(f"  ❌ Error: {e}")
+            failed_pairs.append(pair)
+            continue
+    
+    logger.info("\n" + "=" * 70)
+    logger.info("STARTUP COMPLETE")
+    logger.info("=" * 70)
+    logger.info(f"✅ Ready pairs: {len(ready_pairs)}")
+    if failed_pairs:
+        logger.warning(f"❌ Failed pairs: {len(failed_pairs)} - {failed_pairs}")
+    logger.info("=" * 70)
+    
+    return ready_pairs
+
+
 def main():
     logger.info("=" * 70)
     logger.info("V10 LIVE TRADING - CSV-BASED APPROACH")
@@ -672,6 +780,7 @@ def main():
     logger.info("✅ Uses SAME CSV files as training for feature calculation")
     logger.info("✅ Fetches only missing candles from API")
     logger.info("✅ Guarantees 100% feature consistency with backtest")
+    logger.info("✅ STARTUP: Downloads ALL missing data BEFORE trading")
     logger.info("=" * 70)
     
     # Load secrets
@@ -712,11 +821,26 @@ def main():
     portfolio = PortfolioManager(mexc, telegram)
     mtf_fe = MTFFeatureEngine()
     
-    logger.info(f"Monitoring {len(pairs)} pairs")
+    logger.info(f"Configured pairs: {len(pairs)}")
     logger.info(f"Capital: ${portfolio.capital:.2f}")
     
+    # ========================================
+    # STARTUP PHASE: Sync ALL data first!
+    # ========================================
+    ready_pairs = startup_data_sync(csv_manager, pairs, mtf_fe, models)
+    
+    if len(ready_pairs) == 0:
+        logger.error("❌ No pairs ready for trading! Check your CSV files in data/candles/")
+        return
+    
+    # Update pairs list to only include ready pairs
+    active_pairs = list(ready_pairs.keys())
+    logger.info(f"🎯 Trading {len(active_pairs)} pairs: {active_pairs}")
+    
     telegram.send("🚀 <b>V10 Live Trading Started</b>", 
-                  f"Capital: ${portfolio.capital:.2f}\nPairs: {len(pairs)}\nMode: CSV-based")
+                  f"Capital: ${portfolio.capital:.2f}\n"
+                  f"Active pairs: {len(active_pairs)}\n"
+                  f"Mode: CSV-based (data synced)")
     
     # Main loop
     while True:
@@ -736,7 +860,7 @@ def main():
                 logger.info("=" * 70)
                 logger.info("🔍 Scanning for signals (CSV-based features)...")
                 
-                for pair in pairs:
+                for pair in active_pairs:
                     try:
                         # Get updated data from CSV + API
                         data = csv_manager.get_updated_data(pair)
