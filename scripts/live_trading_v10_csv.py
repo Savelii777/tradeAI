@@ -959,18 +959,21 @@ def startup_data_sync(csv_manager: CSVDataManager, pairs: list, mtf_fe: MTFFeatu
     for i, pair in enumerate(pairs):
         logger.info(f"[{i+1}/{len(pairs)}] Validating {pair}...")
         
-        is_valid, issues = csv_manager.validate_csv_data(pair)
-        
-        if issues:
-            validation_issues[pair] = issues
-            for issue in issues:
-                logger.warning(f"  ⚠️ {issue}")
-        
-        if is_valid:
-            logger.info(f"  ✅ Data format OK")
-        else:
-            logger.error(f"  ❌ Critical validation failed")
-            failed_pairs.append(pair)
+        try:
+            is_valid, issues = csv_manager.validate_csv_data(pair)
+            
+            if issues:
+                validation_issues[pair] = issues
+                for issue in issues:
+                    logger.warning(f"  ⚠️ {issue}")
+            
+            if is_valid:
+                logger.info(f"  ✅ Data format OK")
+            else:
+                logger.warning(f"  ⚠️ Validation issues found (will download data in PHASE 2)")
+        except Exception as e:
+            logger.error(f"  ❌ Validation error: {e}")
+            logger.warning(f"  ⚠️ Will try to download data in PHASE 2")
     
     # Report validation summary
     logger.info("\n" + "=" * 70)
