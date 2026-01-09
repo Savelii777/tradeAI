@@ -107,7 +107,6 @@ MEXC_BASE_URL = "https://contract.mexc.com"
 # Load secrets from config file
 def _load_secrets():
     """Load secrets from config/secrets.yaml."""
-    import yaml
     secrets_file = Path(__file__).parent.parent / "config" / "secrets.yaml"
     if not secrets_file.exists():
         logger.warning(

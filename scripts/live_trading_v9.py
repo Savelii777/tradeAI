@@ -198,9 +198,9 @@ class MEXCClient:
         
         try:
             if method == 'GET':
-                response = requests.get(url, params=params, headers=headers, timeout=30)
+                response = requests.get(url, params=params, headers=headers, timeout=30, verify=True)
             elif method == 'POST':
-                response = requests.post(url, params=params, headers=headers, timeout=30)
+                response = requests.post(url, params=params, headers=headers, timeout=30, verify=True)
             else:
                 logger.error(f"Unsupported HTTP method: {method}")
                 return None
@@ -348,7 +348,7 @@ class TelegramNotifier:
                 'text': f"{title}\n{body}",
                 'parse_mode': 'HTML'
             }
-            response = requests.post(url, data=data, timeout=5)
+            response = requests.post(url, data=data, timeout=5, verify=True)
             return response.status_code == 200
         except requests.exceptions.RequestException as e:
             logger.debug(f"Telegram send failed: {e}")
