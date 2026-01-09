@@ -247,6 +247,11 @@ class CSVDataManager:
         """Save DataFrame to Parquet format."""
         filepath = self._get_parquet_path(pair, timeframe)
         df.index.name = 'timestamp'
+        
+        # Ensure index is timezone-aware (required for Parquet)
+        if df.index.tz is None:
+            df.index = pd.to_datetime(df.index, utc=True)
+        
         df.to_parquet(filepath, engine='pyarrow')
         logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
     
@@ -255,15 +260,24 @@ class CSVDataManager:
         # Ensure index is named 'timestamp'
         df.index.name = 'timestamp'
         
+        # Ensure index is timezone-aware (required for Parquet)
+        if df.index.tz is None:
+            df.index = pd.to_datetime(df.index, utc=True)
+        
         if self.USE_PARQUET:
             # Save to Parquet (10x faster reads)
             filepath = self._get_parquet_path(pair, timeframe)
-            df.to_parquet(filepath, engine='pyarrow')
-        else:
-            # Save to CSV
-            filepath = self._get_csv_path(pair, timeframe)
-            df.to_csv(filepath)
+            try:
+                df.to_parquet(filepath, engine='pyarrow')
+                logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
+                return
+            except Exception as e:
+                logger.warning(f"⚠️ Could not save as Parquet: {e}")
+                logger.warning("  Falling back to CSV format")
         
+        # Save to CSV (fallback or default)
+        filepath = self._get_csv_path(pair, timeframe)
+        df.to_csv(filepath)
         logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
     
     def fetch_missing_candles(self, pair: str, timeframe: str, 
