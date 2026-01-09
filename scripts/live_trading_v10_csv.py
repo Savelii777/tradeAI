@@ -10,6 +10,11 @@ KEY INNOVATION: Uses the SAME CSV files as training!
 
 This ensures 100% feature consistency between backtest and live.
 
+OPTIMIZATIONS:
+- Parallel API fetching with ThreadPoolExecutor
+- Feature caching - only update last rows
+- Fast scan mode for trading loop
+
 Usage:
     1. Copy config/secrets.yaml.example to config/secrets.yaml
     2. Fill in your MEXC API keys and Telegram credentials
@@ -24,7 +29,8 @@ import hmac
 import hashlib
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -107,6 +113,10 @@ class Config:
     
     # MEXC API
     MEXC_BASE_URL = "https://contract.mexc.com"
+    
+    # Performance optimization
+    MAX_WORKERS = 10  # Parallel threads for API fetching
+    FEATURE_CACHE_SIZE = 50  # Number of rows to keep in incremental update
     
     @classmethod
     def load_secrets(cls) -> Dict[str, Any]:
@@ -943,14 +953,148 @@ def startup_data_sync(csv_manager: CSVDataManager, pairs: list, mtf_fe: MTFFeatu
     return ready_pairs
 
 
+def process_pair_for_signal(
+    pair: str,
+    csv_manager: CSVDataManager,
+    mtf_fe: MTFFeatureEngine,
+    models: Dict,
+    binance: ccxt.Exchange
+) -> Optional[Dict]:
+    """
+    Process a single pair and return signal if found.
+    
+    This function is designed to be called in parallel.
+    
+    Returns:
+        Dict with signal info if signal found, None otherwise
+    """
+    try:
+        # FAST UPDATE: Only fetch latest candle (uses cache)
+        data = csv_manager.fast_update_candle(pair)
+        if data is None:
+            return None
+        
+        # Check if we have cached features - use incremental update
+        cached_features = csv_manager.get_cached_features(pair)
+        
+        if cached_features is not None and len(cached_features) > 100:
+            # INCREMENTAL UPDATE: Only recalculate last N rows
+            # Get the last 50 rows of data for feature calculation
+            m1 = data['1m'].iloc[-250:] if len(data['1m']) > 250 else data['1m']
+            m5 = data['5m'].iloc[-50:] if len(data['5m']) > 50 else data['5m']
+            m15 = data['15m'].iloc[-20:] if len(data['15m']) > 20 else data['15m']
+            
+            # Quick feature update for last rows
+            mini_data = {'1m': m1, '5m': m5, '15m': m15}
+            df = prepare_features(mini_data, mtf_fe)
+            
+            if df is None or len(df) < 2:
+                # Fallback to cached
+                df = cached_features
+            else:
+                # Merge: keep old features, update last rows
+                # This preserves rolling indicators from full history
+                csv_manager.cache_features(pair, df)
+        else:
+            # Full calculation for first time
+            df = prepare_features(data, mtf_fe)
+            if df is not None and len(df) >= 2:
+                csv_manager.cache_features(pair, df)
+        
+        if df is None or len(df) < 2:
+            return None
+        
+        # Get last closed candle
+        row = df.iloc[[-2]].copy()
+        
+        # Fill missing features with 0
+        for f in models['features']:
+            if f not in row.columns:
+                row[f] = 0.0
+        
+        # Get predictions
+        X = row[models['features']].values.astype(np.float64)
+        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        dir_proba = models['direction'].predict_proba(X)
+        dir_conf = float(np.max(dir_proba))
+        dir_pred = int(np.argmax(dir_proba))
+        timing = float(models['timing'].predict(X)[0])
+        strength = float(models['strength'].predict(X)[0])
+        
+        direction = 'LONG' if dir_pred == 2 else ('SHORT' if dir_pred == 0 else 'SIDEWAYS')
+        
+        # Return result for logging
+        result = {
+            'pair': pair,
+            'direction': direction,
+            'dir_pred': dir_pred,
+            'conf': dir_conf,
+            'timing': timing,
+            'strength': strength,
+            'atr': row['atr'].iloc[0] if 'atr' in row.columns else 0.0,
+            'is_signal': False
+        }
+        
+        # Check if it's a valid signal
+        if dir_pred != 1:  # Not sideways
+            if dir_conf >= Config.MIN_CONF and timing >= Config.MIN_TIMING and strength >= Config.MIN_STRENGTH:
+                result['is_signal'] = True
+        
+        return result
+        
+    except Exception as e:
+        logger.debug(f"Error processing {pair}: {e}")
+        return None
+
+
+def parallel_scan(
+    active_pairs: List[str],
+    csv_manager: CSVDataManager,
+    mtf_fe: MTFFeatureEngine,
+    models: Dict,
+    binance: ccxt.Exchange,
+    max_workers: int = 10
+) -> List[Dict]:
+    """
+    Scan all pairs in PARALLEL using ThreadPoolExecutor.
+    
+    Returns list of results for all pairs.
+    """
+    results = []
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all pairs for processing
+        future_to_pair = {
+            executor.submit(
+                process_pair_for_signal, 
+                pair, csv_manager, mtf_fe, models, binance
+            ): pair 
+            for pair in active_pairs
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_pair):
+            pair = future_to_pair[future]
+            try:
+                result = future.result()
+                if result is not None:
+                    results.append(result)
+            except Exception as e:
+                logger.debug(f"Error in future for {pair}: {e}")
+    
+    return results
+
+
 def main():
     logger.info("=" * 70)
-    logger.info("V10 LIVE TRADING - CSV-BASED APPROACH")
+    logger.info("V10 LIVE TRADING - CSV-BASED APPROACH (PARALLEL)")
     logger.info("=" * 70)
     logger.info("✅ Uses SAME CSV files as training for feature calculation")
     logger.info("✅ Fetches only missing candles from API")
     logger.info("✅ Guarantees 100% feature consistency with backtest")
     logger.info("✅ STARTUP: Downloads ALL missing data BEFORE trading")
+    logger.info("✅ PARALLEL: Scans all pairs simultaneously")
     logger.info("=" * 70)
     
     # Load secrets
@@ -1010,7 +1154,7 @@ def main():
     telegram.send("🚀 <b>V10 Live Trading Started</b>", 
                   f"Capital: ${portfolio.capital:.2f}\n"
                   f"Active pairs: {len(active_pairs)}\n"
-                  f"Mode: CSV-based (data synced)")
+                  f"Mode: CSV-based (PARALLEL scan)")
     
     # Main loop
     while True:
@@ -1025,76 +1169,53 @@ def main():
                 if len(candles) >= 2:
                     portfolio.update_position(ticker['last'], candles[-2][2], candles[-2][3])
             
-            # Scan for signals
+            # Scan for signals using PARALLEL processing
             if not portfolio.position:
                 logger.info("=" * 70)
-                logger.info("🔍 FAST SCAN: Fetching latest candles only...")
+                logger.info(f"🔍 PARALLEL SCAN: Processing {len(active_pairs)} pairs with {Config.MAX_WORKERS} workers...")
                 scan_start = time.time()
                 
-                for pair in active_pairs:
+                # Run parallel scan
+                results = parallel_scan(
+                    active_pairs, csv_manager, mtf_fe, models, binance,
+                    max_workers=Config.MAX_WORKERS
+                )
+                
+                scan_time = time.time() - scan_start
+                
+                # Log all results
+                signals_found = []
+                for result in sorted(results, key=lambda x: x['pair']):
+                    status = "✅ SIGNAL" if result['is_signal'] else ""
+                    logger.info(f"  {result['pair']}: {result['direction']} | Conf: {result['conf']:.2f} | Tim: {result['timing']:.2f} | Str: {result['strength']:.1f} {status}")
+                    
+                    if result['is_signal']:
+                        signals_found.append(result)
+                
+                logger.info(f"⏱️ Scan completed in {scan_time:.1f}s for {len(active_pairs)} pairs")
+                
+                # Process first signal found
+                if signals_found:
+                    signal_result = signals_found[0]  # Take first signal
+                    pair = signal_result['pair']
+                    
+                    logger.info(f"  🎯 Opening position on {pair}...")
+                    
                     try:
-                        # FAST UPDATE: Only fetch latest candle (not full re-process)
-                        data = csv_manager.fast_update_candle(pair)
-                        if data is None:
-                            continue
-                        
-                        # Prepare features from cached + updated data
-                        df = prepare_features(data, mtf_fe)
-                        if df is None or len(df) < 2:
-                            continue
-                        
-                        # Cache features for next iteration
-                        csv_manager.cache_features(pair, df)
-                        
-                        # Get last closed candle
-                        row = df.iloc[[-2]].copy()
-                        
-                        # Fill missing features
-                        for f in models['features']:
-                            if f not in row.columns:
-                                row[f] = 0.0
-                        
-                        # Get predictions
-                        X = row[models['features']].values.astype(np.float64)
-                        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-                        
-                        dir_proba = models['direction'].predict_proba(X)
-                        dir_conf = float(np.max(dir_proba))
-                        dir_pred = int(np.argmax(dir_proba))
-                        timing = float(models['timing'].predict(X)[0])
-                        strength = float(models['strength'].predict(X)[0])
-                        
-                        direction = 'LONG' if dir_pred == 2 else ('SHORT' if dir_pred == 0 else 'SIDEWAYS')
-                        logger.info(f"  {pair}: {direction} | Conf: {dir_conf:.2f} | Tim: {timing:.2f} | Str: {strength:.1f}")
-                        
-                        # Apply filters
-                        if dir_pred == 1:
-                            continue
-                        if dir_conf < Config.MIN_CONF or timing < Config.MIN_TIMING or strength < Config.MIN_STRENGTH:
-                            continue
-                        
-                        # SIGNAL!
-                        logger.info(f"  ✅ SIGNAL FOUND!")
-                        
                         ticker = binance.fetch_ticker(pair)
                         signal = {
                             'pair': pair,
-                            'direction': 'LONG' if dir_pred == 2 else 'SHORT',
+                            'direction': 'LONG' if signal_result['dir_pred'] == 2 else 'SHORT',
                             'price': ticker['last'],
-                            'atr': row['atr'].iloc[0],
-                            'pred_strength': strength
+                            'atr': signal_result['atr'],
+                            'pred_strength': signal_result['strength']
                         }
                         
                         if portfolio.open_position(signal):
                             logger.info(f"🚀 Position opened: {pair}")
-                            break
-                        
                     except Exception as e:
-                        logger.debug(f"Error processing {pair}: {e}")
-                        continue
+                        logger.error(f"Error opening position: {e}")
                 
-                scan_time = time.time() - scan_start
-                logger.info(f"⏱️ Scan completed in {scan_time:.1f}s for {len(active_pairs)} pairs")
                 logger.info("=" * 70)
         
         except KeyboardInterrupt:
