@@ -729,13 +729,23 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
                 m15 = pd.read_csv(data_dir / f"{pair_name}_15m.csv", parse_dates=['timestamp'], index_col='timestamp')
                 
                 # Ensure timezone-aware indices (UTC) for comparison with timezone-aware datetimes
+                # Handle both tz-naive and tz-aware indices
                 if m1.index.tz is None:
                     m1.index = m1.index.tz_localize('UTC')
+                else:
+                    m1.index = m1.index.tz_convert('UTC')
                 if m5.index.tz is None:
                     m5.index = m5.index.tz_localize('UTC')
+                else:
+                    m5.index = m5.index.tz_convert('UTC')
                 if m15.index.tz is None:
                     m15.index = m15.index.tz_localize('UTC')
+                else:
+                    m15.index = m15.index.tz_convert('UTC')
             except FileNotFoundError:
+                continue
+            except Exception as e:
+                print(f"    ⚠️ {pair}: Error loading data: {e}")
                 continue
             
             # Filter TRAIN data
@@ -925,13 +935,24 @@ def main():
             m15 = pd.read_csv(data_dir / f"{pair_name}_15m.csv", parse_dates=['timestamp'], index_col='timestamp')
             
             # Ensure timezone-aware indices (UTC) for comparison with timezone-aware datetimes
+            # Handle both tz-naive and tz-aware indices
             if m1.index.tz is None:
                 m1.index = m1.index.tz_localize('UTC')
+            else:
+                m1.index = m1.index.tz_convert('UTC')
             if m5.index.tz is None:
                 m5.index = m5.index.tz_localize('UTC')
+            else:
+                m5.index = m5.index.tz_convert('UTC')
             if m15.index.tz is None:
                 m15.index = m15.index.tz_localize('UTC')
+            else:
+                m15.index = m15.index.tz_convert('UTC')
         except FileNotFoundError:
+            print(f"  ⚠️ {pair}: CSV files not found, skipping")
+            continue
+        except Exception as e:
+            print(f"  ⚠️ {pair}: Error loading data: {e}")
             continue
         
         # SPLIT LOGIC
@@ -957,7 +978,12 @@ def main():
         m15_train = m15[(m15.index >= train_start) & (m15.index < train_end)]
         
         if len(m5_train) < 500:
-            print(f"  ⚠️ {pair}: Skipped (only {len(m5_train)} 5m candles, need 500)")
+            # Show available data range to help debug
+            data_start = m5.index.min() if len(m5) > 0 else "empty"
+            data_end = m5.index.max() if len(m5) > 0 else "empty"
+            print(f"  ⚠️ {pair}: Skipped (only {len(m5_train)} 5m candles in range, need 500)")
+            print(f"      Data range: {data_start} to {data_end}")
+            print(f"      Requested : {train_start} to {train_end}")
             continue
         
         ft_train = mtf_fe.align_timeframes(m1_train, m5_train, m15_train)
