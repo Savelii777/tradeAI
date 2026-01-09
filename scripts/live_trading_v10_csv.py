@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-Live Trading Script V10 - CSV-Based Approach
+Live Trading Script V10 - CSV/Parquet-Based Approach
 
-KEY INNOVATION: Uses the SAME CSV files as training!
-- Loads historical data from CSV files (same as backtest)
+KEY INNOVATION: Uses the SAME data files as training!
+- Loads historical data from CSV/Parquet files (same as backtest)
 - Fetches ONLY missing candles from Binance API
-- Appends new candles to CSV
-- Calculates features from FULL CSV data (exactly like backtest)
+- Appends new candles to data files
+- Calculates features from FULL data (exactly like backtest)
+
+PARQUET SUPPORT (10x faster):
+- Automatically converts CSV to Parquet on first load
+- Uses Parquet for all subsequent operations
+- Same data, just faster I/O
 
 This ensures 100% feature consistency between backtest and live.
 
 OPTIMIZATIONS:
 - Parallel API fetching with ThreadPoolExecutor
+- Parquet format for 10x faster data loading
 - Feature caching - only update last rows
 - Fast scan mode for trading loop
 
@@ -20,6 +26,8 @@ Usage:
     2. Fill in your MEXC API keys and Telegram credentials
     3. Ensure data/candles/ contains the CSV files from training
     4. Run: python scripts/live_trading_v10_csv.py
+    
+    Note: CSV files will be automatically converted to Parquet on first run.
 """
 
 import sys
@@ -41,6 +49,15 @@ import pandas as pd
 import numpy as np
 import yaml
 from loguru import logger
+
+# Check for pyarrow availability (for Parquet support)
+try:
+    import pyarrow
+    PYARROW_AVAILABLE = True
+except ImportError:
+    PYARROW_AVAILABLE = False
+    logger.warning("⚠️ pyarrow not installed - using CSV instead of Parquet (slower)")
+    logger.warning("  Install with: pip install pyarrow>=14.0.1")
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -134,15 +151,22 @@ class Config:
 
 
 # ============================================================
-# CSV DATA MANAGER
+# CSV DATA MANAGER (with Parquet support)
 # ============================================================
 class CSVDataManager:
     """
-    Manages CSV data files - the key to matching backtest exactly.
+    Manages data files - the key to matching backtest exactly.
     
-    - Loads existing CSV data from training
+    PARQUET SUPPORT (10x faster than CSV):
+    - First tries to load from .parquet files
+    - Falls back to .csv if parquet not found
+    - Saves in PARQUET format for 10x faster loading
+    - Converts existing CSV to Parquet on first load
+    
+    Features:
+    - Loads existing data from training
     - Fetches only missing candles from API
-    - Appends new data to CSV
+    - Appends new data
     - Returns full history for feature calculation
     - Validates data integrity at startup
     - Caches data for fast trading loop
@@ -150,6 +174,9 @@ class CSVDataManager:
     
     # Required columns for valid OHLCV data
     REQUIRED_COLUMNS = ['open', 'high', 'low', 'close', 'volume']
+    
+    # Use Parquet by default if pyarrow is available (10x faster than CSV)
+    USE_PARQUET = PYARROW_AVAILABLE
     
     def __init__(self, data_dir: Path, binance: ccxt.Exchange):
         self.data_dir = data_dir
@@ -160,37 +187,82 @@ class CSVDataManager:
         self._data_cache: Dict[str, Dict[str, pd.DataFrame]] = {}
         self._features_cache: Dict[str, pd.DataFrame] = {}
         
-        logger.info(f"📂 CSV Data Manager initialized: {self.data_dir}")
+        fmt = "Parquet" if self.USE_PARQUET else "CSV"
+        logger.info(f"📂 Data Manager initialized ({fmt} mode): {self.data_dir}")
     
     def _get_csv_path(self, pair: str, timeframe: str) -> Path:
         """Get CSV file path for a pair/timeframe."""
         safe_symbol = pair.replace('/', '_').replace(':', '_')
         return self.data_dir / f"{safe_symbol}_{timeframe}.csv"
     
+    def _get_parquet_path(self, pair: str, timeframe: str) -> Path:
+        """Get Parquet file path for a pair/timeframe."""
+        safe_symbol = pair.replace('/', '_').replace(':', '_')
+        return self.data_dir / f"{safe_symbol}_{timeframe}.parquet"
+    
     def load_csv(self, pair: str, timeframe: str) -> Optional[pd.DataFrame]:
-        """Load existing CSV data."""
-        filepath = self._get_csv_path(pair, timeframe)
+        """
+        Load existing data (tries Parquet first, then CSV).
         
-        if not filepath.exists():
-            logger.warning(f"CSV not found: {filepath}")
+        If CSV is loaded, it's automatically converted to Parquet.
+        """
+        parquet_path = self._get_parquet_path(pair, timeframe)
+        csv_path = self._get_csv_path(pair, timeframe)
+        
+        # Try Parquet first (10x faster)
+        if self.USE_PARQUET and parquet_path.exists():
+            try:
+                df = pd.read_parquet(parquet_path)
+                df.index = pd.to_datetime(df.index, utc=True)
+                df.sort_index(inplace=True)
+                df = df[~df.index.duplicated(keep='first')]
+                return df
+            except Exception as e:
+                logger.warning(f"Error loading parquet {parquet_path}: {e}")
+        
+        # Fall back to CSV
+        if not csv_path.exists():
+            if not parquet_path.exists():
+                logger.warning(f"Data not found: {csv_path}")
             return None
         
-        df = pd.read_csv(filepath, parse_dates=['timestamp'], index_col='timestamp')
+        df = pd.read_csv(csv_path, parse_dates=['timestamp'], index_col='timestamp')
         df.index = pd.to_datetime(df.index, utc=True)
         df.sort_index(inplace=True)
         
         # Remove duplicates
         df = df[~df.index.duplicated(keep='first')]
         
+        # Convert to Parquet for faster future loads
+        if self.USE_PARQUET:
+            try:
+                self._save_parquet(pair, timeframe, df)
+                logger.info(f"  ✅ Converted {csv_path.name} to Parquet")
+            except Exception as e:
+                logger.debug(f"Could not convert to parquet: {e}")
+        
         return df
     
+    def _save_parquet(self, pair: str, timeframe: str, df: pd.DataFrame):
+        """Save DataFrame to Parquet format."""
+        filepath = self._get_parquet_path(pair, timeframe)
+        df.index.name = 'timestamp'
+        df.to_parquet(filepath, engine='pyarrow')
+        logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
+    
     def save_csv(self, pair: str, timeframe: str, df: pd.DataFrame):
-        """Save DataFrame to CSV."""
-        filepath = self._get_csv_path(pair, timeframe)
-        
+        """Save DataFrame to file (Parquet if enabled, otherwise CSV)."""
         # Ensure index is named 'timestamp'
         df.index.name = 'timestamp'
-        df.to_csv(filepath)
+        
+        if self.USE_PARQUET:
+            # Save to Parquet (10x faster reads)
+            filepath = self._get_parquet_path(pair, timeframe)
+            df.to_parquet(filepath, engine='pyarrow')
+        else:
+            # Save to CSV
+            filepath = self._get_csv_path(pair, timeframe)
+            df.to_csv(filepath)
         
         logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
     
@@ -293,7 +365,7 @@ class CSVDataManager:
     
     def validate_csv_data(self, pair: str) -> tuple[bool, list]:
         """
-        Validate CSV data integrity at startup.
+        Validate data integrity at startup.
         
         Checks:
         1. All required columns exist
@@ -312,7 +384,7 @@ class CSVDataManager:
             df = self.load_csv(pair, tf)
             
             if df is None:
-                issues.append(f"{tf}: CSV file not found")
+                issues.append(f"{tf}: Data file not found")
                 continue
             
             # Check required columns

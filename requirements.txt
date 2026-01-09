@@ -10,6 +10,7 @@ python-dotenv>=1.0.0
 numpy>=1.24.0
 pandas>=2.0.0
 scipy>=1.10.0
+pyarrow>=14.0.1  # Fast Parquet I/O (>=14.0.1 for security fix)
 
 # Technical Analysis
 ta>=0.10.2
