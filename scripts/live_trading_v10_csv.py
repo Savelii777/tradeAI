@@ -399,6 +399,9 @@ class CSVDataManager:
                 
                 data[tf] = combined
                 
+                # IMPORTANT: Save to CSV so data persists between restarts!
+                self.save_csv(pair, tf, combined)
+                
             except Exception as e:
                 logger.debug(f"Error updating {pair} {tf}: {e}")
                 continue
