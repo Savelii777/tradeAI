@@ -226,12 +226,21 @@ class CSVDataManager:
                 logger.warning(f"Data not found: {csv_path}")
             return None
         
-        df = pd.read_csv(csv_path, parse_dates=['timestamp'], index_col='timestamp')
-        df.index = pd.to_datetime(df.index, utc=True)
-        df.sort_index(inplace=True)
-        
-        # Remove duplicates
-        df = df[~df.index.duplicated(keep='first')]
+        try:
+            df = pd.read_csv(csv_path, parse_dates=['timestamp'], index_col='timestamp')
+            df.index = pd.to_datetime(df.index, utc=True)
+            df.sort_index(inplace=True)
+            
+            # Ensure numeric columns are actually numeric
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Remove duplicates
+            df = df[~df.index.duplicated(keep='first')]
+        except Exception as e:
+            logger.error(f"Error reading CSV {csv_path}: {e}")
+            return None
         
         # Convert to Parquet for faster future loads
         if self.USE_PARQUET:
@@ -239,30 +248,46 @@ class CSVDataManager:
                 self._save_parquet(pair, timeframe, df)
                 logger.info(f"  ✅ Converted {csv_path.name} to Parquet")
             except Exception as e:
-                logger.debug(f"Could not convert to parquet: {e}")
+                logger.warning(f"Could not convert {csv_path.name} to parquet: {e}")
         
         return df
     
     def _save_parquet(self, pair: str, timeframe: str, df: pd.DataFrame):
         """Save DataFrame to Parquet format."""
         filepath = self._get_parquet_path(pair, timeframe)
+        
+        # Make a copy to avoid modifying original
+        df = df.copy()
         df.index.name = 'timestamp'
         
         # Ensure index is timezone-aware (required for Parquet)
         if df.index.tz is None:
             df.index = pd.to_datetime(df.index, utc=True)
+        
+        # Ensure all columns have proper dtypes for Parquet
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
         
         df.to_parquet(filepath, engine='pyarrow')
         logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
     
     def save_csv(self, pair: str, timeframe: str, df: pd.DataFrame):
         """Save DataFrame to file (Parquet if enabled, otherwise CSV)."""
+        # Make a copy to avoid modifying the original DataFrame
+        df = df.copy()
+        
         # Ensure index is named 'timestamp'
         df.index.name = 'timestamp'
         
         # Ensure index is timezone-aware (required for Parquet)
         if df.index.tz is None:
             df.index = pd.to_datetime(df.index, utc=True)
+        
+        # Ensure all columns have proper dtypes for Parquet
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
         
         if self.USE_PARQUET:
             # Save to Parquet (10x faster reads)
