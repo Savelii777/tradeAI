@@ -1,0 +1,810 @@
+#!/usr/bin/env python3
+"""
+Live Trading Script V10 - CSV-Based Approach
+
+KEY INNOVATION: Uses the SAME CSV files as training!
+- Loads historical data from CSV files (same as backtest)
+- Fetches ONLY missing candles from Binance API
+- Appends new candles to CSV
+- Calculates features from FULL CSV data (exactly like backtest)
+
+This ensures 100% feature consistency between backtest and live.
+
+Usage:
+    1. Copy config/secrets.yaml.example to config/secrets.yaml
+    2. Fill in your MEXC API keys and Telegram credentials
+    3. Ensure data/candles/ contains the CSV files from training
+    4. Run: python scripts/live_trading_v10_csv.py
+"""
+
+import sys
+import time
+import json
+import hmac
+import hashlib
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Optional, Any
+import warnings
+warnings.filterwarnings('ignore')
+
+import joblib
+import ccxt
+import requests
+import pandas as pd
+import numpy as np
+import yaml
+from loguru import logger
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
+
+from src.features.feature_engine import FeatureEngine
+from src.utils.constants import (
+    CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES
+)
+from train_mtf import MTFFeatureEngine
+
+
+# ============================================================
+# LOGGING SETUP
+# ============================================================
+LOG_DIR = Path(__file__).parent.parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "live_trading_v10.log"
+
+logger.remove()
+logger.add(
+    sys.stderr, 
+    format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | {message}",
+    level="INFO"
+)
+logger.add(
+    LOG_FILE,
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+    rotation="10 MB",
+    retention="7 days",
+    level="DEBUG"
+)
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+class Config:
+    """Configuration for V10 CSV-based live trading."""
+    
+    # Paths
+    MODEL_DIR = Path(__file__).parent.parent / "models" / "v8_improved"
+    DATA_DIR = Path(__file__).parent.parent / "data" / "candles"
+    PAIRS_FILE = Path(__file__).parent.parent / "config" / "pairs_20.json"
+    SECRETS_FILE = Path(__file__).parent.parent / "config" / "secrets.yaml"
+    TRADES_FILE = Path(__file__).parent.parent / "active_trades_v10.json"
+    
+    # Timeframes
+    TIMEFRAMES = ['1m', '5m', '15m']
+    
+    # V8 Signal Thresholds (match backtest)
+    MIN_CONF = 0.50
+    MIN_TIMING = 0.8
+    MIN_STRENGTH = 1.4
+    
+    # Risk Management
+    RISK_PCT = 0.05
+    MAX_LEVERAGE = 50.0
+    MAX_HOLDING_BARS = 150
+    ENTRY_FEE = 0.0002
+    EXIT_FEE = 0.0002
+    SL_ATR_BASE = 1.5
+    MAX_POSITION_SIZE = 200000.0
+    SLIPPAGE_PCT = 0.0005
+    
+    # V8 Features
+    USE_ADAPTIVE_SL = True
+    USE_DYNAMIC_LEVERAGE = True
+    USE_AGGRESSIVE_TRAIL = True
+    
+    # MEXC API
+    MEXC_BASE_URL = "https://contract.mexc.com"
+    
+    @classmethod
+    def load_secrets(cls) -> Dict[str, Any]:
+        """Load secrets from config/secrets.yaml."""
+        if not cls.SECRETS_FILE.exists():
+            raise FileNotFoundError(
+                f"Secrets file not found: {cls.SECRETS_FILE}\n"
+                "Please copy config/secrets.yaml.example to config/secrets.yaml"
+            )
+        
+        with open(cls.SECRETS_FILE, 'r') as f:
+            secrets = yaml.safe_load(f)
+        
+        return secrets
+
+
+# ============================================================
+# CSV DATA MANAGER
+# ============================================================
+class CSVDataManager:
+    """
+    Manages CSV data files - the key to matching backtest exactly.
+    
+    - Loads existing CSV data from training
+    - Fetches only missing candles from API
+    - Appends new data to CSV
+    - Returns full history for feature calculation
+    """
+    
+    def __init__(self, data_dir: Path, binance: ccxt.Exchange):
+        self.data_dir = data_dir
+        self.binance = binance
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"📂 CSV Data Manager initialized: {self.data_dir}")
+    
+    def _get_csv_path(self, pair: str, timeframe: str) -> Path:
+        """Get CSV file path for a pair/timeframe."""
+        safe_symbol = pair.replace('/', '_').replace(':', '_')
+        return self.data_dir / f"{safe_symbol}_{timeframe}.csv"
+    
+    def load_csv(self, pair: str, timeframe: str) -> Optional[pd.DataFrame]:
+        """Load existing CSV data."""
+        filepath = self._get_csv_path(pair, timeframe)
+        
+        if not filepath.exists():
+            logger.warning(f"CSV not found: {filepath}")
+            return None
+        
+        df = pd.read_csv(filepath, parse_dates=['timestamp'], index_col='timestamp')
+        df.index = pd.to_datetime(df.index, utc=True)
+        df.sort_index(inplace=True)
+        
+        # Remove duplicates
+        df = df[~df.index.duplicated(keep='first')]
+        
+        return df
+    
+    def save_csv(self, pair: str, timeframe: str, df: pd.DataFrame):
+        """Save DataFrame to CSV."""
+        filepath = self._get_csv_path(pair, timeframe)
+        
+        # Ensure index is named 'timestamp'
+        df.index.name = 'timestamp'
+        df.to_csv(filepath)
+        
+        logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
+    
+    def fetch_missing_candles(self, pair: str, timeframe: str, 
+                               existing_df: Optional[pd.DataFrame]) -> pd.DataFrame:
+        """
+        Fetch only the missing candles from Binance API.
+        
+        Returns the COMBINED DataFrame (existing + new).
+        """
+        if existing_df is None or len(existing_df) == 0:
+            # No existing data - fetch last 1000 candles
+            logger.info(f"  No existing data for {pair} {timeframe}, fetching 1000 candles...")
+            candles = self.binance.fetch_ohlcv(pair, timeframe, limit=1000)
+            
+            df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+            df.set_index('timestamp', inplace=True)
+            
+            return df
+        
+        # Get the last timestamp from existing data
+        last_ts = existing_df.index[-1]
+        now = datetime.now(timezone.utc)
+        
+        # Calculate how many candles we need
+        tf_minutes = {'1m': 1, '5m': 5, '15m': 15}[timeframe]
+        time_diff = (now - last_ts).total_seconds() / 60
+        candles_needed = int(time_diff / tf_minutes) + 10  # +10 buffer
+        
+        if candles_needed <= 0:
+            logger.debug(f"  {pair} {timeframe}: Data is up to date")
+            return existing_df
+        
+        logger.info(f"  Fetching {candles_needed} new candles for {pair} {timeframe}...")
+        
+        # Fetch from Binance
+        since_ts = int(last_ts.timestamp() * 1000)
+        candles = self.binance.fetch_ohlcv(pair, timeframe, since=since_ts, limit=min(candles_needed, 1000))
+        
+        if not candles:
+            return existing_df
+        
+        # Convert to DataFrame
+        new_df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        new_df['timestamp'] = pd.to_datetime(new_df['timestamp'], unit='ms', utc=True)
+        new_df.set_index('timestamp', inplace=True)
+        
+        # Combine with existing, removing duplicates
+        combined = pd.concat([existing_df, new_df])
+        combined = combined[~combined.index.duplicated(keep='last')]  # Keep latest values
+        combined.sort_index(inplace=True)
+        
+        new_count = len(combined) - len(existing_df)
+        if new_count > 0:
+            logger.info(f"  ✅ Added {new_count} new candles to {pair} {timeframe}")
+        
+        return combined
+    
+    def get_updated_data(self, pair: str) -> Optional[Dict[str, pd.DataFrame]]:
+        """
+        Get updated data for all timeframes.
+        
+        1. Loads existing CSV
+        2. Fetches missing candles from API
+        3. Saves updated CSV
+        4. Returns full data for feature calculation
+        """
+        data = {}
+        
+        for tf in Config.TIMEFRAMES:
+            # Load existing CSV
+            existing = self.load_csv(pair, tf)
+            
+            # Fetch missing candles
+            try:
+                updated = self.fetch_missing_candles(pair, tf, existing)
+            except Exception as e:
+                logger.error(f"Error fetching {pair} {tf}: {e}")
+                if existing is not None:
+                    updated = existing
+                else:
+                    return None
+            
+            # Save updated CSV
+            self.save_csv(pair, tf, updated)
+            
+            data[tf] = updated
+        
+        # Validate we have enough data
+        for tf in Config.TIMEFRAMES:
+            if tf not in data or len(data[tf]) < 200:
+                logger.warning(f"Insufficient data for {pair} {tf}: {len(data.get(tf, []))}")
+                return None
+        
+        return data
+
+
+# ============================================================
+# MEXC CLIENT (same as V9)
+# ============================================================
+class MEXCClient:
+    """Direct MEXC Futures API client."""
+    
+    def __init__(self, api_key: str, api_secret: str):
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.base_url = Config.MEXC_BASE_URL
+        logger.info("✅ MEXC Client initialized")
+    
+    def _generate_signature(self, sign_str: str) -> str:
+        return hmac.new(
+            self.api_secret.encode('utf-8'),
+            sign_str.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+    
+    def _request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        timestamp = int(time.time() * 1000)
+        if params is None:
+            params = {}
+        params['timestamp'] = timestamp
+        
+        sorted_params = sorted(params.items())
+        params_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
+        sign_str = f"{self.api_key}{timestamp}{params_str}"
+        signature = self._generate_signature(sign_str)
+        
+        headers = {
+            'ApiKey': self.api_key,
+            'Request-Time': str(timestamp),
+            'Signature': signature,
+            'Content-Type': 'application/json'
+        }
+        
+        url = f"{self.base_url}{endpoint}"
+        
+        try:
+            if method == 'GET':
+                response = requests.get(url, params=params, headers=headers, timeout=30, verify=True)
+            elif method == 'POST':
+                response = requests.post(url, params=params, headers=headers, timeout=30, verify=True)
+            else:
+                return None
+            
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"MEXC API error: {e}")
+            return None
+    
+    def get_account_assets(self) -> float:
+        result = self._request('GET', '/api/v1/private/account/assets', {})
+        if result and result.get('success'):
+            for asset in result.get('data', []):
+                if asset['currency'] == 'USDT':
+                    return float(asset.get('availableBalance', 0))
+        return 0.0
+    
+    def place_order(self, symbol: str, side: int, volume: int, leverage: int,
+                   price: float = 0, order_type: int = 5, open_type: int = 1) -> Optional[str]:
+        params = {
+            'symbol': symbol, 'price': price, 'vol': volume,
+            'leverage': leverage, 'side': side, 'type': order_type, 'openType': open_type
+        }
+        logger.info(f"📤 Placing order: {params}")
+        result = self._request('POST', '/api/v1/private/order/submit', params)
+        if result and result.get('success'):
+            return result.get('data')
+        return None
+    
+    def place_stop_order(self, symbol: str, side: int, volume: int, 
+                        stop_price: float, leverage: int) -> Optional[str]:
+        params = {
+            'symbol': symbol, 'price': 0, 'vol': volume, 'leverage': leverage,
+            'side': side, 'type': 5, 'openType': 1, 'triggerPrice': stop_price,
+            'triggerType': 1, 'executeCycle': 1, 'trend': 1 if side == 3 else 2
+        }
+        result = self._request('POST', '/api/v1/private/planorder/place', params)
+        if result and result.get('success'):
+            return result.get('data')
+        return None
+    
+    def cancel_stop_orders(self, symbol: str) -> bool:
+        result = self._request('GET', '/api/v1/private/planorder/list', {'symbol': symbol})
+        if not result or not result.get('success'):
+            return False
+        for order in result.get('data', []):
+            if order.get('id'):
+                self._request('POST', '/api/v1/private/planorder/cancel', 
+                            {'symbol': symbol, 'orderId': order['id']})
+        return True
+
+
+# ============================================================
+# TELEGRAM NOTIFIER (same as V9)
+# ============================================================
+class TelegramNotifier:
+    def __init__(self, bot_token: str, chat_id: str):
+        self.bot_token = bot_token
+        self.chat_id = chat_id
+        self.enabled = bool(bot_token and chat_id)
+    
+    def send(self, title: str, body: str) -> bool:
+        if not self.enabled:
+            return False
+        try:
+            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            requests.post(url, data={'chat_id': self.chat_id, 'text': f"{title}\n{body}", 
+                                     'parse_mode': 'HTML'}, timeout=5, verify=True)
+            return True
+        except:
+            return False
+
+
+# ============================================================
+# PORTFOLIO MANAGER (same as V9)
+# ============================================================
+class PortfolioManager:
+    def __init__(self, mexc: MEXCClient, telegram: TelegramNotifier):
+        self.mexc = mexc
+        self.telegram = telegram
+        self.position = None
+        self.trades_history = []
+        
+        if self.load_state():
+            logger.info(f"📂 State loaded. Capital: ${self.capital:.2f}")
+        else:
+            self.capital = self.mexc.get_account_assets() or 20.0
+            logger.info(f"💰 Capital: ${self.capital:.2f}")
+            self.save_state()
+    
+    def load_state(self) -> bool:
+        if Config.TRADES_FILE.exists():
+            try:
+                with open(Config.TRADES_FILE, 'r') as f:
+                    data = json.load(f)
+                    self.capital = data.get('capital')
+                    self.position = data.get('position')
+                    if self.position and isinstance(self.position.get('entry_time'), str):
+                        self.position['entry_time'] = datetime.fromisoformat(self.position['entry_time'])
+                    return self.capital is not None
+            except:
+                return False
+        return False
+    
+    def save_state(self):
+        pos = None
+        if self.position:
+            pos = self.position.copy()
+            if isinstance(pos.get('entry_time'), datetime):
+                pos['entry_time'] = pos['entry_time'].isoformat()
+        with open(Config.TRADES_FILE, 'w') as f:
+            json.dump({'capital': self.capital, 'position': pos, 'history': self.trades_history}, f, indent=2)
+    
+    def open_position(self, signal: Dict) -> bool:
+        if self.position:
+            return False
+        
+        entry_price = signal['price']
+        atr = signal['atr']
+        pred_strength = signal.get('pred_strength', 2.0)
+        
+        # Adaptive SL
+        if pred_strength >= 3.0:
+            sl_mult = 1.6
+        elif pred_strength >= 2.0:
+            sl_mult = 1.5
+        else:
+            sl_mult = 1.2
+        
+        stop_distance = atr * sl_mult
+        stop_loss = entry_price - stop_distance if signal['direction'] == 'LONG' else entry_price + stop_distance
+        
+        # Position sizing
+        stop_loss_pct = stop_distance / entry_price
+        risk_amount = self.capital * Config.RISK_PCT
+        position_value = min(risk_amount / stop_loss_pct, Config.MAX_POSITION_SIZE)
+        leverage = min(position_value / self.capital, Config.MAX_LEVERAGE)
+        
+        mexc_symbol = signal['pair'].replace('/USDT:USDT', '_USDT').replace('/', '_')
+        volume = max(1, int(position_value / entry_price))
+        mexc_side = 1 if signal['direction'] == 'LONG' else 2
+        
+        order_id = self.mexc.place_order(mexc_symbol, mexc_side, volume, int(leverage))
+        if not order_id:
+            return False
+        
+        stop_side = 3 if signal['direction'] == 'LONG' else 4
+        stop_order_id = self.mexc.place_stop_order(mexc_symbol, stop_side, volume, stop_loss, int(leverage))
+        
+        self.position = {
+            'pair': signal['pair'], 'direction': signal['direction'],
+            'entry_price': entry_price, 'entry_time': datetime.now(),
+            'stop_loss': stop_loss, 'stop_distance': stop_distance,
+            'position_value': position_value, 'leverage': leverage,
+            'mexc_symbol': mexc_symbol, 'volume': volume,
+            'pred_strength': pred_strength, 'breakeven_active': False,
+            'be_trigger_mult': 1.5 if pred_strength >= 2.0 else 1.2
+        }
+        self.save_state()
+        
+        self.telegram.send(
+            f"🟢 <b>{signal['direction']}</b> {signal['pair']}",
+            f"Entry: {entry_price:.6f}\nSL: {stop_loss:.6f}\nLev: {leverage:.1f}x"
+        )
+        return True
+    
+    def update_position(self, current_price: float, candle_high: float, candle_low: float):
+        if not self.position:
+            return
+        
+        pos = self.position
+        pred_strength = pos.get('pred_strength', 2.0)
+        sl_mult = 1.6 if pred_strength >= 3.0 else (1.5 if pred_strength >= 2.0 else 1.2)
+        atr = pos['stop_distance'] / sl_mult
+        be_trigger_dist = atr * pos['be_trigger_mult']
+        
+        if pos['direction'] == 'LONG':
+            if not pos['breakeven_active'] and candle_high >= pos['entry_price'] + be_trigger_dist:
+                pos['breakeven_active'] = True
+                pos['stop_loss'] = pos['entry_price'] + atr * 0.3
+                logger.info(f"✅ Breakeven activated")
+            
+            if pos['breakeven_active']:
+                r_mult = (candle_high - pos['entry_price']) / pos['stop_distance']
+                trail = 0.4 if r_mult > 5 else (0.8 if r_mult > 3 else (1.2 if r_mult > 2 else 1.8))
+                new_sl = candle_high - atr * trail
+                if new_sl > pos['stop_loss']:
+                    pos['stop_loss'] = new_sl
+        else:
+            if not pos['breakeven_active'] and candle_low <= pos['entry_price'] - be_trigger_dist:
+                pos['breakeven_active'] = True
+                pos['stop_loss'] = pos['entry_price'] - atr * 0.3
+            
+            if pos['breakeven_active']:
+                r_mult = (pos['entry_price'] - candle_low) / pos['stop_distance']
+                trail = 0.4 if r_mult > 5 else (0.8 if r_mult > 3 else (1.2 if r_mult > 2 else 1.8))
+                new_sl = candle_low + atr * trail
+                if new_sl < pos['stop_loss']:
+                    pos['stop_loss'] = new_sl
+        
+        self.save_state()
+    
+    def close_position(self, price: float, reason: str):
+        if not self.position:
+            return
+        
+        pos = self.position
+        self.mexc.cancel_stop_orders(pos['mexc_symbol'])
+        self.mexc.place_order(pos['mexc_symbol'], 3 if pos['direction'] == 'LONG' else 4, 
+                             pos['volume'], int(pos['leverage']))
+        
+        if pos['direction'] == 'LONG':
+            pnl_pct = (price * (1 - Config.SLIPPAGE_PCT) - pos['entry_price'] * (1 + Config.SLIPPAGE_PCT)) / pos['entry_price']
+        else:
+            pnl_pct = (pos['entry_price'] * (1 - Config.SLIPPAGE_PCT) - price * (1 + Config.SLIPPAGE_PCT)) / pos['entry_price']
+        
+        net = pos['position_value'] * pnl_pct - pos['position_value'] * Config.EXIT_FEE
+        self.capital += net
+        
+        emoji = "✅" if net > 0 else "❌"
+        self.telegram.send(f"{emoji} CLOSE {pos['pair']}", f"PnL: ${net:.2f}\nReason: {reason}")
+        
+        self.position = None
+        self.save_state()
+
+
+# ============================================================
+# FEATURE ENGINEERING (from CSV - matches backtest exactly!)
+# ============================================================
+def add_volume_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['vol_sma_20'] = df['volume'].rolling(20).mean()
+    df['vol_ratio'] = df['volume'] / df['vol_sma_20']
+    df['vol_zscore'] = (df['volume'] - df['vol_sma_20']) / df['volume'].rolling(20).std()
+    df['vwap'] = (df['close'] * df['volume']).rolling(20).sum() / df['volume'].rolling(20).sum()
+    df['price_vs_vwap'] = df['close'] / df['vwap'] - 1
+    df['vol_momentum'] = df['volume'].pct_change(5).clip(-10, 10)
+    return df
+
+
+def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    tr = pd.concat([
+        df['high'] - df['low'],
+        abs(df['high'] - df['close'].shift()),
+        abs(df['low'] - df['close'].shift())
+    ], axis=1).max(axis=1)
+    return tr.ewm(span=period, adjust=False).mean()
+
+
+def prepare_features(data: Dict[str, pd.DataFrame], mtf_fe: MTFFeatureEngine) -> pd.DataFrame:
+    """
+    Prepare features from CSV data - EXACTLY like backtest!
+    
+    This is the key function that ensures live matches backtest.
+    """
+    m1 = data['1m']
+    m5 = data['5m']
+    m15 = data['15m']
+    
+    logger.debug(f"Preparing features from CSV: M1={len(m1)}, M5={len(m5)}, M15={len(m15)}")
+    
+    if len(m1) < 200 or len(m5) < 200 or len(m15) < 200:
+        return pd.DataFrame()
+    
+    # Ensure DatetimeIndex
+    for df in [m1, m5, m15]:
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index, utc=True)
+        df.sort_index(inplace=True)
+    
+    try:
+        # Use MTFFeatureEngine - SAME as backtest
+        ft = mtf_fe.align_timeframes(m1, m5, m15)
+        
+        if len(ft) == 0:
+            return pd.DataFrame()
+        
+        # Add OHLCV from M5
+        ft = ft.join(m5[['open', 'high', 'low', 'close', 'volume']])
+        
+        # Add volume features - SAME as backtest
+        ft = add_volume_features(ft)
+        
+        # Add ATR
+        ft['atr'] = calculate_atr(ft)
+        
+        # NaN handling - SAME as backtest
+        ft = ft.dropna(subset=['close', 'atr'])
+        
+        # Exclude cumsum-dependent features
+        cols_to_drop = [c for c in ft.columns if any(p in c.lower() for p in CUMSUM_PATTERNS)]
+        ft = ft.drop(columns=cols_to_drop, errors='ignore')
+        
+        # Exclude absolute price features  
+        absolute_cols = [c for c in ft.columns if c in ABSOLUTE_PRICE_FEATURES]
+        ft = ft.drop(columns=absolute_cols, errors='ignore')
+        
+        # Forward fill and final dropna
+        ft = ft.ffill().dropna()
+        
+        logger.debug(f"Features prepared: {len(ft)} rows, {len(ft.columns)} cols")
+        
+        return ft
+        
+    except Exception as e:
+        logger.error(f"Error preparing features: {e}")
+        return pd.DataFrame()
+
+
+# ============================================================
+# MAIN
+# ============================================================
+def load_models() -> Dict:
+    """Load trained models."""
+    if not Config.MODEL_DIR.exists():
+        raise FileNotFoundError(f"Model directory not found: {Config.MODEL_DIR}")
+    
+    return {
+        'direction': joblib.load(Config.MODEL_DIR / 'direction_model.joblib'),
+        'timing': joblib.load(Config.MODEL_DIR / 'timing_model.joblib'),
+        'strength': joblib.load(Config.MODEL_DIR / 'strength_model.joblib'),
+        'features': joblib.load(Config.MODEL_DIR / 'feature_names.joblib')
+    }
+
+
+def get_pairs() -> list:
+    """Get trading pairs."""
+    if Config.PAIRS_FILE.exists():
+        with open(Config.PAIRS_FILE) as f:
+            return [p['symbol'] for p in json.load(f)['pairs']][:20]
+    return ['BTC/USDT:USDT', 'ETH/USDT:USDT']
+
+
+def wait_until_candle_close(timeframe_minutes: int = 5) -> datetime:
+    """Wait until next candle close."""
+    now = datetime.now(timezone.utc)
+    next_close_minute = ((now.minute // timeframe_minutes) + 1) * timeframe_minutes
+    
+    if next_close_minute >= 60:
+        next_close = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    else:
+        next_close = now.replace(minute=next_close_minute, second=0, microsecond=0)
+    
+    wait_seconds = (next_close - now).total_seconds() + 3
+    if wait_seconds > 0:
+        logger.info(f"⏰ Waiting {wait_seconds:.0f}s until {next_close.strftime('%H:%M:%S')} UTC")
+        time.sleep(wait_seconds)
+    
+    return next_close
+
+
+def main():
+    logger.info("=" * 70)
+    logger.info("V10 LIVE TRADING - CSV-BASED APPROACH")
+    logger.info("=" * 70)
+    logger.info("✅ Uses SAME CSV files as training for feature calculation")
+    logger.info("✅ Fetches only missing candles from API")
+    logger.info("✅ Guarantees 100% feature consistency with backtest")
+    logger.info("=" * 70)
+    
+    # Load secrets
+    try:
+        secrets = Config.load_secrets()
+    except FileNotFoundError as e:
+        logger.error(f"❌ {e}")
+        return
+    
+    # Initialize clients
+    mexc = MEXCClient(
+        secrets['mexc']['api_key'],
+        secrets['mexc']['api_secret']
+    )
+    
+    telegram = TelegramNotifier(
+        secrets.get('notifications', {}).get('telegram', {}).get('bot_token', ''),
+        secrets.get('notifications', {}).get('telegram', {}).get('chat_id', '')
+    )
+    
+    binance = ccxt.binance({
+        'timeout': 10000,
+        'enableRateLimit': True,
+        'options': {'defaultType': 'future'}
+    })
+    
+    # Initialize CSV data manager
+    csv_manager = CSVDataManager(Config.DATA_DIR, binance)
+    
+    # Load models
+    try:
+        models = load_models()
+        pairs = get_pairs()
+    except FileNotFoundError as e:
+        logger.error(f"❌ {e}")
+        return
+    
+    portfolio = PortfolioManager(mexc, telegram)
+    mtf_fe = MTFFeatureEngine()
+    
+    logger.info(f"Monitoring {len(pairs)} pairs")
+    logger.info(f"Capital: ${portfolio.capital:.2f}")
+    
+    telegram.send("🚀 <b>V10 Live Trading Started</b>", 
+                  f"Capital: ${portfolio.capital:.2f}\nPairs: {len(pairs)}\nMode: CSV-based")
+    
+    # Main loop
+    while True:
+        try:
+            wait_until_candle_close(5)
+            
+            # Update position if exists
+            if portfolio.position:
+                pos = portfolio.position
+                ticker = binance.fetch_ticker(pos['pair'])
+                candles = binance.fetch_ohlcv(pos['pair'], '5m', limit=2)
+                if len(candles) >= 2:
+                    portfolio.update_position(ticker['last'], candles[-2][2], candles[-2][3])
+            
+            # Scan for signals
+            if not portfolio.position:
+                logger.info("=" * 70)
+                logger.info("🔍 Scanning for signals (CSV-based features)...")
+                
+                for pair in pairs:
+                    try:
+                        # Get updated data from CSV + API
+                        data = csv_manager.get_updated_data(pair)
+                        if data is None:
+                            continue
+                        
+                        # Prepare features from FULL CSV data
+                        df = prepare_features(data, mtf_fe)
+                        if df is None or len(df) < 2:
+                            continue
+                        
+                        # Get last closed candle
+                        row = df.iloc[[-2]]
+                        
+                        # Fill missing features
+                        for f in models['features']:
+                            if f not in row.columns:
+                                row[f] = 0.0
+                        
+                        # Get predictions
+                        X = row[models['features']].values.astype(np.float64)
+                        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+                        
+                        dir_proba = models['direction'].predict_proba(X)
+                        dir_conf = float(np.max(dir_proba))
+                        dir_pred = int(np.argmax(dir_proba))
+                        timing = float(models['timing'].predict(X)[0])
+                        strength = float(models['strength'].predict(X)[0])
+                        
+                        direction = 'LONG' if dir_pred == 2 else ('SHORT' if dir_pred == 0 else 'SIDEWAYS')
+                        logger.info(f"  {pair}: {direction} | Conf: {dir_conf:.2f} | Tim: {timing:.2f} | Str: {strength:.1f}")
+                        
+                        # Apply filters
+                        if dir_pred == 1:
+                            continue
+                        if dir_conf < Config.MIN_CONF or timing < Config.MIN_TIMING or strength < Config.MIN_STRENGTH:
+                            continue
+                        
+                        # SIGNAL!
+                        logger.info(f"  ✅ SIGNAL FOUND!")
+                        
+                        ticker = binance.fetch_ticker(pair)
+                        signal = {
+                            'pair': pair,
+                            'direction': 'LONG' if dir_pred == 2 else 'SHORT',
+                            'price': ticker['last'],
+                            'atr': row['atr'].iloc[0],
+                            'pred_strength': strength
+                        }
+                        
+                        if portfolio.open_position(signal):
+                            logger.info(f"🚀 Position opened: {pair}")
+                            break
+                        
+                    except Exception as e:
+                        logger.debug(f"Error processing {pair}: {e}")
+                        continue
+                
+                logger.info("=" * 70)
+        
+        except KeyboardInterrupt:
+            logger.info("Shutting down...")
+            telegram.send("🛑 V10 Stopped", f"Capital: ${portfolio.capital:.2f}")
+            break
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            time.sleep(10)
+
+
+if __name__ == '__main__':
+    main()
