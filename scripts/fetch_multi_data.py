@@ -63,15 +63,17 @@ class MultiPairDataFetcher:
         self,
         symbol: str,
         timeframe: str,
-        days: int
+        days: int,
+        max_retries: int = 3
     ) -> Optional[pd.DataFrame]:
         """
-        Fetch OHLCV data for a single symbol.
+        Fetch OHLCV data for a single symbol with retry logic.
         
         Args:
             symbol: Trading pair symbol
             timeframe: Candle timeframe (1m, 5m, 1h, etc)
             days: Number of days to fetch
+            max_retries: Maximum number of retries per request
         
         Returns:
             DataFrame with OHLCV data or None if failed
@@ -97,16 +99,41 @@ class MultiPairDataFetcher:
                 all_ohlcv = []
                 current_since = since
                 req_count = 0
+                consecutive_errors = 0
                 
                 logger.info(f"  → {symbol} {timeframe}: Starting download...")
 
                 while True:
-                    ohlcv = await self.exchange.fetch_ohlcv(
-                        symbol,
-                        timeframe,
-                        since=current_since,
-                        limit=limit
-                    )
+                    # Retry logic for each request
+                    ohlcv = None
+                    for retry in range(max_retries):
+                        try:
+                            ohlcv = await self.exchange.fetch_ohlcv(
+                                symbol,
+                                timeframe,
+                                since=current_since,
+                                limit=limit
+                            )
+                            consecutive_errors = 0  # Reset on success
+                            break  # Success - exit retry loop
+                        except Exception as e:
+                            consecutive_errors += 1
+                            if retry < max_retries - 1:
+                                wait_time = (retry + 1) * 2  # Exponential backoff: 2s, 4s, 6s
+                                logger.warning(f"  ⚠️ {symbol} {timeframe}: Retry {retry + 1}/{max_retries} after error: {str(e)[:50]}...")
+                                await asyncio.sleep(wait_time)
+                            else:
+                                logger.error(f"  ✗ {symbol} {timeframe}: Failed after {max_retries} retries: {str(e)[:100]}")
+                                # If too many consecutive errors, stop trying
+                                if consecutive_errors >= 5:
+                                    logger.error(f"  ✗ {symbol} {timeframe}: Too many consecutive errors, stopping")
+                                    break
+                    
+                    if ohlcv is None:
+                        # Failed after all retries - continue with what we have
+                        if all_ohlcv:
+                            logger.warning(f"  ⚠️ {symbol} {timeframe}: Continuing with {len(all_ohlcv)} candles fetched so far")
+                        break
                     
                     if not ohlcv:
                         break
@@ -128,8 +155,8 @@ class MultiPairDataFetcher:
                     
                     current_since = last_ts + tf_ms.get(timeframe, 300000)
                     
-                    # No explicit sleep needed with enableRateLimit=True
-                    # await asyncio.sleep(0.1)
+                    # Small delay between requests to avoid rate limiting
+                    await asyncio.sleep(0.05)
                 
                 if not all_ohlcv:
                     return None
