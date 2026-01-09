@@ -5,6 +5,7 @@ Paper Trading Script V8 Improved - MEXC LIVE (Data from Binance)
 - Gets market data from Binance (free, no auth)
 - Executes trades on MEXC (USDT-M futures) via DIRECT API
 - EXACT backtest logic (breakeven stop, trailing, etc.)
+- Loads credentials from config/secrets.yaml (no hardcoded secrets)
 """
 
 import sys
@@ -17,6 +18,7 @@ import hmac
 import hashlib
 import pandas as pd
 import numpy as np
+import yaml
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from loguru import logger
@@ -91,14 +93,42 @@ USE_ADAPTIVE_SL = True
 USE_DYNAMIC_LEVERAGE = True
 USE_AGGRESSIVE_TRAIL = True
 
-# Telegram
-TELEGRAM_TOKEN = "8270168075:AAHkJ_bbJGgk4fV3r0_Gc8NQb07O_zUMBJc"
-TELEGRAM_CHAT_ID = "677822370"
+# Telegram (load from config/secrets.yaml)
+# IMPORTANT: Do not hardcode secrets! Use config/secrets.yaml
+TELEGRAM_TOKEN = ""  # Loaded from secrets.yaml
+TELEGRAM_CHAT_ID = ""  # Loaded from secrets.yaml
 
-# MEXC API
-MEXC_API_KEY = "mx0vglp7RP0pQYiNA2"
-MEXC_API_SECRET = "25817ec107364a55976a23ca6f19d470"
+# MEXC API (load from config/secrets.yaml)
+# IMPORTANT: Do not hardcode secrets! Use config/secrets.yaml
+MEXC_API_KEY = ""  # Loaded from secrets.yaml
+MEXC_API_SECRET = ""  # Loaded from secrets.yaml
 MEXC_BASE_URL = "https://contract.mexc.com"
+
+# Load secrets from config file
+def _load_secrets():
+    """Load secrets from config/secrets.yaml."""
+    import yaml
+    secrets_file = Path(__file__).parent.parent / "config" / "secrets.yaml"
+    if not secrets_file.exists():
+        logger.warning(
+            f"⚠️ Secrets file not found: {secrets_file}\n"
+            "Please copy config/secrets.yaml.example to config/secrets.yaml "
+            "and fill in your credentials."
+        )
+        return {}
+    
+    with open(secrets_file, 'r') as f:
+        return yaml.safe_load(f)
+
+# Auto-load secrets on module import
+try:
+    _secrets = _load_secrets()
+    TELEGRAM_TOKEN = _secrets.get('notifications', {}).get('telegram', {}).get('bot_token', '')
+    TELEGRAM_CHAT_ID = _secrets.get('notifications', {}).get('telegram', {}).get('chat_id', '')
+    MEXC_API_KEY = _secrets.get('mexc', {}).get('api_key', '')
+    MEXC_API_SECRET = _secrets.get('mexc', {}).get('api_secret', '')
+except Exception as e:
+    logger.warning(f"Could not load secrets: {e}")
 
 # ============================================================
 # MEXC DIRECT API CLIENT
@@ -924,10 +954,11 @@ def prepare_features(data, mtf_fe):
 def main():
     logger.info("Starting V8 MEXC Live Trading (Data from Binance)...")
     
-    # Validate API keys
-    if MEXC_API_KEY == "YOUR_MEXC_API_KEY":
-        logger.error("⚠️ Please set your MEXC API keys in the script!")
-        logger.error("   MEXC_API_KEY and MEXC_API_SECRET")
+    # Validate API keys (now loaded from config/secrets.yaml)
+    if not MEXC_API_KEY or not MEXC_API_SECRET:
+        logger.error("⚠️ MEXC API keys not configured!")
+        logger.error("   Please copy config/secrets.yaml.example to config/secrets.yaml")
+        logger.error("   and fill in your MEXC API credentials.")
         return
     
     models = load_models()
