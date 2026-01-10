@@ -90,9 +90,29 @@ class MarketStructure:
         swings['swing_high_price'] = high.where(swing_high, np.nan).ffill(limit=200)
         swings['swing_low_price'] = low.where(swing_low, np.nan).ffill(limit=200)
         
-        # Distance to last swing
-        swings['bars_since_swing_high'] = swing_high.cumsum()
-        swings['bars_since_swing_low'] = swing_low.cumsum()
+        # Distance to last swing - use rolling window approach for consistency
+        # FIXED: cumsum() depends on data window start, causing backtest/live divergence
+        # Instead, calculate bars since last swing using a stable approach
+        # that gives the same result regardless of data start position
+        
+        # Count bars since last True value in swing_high/swing_low
+        # This is stable because it only depends on recent data, not the entire history
+        def bars_since_true(series: pd.Series, max_lookback: int = 200) -> pd.Series:
+            """Count bars since last True value, with max lookback for stability."""
+            result = pd.Series(index=series.index, dtype=float)
+            last_true_idx = -1
+            for i in range(len(series)):
+                if series.iloc[i]:
+                    last_true_idx = i
+                if last_true_idx >= 0:
+                    bars = i - last_true_idx
+                    result.iloc[i] = min(bars, max_lookback)  # Cap at max_lookback
+                else:
+                    result.iloc[i] = max_lookback  # No swing found yet
+            return result
+        
+        swings['bars_since_swing_high'] = bars_since_true(swing_high)
+        swings['bars_since_swing_low'] = bars_since_true(swing_low)
         
         return swings
         

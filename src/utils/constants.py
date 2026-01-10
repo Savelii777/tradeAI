@@ -141,14 +141,22 @@ SESSION_TIMES = {
 # Cumsum-dependent features: values depend on data window start position
 # In backtest: data starts from 2017 → cumsum accumulates for 8 years
 # In live: data starts from last 1000 candles → cumsum is 1000x smaller
+# CRITICAL: These cause massive feature drift between backtest and live!
 CUMSUM_PATTERNS = [
-    'bars_since_swing',       # cumsum() from start of data
-    'consecutive_up',         # groupby().cumsum()
-    'consecutive_down',       # groupby().cumsum()
+    # Full feature names (market_structure.py)
+    'bars_since_swing_high',  # swing_high.cumsum() - depends on data start
+    'bars_since_swing_low',   # swing_low.cumsum() - depends on data start
+    'swing_high_price',       # ffill() from first swing - depends on data start
+    'swing_low_price',        # ffill() from first swing - depends on data start
+    
+    # Partial patterns (feature_engine.py)
+    'bars_since_swing',       # catches any variant of bars_since_swing
+    'consecutive_up',         # groupby().cumsum() - depends on data start
+    'consecutive_down',       # groupby().cumsum() - depends on data start
+    
+    # Volume cumsum patterns
     'obv',                    # cumsum() from start of data
-    'volume_delta_cumsum',    # rolling cumsum
-    'swing_high_price',       # ffill() from first swing
-    'swing_low_price',        # ffill() from first swing
+    'volume_delta_cumsum',    # rolling cumsum - depends on data start
 ]
 
 # Absolute price-based features: values depend on current price level
