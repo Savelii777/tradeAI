@@ -664,12 +664,20 @@ def print_trade_list(trades):
         time_str = t['timestamp'].strftime("%H:%M")
         pair_clean = t['pair'].replace('_', '/').replace(':USDT', '')
         
-        # Add emoji based on result
-        emoji = "🚀" if t['pnl_pct'] > 20 else "✅" if t['net_profit'] > 0 else "❌"
-        if t['net_profit'] > 0 and t['pnl_pct'] < 1: emoji = "🛡️" # Breakeven/Small profit
+        # Calculate trade ROE (Return on Equity/Margin used)
+        roe = t.get('roe', t['pnl_pct'])  # Use ROE if available, else fall back to pnl_pct
         
-        print(f"{pair_clean} ({t['direction']}) {time_str} — Profit: ${t['net_profit']:+,.2f} ({t['pnl_pct']:+.1f}%) {emoji}")
+        # Add emoji based on result
+        emoji = "🚀" if roe > 20 else "✅" if t['net_profit'] > 0 else "❌"
+        if t['net_profit'] > 0 and roe < 5: emoji = "🛡️" # Breakeven/Small profit
+        
+        # Show position size and leverage for clarity
+        lev = t.get('leverage', 1)
+        pos_size = t.get('position_size', 0)
+        
+        print(f"{pair_clean} ({t['direction']}) {time_str} — Profit: ${t['net_profit']:+,.2f} (ROE: {roe:+.1f}%) {emoji}")
         print(f"   Entry: {t['entry_price']:.5f} | Exit: {t['exit_price']:.5f} | Reason: {t['outcome']}")
+        print(f"   Position: ${pos_size:,.0f} @ {lev:.1f}x leverage | Balance after: ${t.get('balance_after', 0):,.2f}")
         print("-" * 30)
 
 
