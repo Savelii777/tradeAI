@@ -173,7 +173,7 @@ ABSOLUTE_PRICE_FEATURES = [
     'bb_upper', 'bb_middle', 'bb_lower',  # From indicators.py
     'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',  # From train_mtf.py
     
-    # Volume MA absolute values
+    # Volume MA absolute values (differ between coins and time periods)
     'volume_ma_5', 'volume_ma_10', 'volume_ma_20',  # From indicators.py
     'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # From train_mtf.py
     
@@ -181,7 +181,7 @@ ABSOLUTE_PRICE_FEATURES = [
     'atr_7', 'atr_14', 'atr_21', 'atr_14_ma',  # From indicators.py
     'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',  # From train_mtf.py
     
-    # Volume delta/trend absolute metrics
+    # Volume delta/trend absolute metrics (scale varies wildly between coins)
     'volume_delta', 'volume_trend',  # From indicators.py
     'm5_volume_delta', 'm5_volume_trend',  # From train_mtf.py
     
@@ -190,6 +190,11 @@ ABSOLUTE_PRICE_FEATURES = [
     # At BTC $95,000: MACD could be $2,000 - causes Feature Distribution Shift
     'macd', 'macd_signal', 'macd_histogram', 'macd_histogram_change',  # From indicators.py
     'm5_macd', 'm5_macd_signal', 'm5_macd_histogram', 'm5_macd_histogram_change',  # From train_mtf.py
+    
+    # Additional volume-based features with absolute scale issues
+    'obv_rolling_50',  # Absolute volume sum - varies wildly between coins
+    'volume_delta_sum_20',  # Absolute volume sum
+    'm5_obv_rolling_50', 'm5_volume_delta_sum_20',  # MTF variants
 ]
 
 # Features to exclude from training (in addition to targets and raw OHLCV)
