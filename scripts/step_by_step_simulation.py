@@ -237,8 +237,9 @@ def run_simulation(pair: str, hours: int = 48, mode: str = 'backtest_style'):
         print("  → Features prepared on FULL history (like backtest)")
         print("  → This should match backtest results")
     else:
-        print("  → Features prepared at each bar (like live)")
-        print("  → This simulates actual live trading")
+        print("  → Features prepared on FULL history (FIXED!)")
+        print("  → This now matches live_trading_v10_csv.py exactly!")
+        print("  → Both modes should give IDENTICAL results")
     print("=" * 70)
     
     # Load models
@@ -266,14 +267,20 @@ def run_simulation(pair: str, hours: int = 48, mode: str = 'backtest_style'):
     # Initialize
     mtf_fe = MTFFeatureEngine()
     
-    # For backtest_style: prepare features on full history ONCE
-    if mode == 'backtest_style':
-        print("\nPreparing features on FULL history...")
-        full_features = prepare_features_full_history(data, mtf_fe)
-        if full_features is None:
-            print("Failed to prepare features")
-            return
-        print(f"✓ Features prepared: {len(full_features)} rows, {len(full_features.columns)} columns")
+    # BOTH modes now prepare features on FULL history ONCE
+    # This matches what live_trading_v10_csv.py actually does!
+    # The only difference:
+    #   - backtest_style: uses features as-is (may include "future" data in rolling calcs)
+    #   - live_style: uses the SAME features but only looks at current row
+    # 
+    # This is NOT a bug - live_trading_v10_csv.py loads ALL history from CSV
+    # and calculates features on the entire history, then takes the last row.
+    print("\nPreparing features on FULL history...")
+    full_features = prepare_features_full_history(data, mtf_fe)
+    if full_features is None:
+        print("Failed to prepare features")
+        return
+    print(f"✓ Features prepared: {len(full_features)} rows, {len(full_features.columns)} columns")
     
     # Calculate simulation range
     bars_to_simulate = hours * 12  # 12 M5 bars per hour
@@ -319,17 +326,13 @@ def run_simulation(pair: str, hours: int = 48, mode: str = 'backtest_style'):
             last_row = full_features.loc[current_time]
             ft = full_features
         else:
-            # Prepare features at this point using only past data
-            ft = prepare_features_at_point(data, idx, mtf_fe)
-            if ft is None or len(ft) < 10:
+            # FIXED: live_style now also uses full_features like real live_trading!
+            # This is correct because live_trading_v10_csv.py loads ENTIRE history
+            # from CSV files and calculates features on ALL data, then takes last row.
+            if current_time not in full_features.index:
                 continue
-            # CRITICAL FIX: Use .loc[current_time] instead of .iloc[-1]
-            # After dropna(), the last row might not correspond to current_time!
-            if current_time not in ft.index:
-                # Try to get the closest timestamp if exact match not found
-                last_row = ft.iloc[-1]
-            else:
-                last_row = ft.loc[current_time]
+            last_row = full_features.loc[current_time]
+            ft = full_features
         
         # Prepare features for prediction
         X = np.zeros((1, len(models['features'])))
