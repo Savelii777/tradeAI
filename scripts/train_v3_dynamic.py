@@ -306,15 +306,10 @@ def train_models(X_train, y_train, X_val, y_val):
 # PORTFOLIO BACKTEST (V9 - Realistic Thresholds)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.40, min_timing: float = 0.5, min_strength: float = 1.0) -> list:
+                    min_conf: float = 0.50, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
                     
     """
     Generate all valid signals for a single pair.
-    
-    V9 CHANGES: Lowered thresholds for realistic live performance
-    - min_conf: 0.50 → 0.40 (allow more signals)
-    - min_timing: 0.8 → 0.5 (lower timing requirement)
-    - min_strength: 1.4 → 1.0 (lower strength requirement)
     """
     signals = []
     

@@ -108,13 +108,10 @@ class Config:
     # Timeframes
     TIMEFRAMES = ['1m', '5m', '15m']
     
-    # V9 Signal Thresholds - REALISTIC (lower to get signals)
-    # High thresholds = few signals but higher quality
-    # Low thresholds = more signals but lower quality
-    # These are tuned for realistic live performance (not backtest optimization)
-    MIN_CONF = 0.40       # ✅ Reduced from 0.50 → 0.40
-    MIN_TIMING = 0.5      # ✅ Reduced from 0.8 → 0.5 
-    MIN_STRENGTH = 1.0    # ✅ Reduced from 1.4 → 1.0
+    # V8 Signal Thresholds (match backtest)
+    MIN_CONF = 0.50
+    MIN_TIMING = 0.8
+    MIN_STRENGTH = 1.4
     
     # Risk Management
     RISK_PCT = 0.05
