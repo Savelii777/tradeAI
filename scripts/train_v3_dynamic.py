@@ -1,30 +1,28 @@
 #!/usr/bin/env python3
 """
-Train V8 IMPROVED - Anti-Overfitting Edition
-"Realistic Backtest, Honest Results"
+Train V9 - MAXIMUM Anti-Overfitting Edition
+"Realistic Live Performance, Not Backtest Optimization"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
-- We cannot afford to waste time on low-probability or low-profit trades.
-- Target: ~10-15 trades per day across ALL 20 pairs (approx 0.5 - 1 trade per pair/day).
+- We prioritize REAL live performance over impressive backtest numbers.
+- Target: Win Rate 55-60% (realistic for ML trading), not 80%+ (overfit).
 
-ANTI-OVERFITTING IMPROVEMENTS (Jan 2026):
-1. Simplified Models: Reduced complexity (100 trees, depth 3, min_child_samples=50)
-2. Improved Timing Target: Now predicts actual gain potential (regression, not binary)
-3. Strict Train/Test Split: NO data leakage between train and test
-4. Realistic Slippage: 0.05% instead of 0.01% (honest cost modeling)
-5. Walk-Forward Validation: Test on truly unseen future data
-6. ✅ NEW: Disabled rolling normalization in MTFFeatureEngine for live/backtest consistency
+V9 ANTI-OVERFITTING IMPROVEMENTS:
+1. VERY Simple Models: 50 trees, depth 2, 4 leaves, min_child_samples=100
+2. Strong Regularization: L1 + L2 regularization (reg_alpha=1.0, reg_lambda=1.0)
+3. Aggressive Subsampling: subsample=0.5, colsample_bytree=0.3
+4. Embargo Period: 1-day gap between train/test to prevent data leakage
+5. Lower Thresholds: min_conf=0.40, min_timing=0.5, min_strength=1.0
+6. Realistic Expectations: Win Rate 55-65% is GOOD, 80%+ is OVERFIT
 
-Changes from V7:
-- Models are SIMPLER to prevent memorization
-- Timing model now REGRESSOR (predicts R-multiple gain)
-- Added proper validation to catch overfitting early
-- Increased slippage to realistic levels
+⚠️ IMPORTANT: Win Rate 80%+ on backtest = OVERFIT!
+A realistic ML trading model should have:
+- Win Rate: 55-65%
+- Profit Factor: 1.2-1.5
+- Sharpe Ratio: 1.0-2.0
 
-⚠️ IMPORTANT: After modifying train_mtf.py (disabling normalization), you MUST retrain the model!
-The model was trained on normalized features, so disabling normalization changes feature distributions.
-Run: python scripts/train_v3_dynamic.py --days 60 --test_days 14
+Run: python scripts/train_v3_dynamic.py --days 90 --test_days 30 --pairs 20 --walk-forward
 """
 
 import sys
@@ -162,24 +160,30 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 # ============================================================
 def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Create V8 Improved targets (NO LOOKAHEAD BIAS).
+    Create V8 Improved targets.
     
-    IMPROVEMENTS vs V7:
-    - Direction: Same (works well)
-    - Timing: NEW! Now regression target (predicts R-multiple gain)
-    - Strength: Same (works well)
+    ⚠️ IMPORTANT: This uses future data (shift(-LOOKAHEAD)) to CREATE LABELS.
+    This is NORMAL for supervised learning - we need to know the outcome.
+    But it means the model learns to predict patterns that precede moves.
+    
+    In LIVE, the model sees the same FEATURES but has no future data.
+    If features don't capture predictive patterns, model will fail.
+    
+    ANTI-OVERFITTING MEASURES:
+    - Use past-only rolling volatility for threshold
+    - Cap extreme values to reduce noise sensitivity
+    - Require significant moves (not noise)
     """
     df = df.copy()
     df['atr'] = calculate_atr(df)
     
-    # 1. Direction (Adaptive Threshold) - UNCHANGED (works well)
-    # V7: Set to 0.5% (Significant moves only). 
-    # We don't want to learn noise.
-    
-    # FIXED: NO LOOKAHEAD! Use PAST volatility only
+    # 1. Direction (Adaptive Threshold)
+    # Use PAST volatility only (no lookahead here)
     rolling_vol = df['close'].pct_change().rolling(window=100, min_periods=50).std()
-    rolling_vol = rolling_vol.shift(1)  # Shift to use only past data
-    threshold = np.maximum(rolling_vol, 0.005)  # Min 0.5%
+    rolling_vol = rolling_vol.shift(1)  # Use only past data
+    threshold = np.maximum(rolling_vol, 0.005)  # Min 0.5% move required
+    
+    # Future return is used for LABEL creation (this is expected)
     future_return = df['close'].pct_change(LOOKAHEAD).shift(-LOOKAHEAD)
     
     # 0=Down, 1=Sideways, 2=Up
@@ -188,8 +192,7 @@ def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
         np.where(future_return < -threshold, 0, 1)
     )
     
-    # 2. ✅ NEW TIMING TARGET (V8 Improved): Predict actual gain potential
-    # Instead of binary "good/bad", predict HOW MUCH we can gain in ATR multiples
+    # 2. Timing Target: Predict gain potential (in ATR multiples)
     future_lows = df['low'].rolling(LOOKAHEAD).min().shift(-LOOKAHEAD)
     future_highs = df['high'].rolling(LOOKAHEAD).max().shift(-LOOKAHEAD)
     
@@ -200,12 +203,10 @@ def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
     short_gain = (df['close'] - future_lows) / df['atr']
     
     # Take the BEST opportunity (whether LONG or SHORT)
-    # This tells the model "timing quality" as a continuous value
     df['target_timing'] = np.maximum(long_gain, short_gain)
     df['target_timing'] = df['target_timing'].clip(0, 5)  # Cap at 5 ATR
     
-    # 3. Strength (Potential Move in ATRs) - UNCHANGED (works well)
-    # Used for Dynamic TP prediction
+    # 3. Strength (Potential Move in ATRs)
     move_long = (future_highs - df['close']) / df['atr']
     move_short = (df['close'] - future_lows) / df['atr']
     
@@ -217,74 +218,82 @@ def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ============================================================
-# TRAINING (V8 IMPROVED - Anti-Overfitting)
+# TRAINING (V9 - Maximum Anti-Overfitting)
 # ============================================================
 def train_models(X_train, y_train, X_val, y_val):
     """
-    Train models using V8 IMPROVED anti-overfitting parameters.
+    Train models with MAXIMUM anti-overfitting protection.
     
-    KEY CHANGES vs V7:
-    - Reduced n_estimators: 600→100 (less memorization)
-    - Reduced max_depth: 5→3 (simpler trees)
-    - Reduced num_leaves: 20→8 (less branching)
-    - Added min_child_samples: 50 (requires more data per leaf)
-    - Timing is now REGRESSOR (predicts gain, not binary)
+    Based on recommendations from ML trading articles:
+    - Very simple models (max_depth=2)
+    - Strong regularization (reg_alpha, reg_lambda)
+    - Aggressive subsampling (subsample=0.5)
+    - Minimum samples per leaf = 100 (robust splits only)
+    - Early stopping with small patience (20 rounds)
+    
+    Expected: Lower backtest results, but REAL live performance.
     """
     
-    # 1. Direction Model (Multiclass)
-    print("   Training Direction Model (Simplified)...")
+    # 1. Direction Model (Multiclass) - MAXIMUM REGULARIZATION
+    print("   Training Direction Model (Max Anti-Overfit)...")
     dir_model = lgb.LGBMClassifier(
         objective='multiclass', num_class=3, metric='multi_logloss',
-        n_estimators=100,        # ✅ Was 600 → 100 (ANTI-OVERFIT)
-        max_depth=3,             # ✅ Was 5 → 3 (SIMPLER)
-        num_leaves=8,            # ✅ Was 20 → 8 (LESS BRANCHING)
-        min_child_samples=50,    # ✅ NEW! Requires 50+ samples per leaf (ROBUST)
-        learning_rate=0.05,      # ✅ Was 0.02 → 0.05 (faster convergence)
-        subsample=0.7, 
-        colsample_bytree=0.5,
+        n_estimators=50,          # ✅ Reduced from 100 → 50
+        max_depth=2,              # ✅ Reduced from 3 → 2 (VERY simple)
+        num_leaves=4,             # ✅ Reduced from 8 → 4
+        min_child_samples=100,    # ✅ Increased from 50 → 100 (more robust)
+        learning_rate=0.1,        # ✅ Higher LR with fewer trees
+        subsample=0.5,            # ✅ Reduced from 0.7 → 0.5 (more aggressive)
+        colsample_bytree=0.3,     # ✅ Reduced from 0.5 → 0.3 (fewer features per tree)
+        reg_alpha=1.0,            # ✅ NEW: L1 regularization
+        reg_lambda=1.0,           # ✅ NEW: L2 regularization
         random_state=42, 
         verbosity=-1
     )
     dir_model.fit(X_train, y_train['target_dir'], 
                   eval_set=[(X_val, y_val['target_dir'])],
-                  callbacks=[lgb.early_stopping(50, verbose=False)])
+                  callbacks=[lgb.early_stopping(20, verbose=False)])  # ✅ Reduced patience
     
-    # 2. ✅ NEW: Timing Model (REGRESSOR instead of Classifier)
-    print("   Training Timing Model (NEW Regressor)...")
-    timing_model = lgb.LGBMRegressor(  # ⚠️ Changed from Classifier!
-        objective='regression',         # Predict continuous gain (not binary)
-        metric='mae',                   # Mean Absolute Error
-        n_estimators=100,        # ✅ Simplified
-        max_depth=3,             # ✅ Simplified
-        num_leaves=8,            # ✅ Simplified
-        min_child_samples=50,    # ✅ NEW
-        learning_rate=0.05,      # ✅ Faster
-        subsample=0.7,
-        colsample_bytree=0.5,
+    # 2. Timing Model (Regressor)
+    print("   Training Timing Model (Max Anti-Overfit)...")
+    timing_model = lgb.LGBMRegressor(
+        objective='regression',
+        metric='mae',
+        n_estimators=50,
+        max_depth=2,
+        num_leaves=4,
+        min_child_samples=100,
+        learning_rate=0.1,
+        subsample=0.5,
+        colsample_bytree=0.3,
+        reg_alpha=1.0,
+        reg_lambda=1.0,
         random_state=42,
         verbosity=-1
     )
     timing_model.fit(X_train, y_train['target_timing'],
                      eval_set=[(X_val, y_val['target_timing'])],
-                     callbacks=[lgb.early_stopping(50, verbose=False)])
+                     callbacks=[lgb.early_stopping(20, verbose=False)])
     
-    # 3. Strength Model (Regression) - Simplified
-    print("   Training Strength Model (Simplified)...")
+    # 3. Strength Model (Regression)
+    print("   Training Strength Model (Max Anti-Overfit)...")
     strength_model = lgb.LGBMRegressor(
         objective='regression', metric='mae',
-        n_estimators=100,        # ✅ Was 400 → 100
-        max_depth=3,             # ✅ Was 5 → 3
-        num_leaves=8,            # ✅ Was 15 → 8
-        min_child_samples=50,    # ✅ NEW
-        learning_rate=0.05,      # ✅ Was 0.02 → 0.05
-        subsample=0.7,
-        colsample_bytree=0.5,
+        n_estimators=50,
+        max_depth=2,
+        num_leaves=4,
+        min_child_samples=100,
+        learning_rate=0.1,
+        subsample=0.5,
+        colsample_bytree=0.3,
+        reg_alpha=1.0,
+        reg_lambda=1.0,
         random_state=42,
         verbosity=-1
     )
     strength_model.fit(X_train, y_train['target_strength'],
                        eval_set=[(X_val, y_val['target_strength'])],
-                       callbacks=[lgb.early_stopping(50, verbose=False)])
+                       callbacks=[lgb.early_stopping(20, verbose=False)])
     
     return {
         'direction': dir_model,
@@ -294,16 +303,18 @@ def train_models(X_train, y_train, X_val, y_val):
 
 
 # ============================================================
-# PORTFOLIO BACKTEST (V7 Sniper)
+# PORTFOLIO BACKTEST (V9 - Realistic Thresholds)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.50, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
+                    min_conf: float = 0.40, min_timing: float = 0.5, min_strength: float = 1.0) -> list:
                     
     """
     Generate all valid signals for a single pair.
     
-    ✅ V8 IMPROVED: 
-    - Timing threshold changed from 0.55 → 0.8 ATR (R-multiple gain)
+    V9 CHANGES: Lowered thresholds for realistic live performance
+    - min_conf: 0.50 → 0.40 (allow more signals)
+    - min_timing: 0.8 → 0.5 (lower timing requirement)
+    - min_strength: 1.4 → 1.0 (lower strength requirement)
     """
     signals = []
     
@@ -687,7 +698,13 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
     print("If Win Rate drops significantly here → Model is overfit!")
     print("="*70)
     
-    # Define periods (each period: 15 days train, 7 days test)
+    # EMBARGO PERIOD: Gap between train and test to prevent data leakage
+    # This is a key anti-overfitting technique from quantitative finance
+    # The model trained on data up to day N should not be tested on day N+1
+    # because features may "leak" information from the target period
+    EMBARGO_DAYS = 1  # 1 day gap = 288 M5 candles (12 * 24)
+    
+    # Define periods (each period: 15 days train, embargo gap, 7 days test)
     now = datetime.now(timezone.utc)
     periods = []
     
@@ -695,7 +712,8 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
     for i in range(4):
         test_end = now - timedelta(days=i*7)
         test_start = test_end - timedelta(days=7)
-        train_end = test_start
+        # EMBARGO: train ends 1 day before test starts
+        train_end = test_start - timedelta(days=EMBARGO_DAYS)
         train_start = train_end - timedelta(days=15)
         
         periods.append({
