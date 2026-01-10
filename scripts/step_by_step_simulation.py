@@ -552,9 +552,15 @@ if __name__ == "__main__":
             if feat in backtest_row.index and feat in live_row.index:
                 bt_val = backtest_row[feat]
                 live_val = live_row[feat]
-                diff = abs(bt_val - live_val)
-                rel_diff = diff / (abs(bt_val) + 1e-10) * 100
-                diffs.append((feat, bt_val, live_val, diff, rel_diff))
+                # Skip NaN values
+                if pd.isna(bt_val) or pd.isna(live_val):
+                    continue
+                try:
+                    diff = abs(float(bt_val) - float(live_val))
+                    rel_diff = diff / (abs(float(bt_val)) + 1e-10) * 100
+                    diffs.append((feat, float(bt_val), float(live_val), diff, rel_diff))
+                except (TypeError, ValueError):
+                    continue
         
         # Sort by absolute difference
         diffs.sort(key=lambda x: x[3], reverse=True)
