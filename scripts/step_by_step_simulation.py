@@ -365,6 +365,10 @@ def run_simulation(pair: str, hours: int = 48, mode: str = 'backtest_style'):
         # SIGNAL FOUND!
         stats['signals'] += 1
         
+        # Track signal time for live comparison
+        stats['signal_times'] = stats.get('signal_times', [])
+        stats['signal_times'].append(current_time)
+        
         # Get entry price and ATR using time-based lookup
         entry_price = m5.loc[current_time, 'close']
         atr = last_row['atr'] if 'atr' in (ft.columns if isinstance(ft, pd.DataFrame) else last_row.index) else entry_price * 0.01
@@ -463,6 +467,21 @@ def run_simulation(pair: str, hours: int = 48, mode: str = 'backtest_style'):
         else:
             print(f"✅ LIVE_STYLE mode generates {stats['signals']} signals")
             print("   Model should work in live trading!")
+    
+    # Show signal times for live trading verification
+    if stats.get('signal_times') and len(stats['signal_times']) > 0:
+        print("\n" + "=" * 70)
+        print("SIGNAL TIMES (for live trading verification)")
+        print("=" * 70)
+        print("Live trading should have opened positions at these times:")
+        for t in stats['signal_times'][:20]:
+            print(f"  - {t.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        if len(stats['signal_times']) > 20:
+            print(f"  ... and {len(stats['signal_times']) - 20} more")
+        print("\nIf live trading was running but didn't open positions:")
+        print("  1. Check live trading logs for these times")
+        print("  2. CSV data might have been stale when live was running")
+        print("  3. Live trading might have crashed or stopped")
 
 
 # ============================================================
