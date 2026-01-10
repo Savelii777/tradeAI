@@ -96,10 +96,14 @@ def load_data(pair: str) -> dict:
 
 
 def prepare_features_at_point(data: dict, end_idx: int, mtf_fe: MTFFeatureEngine, 
-                              lookback: int = 1000) -> pd.DataFrame:
+                              use_full_history: bool = True) -> pd.DataFrame:
     """
     Prepare features using ONLY data up to end_idx.
     This simulates what live trading would see at that point.
+    
+    Args:
+        use_full_history: If True, use ALL data up to end_idx (like real live_trading_v10_csv.py)
+                         If False, use only last 1000 candles (old broken behavior)
     """
     m5 = data['5m']
     
@@ -107,9 +111,17 @@ def prepare_features_at_point(data: dict, end_idx: int, mtf_fe: MTFFeatureEngine
     end_time = m5.index[end_idx]
     
     # Filter all timeframes to only include data UP TO this point
-    m1 = data['1m'][data['1m'].index <= end_time].tail(lookback * 5)
-    m5_slice = data['5m'][data['5m'].index <= end_time].tail(lookback)
-    m15 = data['15m'][data['15m'].index <= end_time].tail(lookback // 3)
+    # IMPORTANT: Use FULL history, not limited lookback - this matches live_trading_v10_csv.py!
+    if use_full_history:
+        m1 = data['1m'][data['1m'].index <= end_time]
+        m5_slice = data['5m'][data['5m'].index <= end_time]
+        m15 = data['15m'][data['15m'].index <= end_time]
+    else:
+        # Old broken behavior - limited lookback
+        lookback = 1000
+        m1 = data['1m'][data['1m'].index <= end_time].tail(lookback * 5)
+        m5_slice = data['5m'][data['5m'].index <= end_time].tail(lookback)
+        m15 = data['15m'][data['15m'].index <= end_time].tail(lookback // 3)
     
     if len(m5_slice) < 200:
         return None
