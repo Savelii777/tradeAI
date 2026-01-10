@@ -461,11 +461,12 @@ class TechnicalIndicators:
         feature_dict['obv_rolling_50'] = obv_rolling
         
         # OBV slope (rate of change) - stable feature
-        feature_dict['obv_slope'] = obv_rolling.diff(10) / volume.rolling(10).mean()
+        # Avoid division by zero by replacing 0 with nan
+        vol_ma_10 = volume.rolling(10).mean().replace(0, np.nan)
+        feature_dict['obv_slope'] = obv_rolling.diff(10) / vol_ma_10
         
         # Volume trend (slope of volume over last 20 bars)
-        # FIXED: Normalize by average volume to make it scale-independent
-        vol_mean = volume.rolling(window=20).mean()
+        # Normalize by average volume to make it scale-independent
         feature_dict['volume_trend'] = volume.rolling(window=20).apply(
             lambda x: np.polyfit(range(len(x)), x / x.mean() if x.mean() > 0 else x, 1)[0]
         )
