@@ -120,7 +120,10 @@ class Config:
     ENTRY_FEE = 0.0002
     EXIT_FEE = 0.0002
     SL_ATR_BASE = 1.5
-    MAX_POSITION_SIZE = 200000.0
+    # User requirement: up to $4M position, with leverage up to 50x
+    # At 50x leverage: need $80k margin for $4M position
+    # At 10x leverage: $400k max position, at 20x: $200k max position
+    MAX_POSITION_SIZE = 4000000.0  # Max $4M position
     SLIPPAGE_PCT = 0.0005
     
     # V8 Features

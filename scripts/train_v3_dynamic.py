@@ -53,14 +53,17 @@ from train_mtf import MTFFeatureEngine
 # CONFIG
 # ============================================================
 SL_ATR_MULT = 1.5       # Base SL multiplier (adaptive based on strength)
-MAX_LEVERAGE = 50.0
+MAX_LEVERAGE = 50.0     # Maximum leverage (50x)
 RISK_PCT = 0.05         # 5% Risk per trade
 FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
 LOOKAHEAD = 12          # 1 hour on M5
 
-# REALISTIC LIMITS (V8 IMPROVED)
-MAX_POSITION_SIZE = 200000.0  # Max $50K position (realistic for liquidity)
-SLIPPAGE_PCT = 0.0005        # ✅ 0.05% slippage (REALISTIC! Was 0.01% - too optimistic)
+# POSITION SIZE LIMITS
+# User requirement: up to $4M position, with leverage up to 50x
+# At 50x leverage: need $80k margin for $4M position
+# At 10x leverage: $400k max position, at 20x: $200k max position
+MAX_POSITION_SIZE = 4000000.0  # Max $4M position
+SLIPPAGE_PCT = 0.0005         # 0.05% slippage (REALISTIC)
 
 # V8 IMPROVEMENTS
 USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
