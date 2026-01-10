@@ -161,6 +161,10 @@ ABSOLUTE_PRICE_FEATURES = [
     'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
     'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
     'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
+    # MACD features: MACD = EMA_fast - EMA_slow (absolute price difference!)
+    # At BTC $25,000: MACD could be $500
+    # At BTC $95,000: MACD could be $2,000 - causes Feature Distribution Shift
+    'm5_macd', 'm5_macd_signal', 'm5_macd_histogram', 'm5_macd_histogram_change',
 ]
 
 # Features to exclude from training (in addition to targets and raw OHLCV)
