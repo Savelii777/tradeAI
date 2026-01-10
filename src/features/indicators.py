@@ -447,16 +447,27 @@ class TechnicalIndicators:
         price_change = close.diff()
         volume_delta = np.where(price_change > 0, volume, -volume)
         feature_dict['volume_delta'] = volume_delta
-        feature_dict['volume_delta_cumsum'] = pd.Series(volume_delta, index=df.index).rolling(window=20).sum()
+        # FIXED: Use rolling sum with fixed window (stable across data lengths)
+        feature_dict['volume_delta_sum_20'] = pd.Series(volume_delta, index=df.index).rolling(window=20).sum()
         
-        # On-Balance Volume (OBV)
-        obv = (np.sign(price_change) * volume).cumsum()
-        feature_dict['obv'] = obv
-        feature_dict['obv_ema'] = self.ema(obv, 20)
+        # FIXED: OBV removed - cumsum() depends on data window start!
+        # In backtest: data starts from 2017 → OBV = huge number
+        # In live: data starts from last 3000 candles → OBV = much smaller
+        # This causes MASSIVE feature drift between backtest and live!
+        # 
+        # Instead, we use a ROLLING OBV that's stable across data lengths:
+        # Rolling OBV: sum of signed volume over last N bars
+        obv_rolling = pd.Series(np.sign(price_change) * volume, index=df.index).rolling(window=50).sum()
+        feature_dict['obv_rolling_50'] = obv_rolling
         
-        # Volume trend
+        # OBV slope (rate of change) - stable feature
+        feature_dict['obv_slope'] = obv_rolling.diff(10) / volume.rolling(10).mean()
+        
+        # Volume trend (slope of volume over last 20 bars)
+        # FIXED: Normalize by average volume to make it scale-independent
+        vol_mean = volume.rolling(window=20).mean()
         feature_dict['volume_trend'] = volume.rolling(window=20).apply(
-            lambda x: np.polyfit(range(len(x)), x, 1)[0]
+            lambda x: np.polyfit(range(len(x)), x / x.mean() if x.mean() > 0 else x, 1)[0]
         )
         
         return pd.DataFrame(feature_dict, index=df.index)

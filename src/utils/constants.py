@@ -154,9 +154,10 @@ CUMSUM_PATTERNS = [
     'consecutive_up',         # groupby().cumsum() - depends on data start
     'consecutive_down',       # groupby().cumsum() - depends on data start
     
-    # Volume cumsum patterns
-    'obv',                    # cumsum() from start of data
-    'volume_delta_cumsum',    # rolling cumsum - depends on data start
+    # Volume cumsum patterns (indicators.py)
+    'obv',                    # cumsum() from start of data - REMOVED, use obv_rolling_50
+    'obv_ema',                # EMA of cumsum OBV - REMOVED
+    'volume_delta_cumsum',    # Old name, now volume_delta_sum_20
 ]
 
 # Absolute price-based features: values depend on current price level
@@ -164,15 +165,31 @@ CUMSUM_PATTERNS = [
 # In live: price is $420 → m5_ema_200 = 420 (completely different!)
 # Model sees different values and becomes "confused" → low confidence
 ABSOLUTE_PRICE_FEATURES = [
-    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
-    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
-    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
-    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
-    'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
+    # EMA absolute values (both with and without m5_ prefix)
+    'ema_9', 'ema_21', 'ema_50', 'ema_200',  # From indicators.py
+    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # From train_mtf.py
+    
+    # Bollinger Bands absolute levels
+    'bb_upper', 'bb_middle', 'bb_lower',  # From indicators.py
+    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',  # From train_mtf.py
+    
+    # Volume MA absolute values
+    'volume_ma_5', 'volume_ma_10', 'volume_ma_20',  # From indicators.py
+    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # From train_mtf.py
+    
+    # ATR absolute values
+    'atr_7', 'atr_14', 'atr_21', 'atr_14_ma',  # From indicators.py
+    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',  # From train_mtf.py
+    
+    # Volume delta/trend absolute metrics
+    'volume_delta', 'volume_trend',  # From indicators.py
+    'm5_volume_delta', 'm5_volume_trend',  # From train_mtf.py
+    
     # MACD features: MACD = EMA_fast - EMA_slow (absolute price difference!)
     # At BTC $25,000: MACD could be $500
     # At BTC $95,000: MACD could be $2,000 - causes Feature Distribution Shift
-    'm5_macd', 'm5_macd_signal', 'm5_macd_histogram', 'm5_macd_histogram_change',
+    'macd', 'macd_signal', 'macd_histogram', 'macd_histogram_change',  # From indicators.py
+    'm5_macd', 'm5_macd_signal', 'm5_macd_histogram', 'm5_macd_histogram_change',  # From train_mtf.py
 ]
 
 # Features to exclude from training (in addition to targets and raw OHLCV)
