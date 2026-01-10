@@ -282,16 +282,24 @@ def run_simulation(pair: str, hours: int = 48, mode: str = 'backtest_style'):
         return
     print(f"✓ Features prepared: {len(full_features)} rows, {len(full_features.columns)} columns")
     
-    # Calculate simulation range
-    bars_to_simulate = hours * 12  # 12 M5 bars per hour
-    start_idx = len(m5) - bars_to_simulate - LOOKAHEAD
-    end_idx = len(m5) - LOOKAHEAD
+    # Calculate simulation range based on TIME, not indices
+    # This ensures we actually simulate the last N hours
+    now = full_features.index[-1]
+    start_time = now - timedelta(hours=hours + 1)  # +1 hour for LOOKAHEAD buffer
+    end_time = now - timedelta(hours=1)  # -1 hour for LOOKAHEAD evaluation
     
-    if start_idx < 1000:
-        start_idx = 1000
+    # Find indices in features DataFrame
+    feature_times = full_features.index
+    start_mask = feature_times >= start_time
+    end_mask = feature_times <= end_time
+    sim_times = feature_times[start_mask & end_mask]
     
-    print(f"\nSimulating bars {start_idx} to {end_idx} ({end_idx - start_idx} bars)")
-    print(f"Period: {m5.index[start_idx]} to {m5.index[end_idx]}")
+    if len(sim_times) == 0:
+        print(f"No data in simulation period: {start_time} to {end_time}")
+        return
+    
+    print(f"\nSimulating {len(sim_times)} bars")
+    print(f"Period: {sim_times[0]} to {sim_times[-1]}")
     
     # Statistics
     stats = {
@@ -312,27 +320,13 @@ def run_simulation(pair: str, hours: int = 48, mode: str = 'backtest_style'):
     print("SIMULATION RUNNING...")
     print("=" * 70)
     
-    # Walk through each bar
-    for idx in range(start_idx, end_idx):
+    # Walk through each bar in simulation period
+    for current_time in sim_times:
         stats['total_bars'] += 1
         
-        current_time = m5.index[idx]
-        
-        # Get features based on mode
-        if mode == 'backtest_style':
-            # Use pre-calculated features from full history
-            if current_time not in full_features.index:
-                continue
-            last_row = full_features.loc[current_time]
-            ft = full_features
-        else:
-            # FIXED: live_style now also uses full_features like real live_trading!
-            # This is correct because live_trading_v10_csv.py loads ENTIRE history
-            # from CSV files and calculates features on ALL data, then takes last row.
-            if current_time not in full_features.index:
-                continue
-            last_row = full_features.loc[current_time]
-            ft = full_features
+        # Get features for current time
+        last_row = full_features.loc[current_time]
+        ft = full_features
         
         # Prepare features for prediction
         X = np.zeros((1, len(models['features'])))
@@ -371,11 +365,15 @@ def run_simulation(pair: str, hours: int = 48, mode: str = 'backtest_style'):
         # SIGNAL FOUND!
         stats['signals'] += 1
         
-        entry_price = m5['close'].iloc[idx]
-        atr = last_row['atr'] if 'atr' in (ft.columns if isinstance(ft, pd.DataFrame) else last_row.index) else m5['close'].iloc[idx] * 0.01
+        # Get entry price and ATR using time-based lookup
+        entry_price = m5.loc[current_time, 'close']
+        atr = last_row['atr'] if 'atr' in (ft.columns if isinstance(ft, pd.DataFrame) else last_row.index) else entry_price * 0.01
+        
+        # Find index position for future data lookup
+        idx_pos = m5.index.get_loc(current_time)
         
         # Evaluate what ACTUALLY happened after this signal
-        future_prices = m5.iloc[idx+1:idx+LOOKAHEAD+1]
+        future_prices = m5.iloc[idx_pos+1:idx_pos+LOOKAHEAD+1]
         result = evaluate_prediction(direction, entry_price, atr, future_prices)
         
         if result['outcome'] == 'win':
