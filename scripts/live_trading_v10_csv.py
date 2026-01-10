@@ -1128,6 +1128,9 @@ def process_pair_for_signal(
         
         direction = 'LONG' if dir_pred == 2 else ('SHORT' if dir_pred == 0 else 'SIDEWAYS')
         
+        # DEBUG: Log every pair's prediction (comment out for less noise)
+        # logger.info(f"  {pair}: {direction} conf={dir_conf:.2f} tim={timing:.2f} str={strength:.1f}")
+        
         # Return result for logging
         result = {
             'pair': pair,
