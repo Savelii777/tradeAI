@@ -323,7 +323,13 @@ def run_simulation(pair: str, hours: int = 48, mode: str = 'backtest_style'):
             ft = prepare_features_at_point(data, idx, mtf_fe)
             if ft is None or len(ft) < 10:
                 continue
-            last_row = ft.iloc[-1]
+            # CRITICAL FIX: Use .loc[current_time] instead of .iloc[-1]
+            # After dropna(), the last row might not correspond to current_time!
+            if current_time not in ft.index:
+                # Try to get the closest timestamp if exact match not found
+                last_row = ft.iloc[-1]
+            else:
+                last_row = ft.loc[current_time]
         
         # Prepare features for prediction
         X = np.zeros((1, len(models['features'])))
@@ -468,8 +474,142 @@ if __name__ == "__main__":
     parser.add_argument("--hours", type=int, default=48,
                         help="Hours to simulate (default: 48)")
     parser.add_argument("--mode", type=str, default="backtest_style",
-                        choices=["backtest_style", "live_style"],
-                        help="Simulation mode: backtest_style or live_style")
+                        choices=["backtest_style", "live_style", "compare"],
+                        help="Simulation mode: backtest_style, live_style, or compare")
     
     args = parser.parse_args()
-    run_simulation(args.pair, args.hours, args.mode)
+    
+    if args.mode == "compare":
+        # Special mode: compare features between backtest_style and live_style
+        print("=" * 70)
+        print("COMPARING BACKTEST_STYLE vs LIVE_STYLE")
+        print("=" * 70)
+        print(f"Pair: {args.pair}")
+        print("This will show WHY features differ between modes")
+        print("=" * 70)
+        
+        # Load models and data
+        try:
+            models = {
+                'direction': joblib.load(MODEL_DIR / 'direction_model.joblib'),
+                'timing': joblib.load(MODEL_DIR / 'timing_model.joblib'),
+                'strength': joblib.load(MODEL_DIR / 'strength_model.joblib'),
+                'features': joblib.load(MODEL_DIR / 'feature_names.joblib')
+            }
+            print(f"✓ Model loaded: {len(models['features'])} features")
+        except Exception as e:
+            print(f"✗ Failed to load model: {e}")
+            sys.exit(1)
+        
+        data = load_data(args.pair)
+        if data is None:
+            sys.exit(1)
+        
+        m5 = data['5m']
+        mtf_fe = MTFFeatureEngine()
+        
+        # Prepare full history features (backtest_style)
+        print("\nPreparing BACKTEST_STYLE features (full history)...")
+        full_features = prepare_features_full_history(data, mtf_fe)
+        print(f"✓ {len(full_features)} rows")
+        
+        # Pick a random point in the middle
+        test_idx = len(m5) - 100
+        test_time = m5.index[test_idx]
+        print(f"\nTest point: idx={test_idx}, time={test_time}")
+        
+        # Get backtest_style features at this point
+        if test_time in full_features.index:
+            backtest_row = full_features.loc[test_time]
+            print(f"✓ Backtest row found")
+        else:
+            print("✗ Test time not in full_features index!")
+            sys.exit(1)
+        
+        # Get live_style features at this point
+        print("\nPreparing LIVE_STYLE features (up to test point)...")
+        live_features = prepare_features_at_point(data, test_idx, mtf_fe)
+        if live_features is None:
+            print("✗ Failed to prepare live features")
+            sys.exit(1)
+        
+        if test_time in live_features.index:
+            live_row = live_features.loc[test_time]
+            print(f"✓ Live row found")
+        else:
+            print(f"✗ Test time not in live_features index!")
+            print(f"  Live features range: {live_features.index[0]} to {live_features.index[-1]}")
+            print(f"  Using iloc[-1] instead...")
+            live_row = live_features.iloc[-1]
+        
+        # Compare features
+        print("\n" + "=" * 70)
+        print("FEATURE COMPARISON (TOP 20 DIFFERENCES)")
+        print("=" * 70)
+        
+        diffs = []
+        for feat in models['features']:
+            if feat in backtest_row.index and feat in live_row.index:
+                bt_val = backtest_row[feat]
+                live_val = live_row[feat]
+                diff = abs(bt_val - live_val)
+                rel_diff = diff / (abs(bt_val) + 1e-10) * 100
+                diffs.append((feat, bt_val, live_val, diff, rel_diff))
+        
+        # Sort by absolute difference
+        diffs.sort(key=lambda x: x[3], reverse=True)
+        
+        print(f"{'Feature':<40} | {'Backtest':>12} | {'Live':>12} | {'Diff':>10} | {'Rel%':>8}")
+        print("-" * 90)
+        for feat, bt_val, live_val, diff, rel_diff in diffs[:20]:
+            print(f"{feat:<40} | {bt_val:>12.4f} | {live_val:>12.4f} | {diff:>10.4f} | {rel_diff:>7.1f}%")
+        
+        # Summary
+        total_diff = sum(d[3] for d in diffs)
+        features_with_diff = sum(1 for d in diffs if d[3] > 0.001)
+        print(f"\nTotal absolute difference: {total_diff:.4f}")
+        print(f"Features with diff > 0.001: {features_with_diff}/{len(diffs)}")
+        
+        if features_with_diff == 0:
+            print("\n✅ Features are IDENTICAL between modes!")
+            print("   If live_style still doesn't work, the issue is elsewhere.")
+        else:
+            print("\n⚠️ Features DIFFER between modes!")
+            print("   This explains why backtest_style works but live_style doesn't.")
+        
+        # Test predictions
+        print("\n" + "=" * 70)
+        print("PREDICTION COMPARISON")
+        print("=" * 70)
+        
+        # Prepare X for backtest
+        X_bt = np.zeros((1, len(models['features'])))
+        for i, feat in enumerate(models['features']):
+            if feat in backtest_row.index:
+                X_bt[0, i] = backtest_row[feat]
+        X_bt = np.nan_to_num(X_bt, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Prepare X for live
+        X_live = np.zeros((1, len(models['features'])))
+        for i, feat in enumerate(models['features']):
+            if feat in live_row.index:
+                X_live[0, i] = live_row[feat]
+        X_live = np.nan_to_num(X_live, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Get predictions
+        proba_bt = models['direction'].predict_proba(X_bt)[0]
+        proba_live = models['direction'].predict_proba(X_live)[0]
+        
+        conf_bt = float(np.max(proba_bt))
+        conf_live = float(np.max(proba_live))
+        
+        print(f"Backtest confidence: {conf_bt:.4f}")
+        print(f"Live confidence:     {conf_live:.4f}")
+        print(f"Difference:          {abs(conf_bt - conf_live):.4f}")
+        
+        if abs(conf_bt - conf_live) > 0.01:
+            print("\n⚠️ Predictions DIFFER significantly!")
+        else:
+            print("\n✅ Predictions are similar")
+    else:
+        run_simulation(args.pair, args.hours, args.mode)
