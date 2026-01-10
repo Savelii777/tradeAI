@@ -81,20 +81,22 @@ class FeatureEngine:
         # Consecutive candle direction
         direction = (close > open_price).astype(int) * 2 - 1
         
-        # Helper function to count consecutive values using rolling window (stable approach)
+        # Helper function to count consecutive values using numpy (stable approach)
         # FIXED: groupby().cumsum() depends on data window start, causing backtest/live divergence
         def count_consecutive(condition: pd.Series, max_count: int = 20) -> pd.Series:
-            """Count consecutive True values, capped at max_count for stability."""
-            result = pd.Series(0, index=condition.index)
+            """Count consecutive True values, capped at max_count for stability.
+            Uses numpy for efficient computation."""
+            arr = condition.values.astype(bool)
+            n = len(arr)
+            result = np.zeros(n, dtype=int)
             count = 0
-            for i in range(len(condition)):
-                if condition.iloc[i]:
+            for i in range(n):
+                if arr[i]:
                     count += 1
-                    result.iloc[i] = min(count, max_count)
+                    result[i] = min(count, max_count)
                 else:
                     count = 0
-                    result.iloc[i] = 0
-            return result
+            return pd.Series(result, index=condition.index)
         
         feature_dict = {
             # Price changes
