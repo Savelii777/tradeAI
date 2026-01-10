@@ -901,7 +901,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=60, help="Training days (reduced from 90 for faster convergence)")
     parser.add_argument("--test_days", type=int, default=14, help="Test days (out-of-sample)")
-    parser.add_argument("--pairs", type=int, default=20)
+    parser.add_argument("--pairs", type=int, default=20, help="Number of pairs to use from pairs_20.json")
+    parser.add_argument("--pair", type=str, default=None, help="Specific pair to train on (e.g., 'PIPPIN/USDT:USDT'). Overrides --pairs.")
     parser.add_argument("--output", type=str, default="./models/v8_improved")
     parser.add_argument("--initial_balance", type=float, default=100.0, help="Initial portfolio balance (realistic $100 start)")
     parser.add_argument("--check-dec25", action="store_true", help="Fetch and test specifically for Dec 25, 2025")
@@ -922,14 +923,22 @@ def main():
     
     # Load pairs
     import json
-    pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_20.json'
-    if not pairs_file.exists():
-        pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_list.json'
-        
-    with open(pairs_file) as f:
-        pairs_data = json.load(f)
-    pairs = [p['symbol'] for p in pairs_data['pairs'][:args.pairs]]
-    print(f"Loaded {len(pairs)} pairs from {pairs_file.name}")
+    
+    # Support for single pair mode
+    if args.pair:
+        # Single pair mode - use the specified pair
+        pairs = [args.pair]
+        print(f"🎯 SINGLE PAIR MODE: {args.pair}")
+    else:
+        # Multi-pair mode - load from JSON file
+        pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_20.json'
+        if not pairs_file.exists():
+            pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_list.json'
+            
+        with open(pairs_file) as f:
+            pairs_data = json.load(f)
+        pairs = [p['symbol'] for p in pairs_data['pairs'][:args.pairs]]
+        print(f"Loaded {len(pairs)} pairs from {pairs_file.name}")
     
     # Load data
     data_dir = Path(__file__).parent.parent / 'data' / 'candles'

@@ -1198,6 +1198,11 @@ def parallel_scan(
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pair", type=str, default=None, help="Specific pair to trade (e.g., 'PIPPIN/USDT:USDT'). Overrides pairs_20.json.")
+    cli_args = parser.parse_args()
+    
     logger.info("=" * 70)
     logger.info("V10 LIVE TRADING - CSV-BASED APPROACH (PARALLEL)")
     logger.info("=" * 70)
@@ -1238,7 +1243,12 @@ def main():
     # Load models
     try:
         models = load_models()
-        pairs = get_pairs()
+        # Support for single pair mode
+        if cli_args.pair:
+            pairs = [cli_args.pair]
+            logger.info(f"🎯 SINGLE PAIR MODE: {cli_args.pair}")
+        else:
+            pairs = get_pairs()
     except FileNotFoundError as e:
         logger.error(f"❌ {e}")
         return
