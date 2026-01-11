@@ -78,11 +78,10 @@ def test_thresholds():
     
     # Разные комбинации порогов
     threshold_configs = [
-        {"name": "Old Live (v8)", "conf": 0.50, "timing": 0.8, "strength": 1.4},
-        {"name": "NEW Live (v11)", "conf": 0.40, "timing": 0.8, "strength": 1.4},
+        {"name": "Current Live", "conf": 0.50, "timing": 0.8, "strength": 1.4},
         {"name": "backtest_v2", "conf": 0.32, "timing": 0.15, "strength": 0.2},
-        {"name": "Lower all", "conf": 0.38, "timing": 0.6, "strength": 1.0},
-        {"name": "No timing/str", "conf": 0.40, "timing": 0.0, "strength": 0.0},
+        {"name": "Lower conf", "conf": 0.40, "timing": 0.8, "strength": 1.4},
+        {"name": "No timing/str", "conf": 0.50, "timing": 0.0, "strength": 0.0},
         {"name": "Very Low", "conf": 0.35, "timing": 0.5, "strength": 0.8},
     ]
     

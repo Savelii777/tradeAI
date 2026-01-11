@@ -109,10 +109,7 @@ class Config:
     TIMEFRAMES = ['1m', '5m', '15m']
     
     # V8 Signal Thresholds (match backtest)
-    # NOTE: For 3-class classification, random guess gives ~0.33 confidence.
-    # Lowered MIN_CONF from 0.50 to 0.40 to allow more signals through
-    # while still requiring meaningful model confidence above random.
-    MIN_CONF = 0.40
+    MIN_CONF = 0.50
     MIN_TIMING = 0.8
     MIN_STRENGTH = 1.4
     

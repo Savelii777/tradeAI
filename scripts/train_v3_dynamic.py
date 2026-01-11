@@ -13,7 +13,7 @@ V11 ANTI-OVERFIT IMPROVEMENTS:
 2. Strong Regularization: L1 + L2 regularization (reg_alpha=1.0, reg_lambda=1.0)
 3. Strong Subsampling: subsample=0.5, colsample_bytree=0.4
 4. Embargo Period: 1-day gap between train/test to prevent data leakage
-5. Realistic Thresholds: min_conf=0.40, min_timing=0.8, min_strength=1.4
+5. Original Thresholds: min_conf=0.50, min_timing=0.8, min_strength=1.4
 6. Lower learning rate (0.03) for better convergence with more trees
 
 ⚠️ IMPORTANT: Win Rate 80%+ on backtest = OVERFIT!
@@ -308,7 +308,6 @@ def train_models(X_train, y_train, X_val, y_val):
     # Note: Probability calibration (CalibratedClassifierCV) was considered here
     # but requires truly held-out data to avoid data leakage.
     # Instead, we rely on strong regularization to produce realistic probabilities.
-    # The lower MIN_CONF threshold (0.40) accommodates less confident predictions.
     
     return {
         'direction': dir_model,
@@ -318,10 +317,10 @@ def train_models(X_train, y_train, X_val, y_val):
 
 
 # ============================================================
-# PORTFOLIO BACKTEST (V11 - Anti-Overfit Thresholds)
+# PORTFOLIO BACKTEST (V9 - Realistic Thresholds)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.40, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
+                    min_conf: float = 0.50, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
                     
     """
     Generate all valid signals for a single pair.
