@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
 """
-Train V12 - SMART ADAPTIVE Trading Model
-"Intelligence That Adapts to Market Conditions"
+Train V13 - IMPULSE CATCHING Trading Model
+"Catch Big Moves, Not Noise"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
-- Smart balanced model: not too simple (underfitting), not too complex (overfitting)
-- Target: Win Rate 60-70% with CONFIDENT predictions on live.
+- Focus on catching IMPULSE moves (2+ ATR) - not small wiggles
+- Target: Win Rate 50-60% but with BIG winners (3-10+ ATR moves)
 
-V12 SMART ADAPTIVE IMPROVEMENTS:
-1. Balanced Models: 200 trees, depth 4, 12 leaves, min_child_samples=80
-2. Moderate Regularization: L1 + L2 = 0.5 each (not too strong, not too weak)
-3. Smart Subsampling: subsample=0.7, colsample_bytree=0.6 (more data per tree)
-4. Extra Trees: extra_trees=True for additional randomization
-5. Huber Loss: Robust to outliers in timing/strength prediction
-6. Class Weights: Balance direction labels automatically
-7. Multi-scale Volatility: Adapts thresholds to market conditions
-8. MAE/MFE Timing: Better entry quality scoring
+V13 IMPULSE CATCHING IMPROVEMENTS:
+1. LOOKAHEAD increased: 12 → 18 bars (1.5 hours) - catch bigger moves
+2. Impulse threshold: Only signal when move >= 2 ATR expected
+3. Multi-timeframe analysis: 30min/1hr/1.5hr windows for different impulses
+4. Direction filter: Require 1.2x stronger move in predicted direction
+5. Balanced Models: 200 trees, depth 4, 12 leaves, class weights
+6. Huber Loss: Robust to outliers
+7. Feature importance logging: See what predicts impulses
 
-KEY FEATURES:
-- Adapts to different volatility regimes (quiet vs volatile markets)
-- Class-balanced training (handles imbalanced direction labels)
-- Feature importance logging (see what model learns)
-- Robust to outliers via Huber loss
+KEY STRATEGY:
+- Wait for HIGH PROBABILITY setups (not every wiggle)
+- Fewer trades but BIGGER winners
+- Let winners run with proper trailing
 
 Run: python scripts/train_v3_dynamic.py --days 90 --test_days 30 --pairs 20 --walk-forward
 """
@@ -58,7 +56,7 @@ SL_ATR_MULT = 1.5       # Base SL multiplier (adaptive based on strength)
 MAX_LEVERAGE = 50.0     # Maximum leverage (50x)
 RISK_PCT = 0.05         # 5% Risk per trade
 FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
-LOOKAHEAD = 12          # 1 hour on M5
+LOOKAHEAD = 18          # V13: 1.5 hours on M5 (was 12) - catch bigger moves
 
 # POSITION SIZE LIMITS
 # User requirement: up to $4M position, with leverage up to 50x
@@ -71,6 +69,10 @@ SLIPPAGE_PCT = 0.0005         # 0.05% slippage (REALISTIC)
 USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
 USE_DYNAMIC_LEVERAGE = True  # Boost leverage for high-confidence signals
 USE_AGGRESSIVE_TRAIL = True  # Tighter trailing at medium R-multiples
+
+# V13 IMPULSE CATCHING
+MIN_IMPULSE_ATR = 2.0        # Minimum move to qualify as impulse (2 ATR)
+IMPULSE_WEIGHT = 1.5         # Extra weight for impulse detection features
 
 
 # ============================================================
@@ -161,79 +163,82 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 
 # ============================================================
-# V12 SMART ADAPTIVE TARGETS
+# V13 IMPULSE CATCHING TARGETS
 # ============================================================
 def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Create V12 Smart Adaptive targets.
+    Create V13 Impulse-Catching targets.
     
     KEY IMPROVEMENTS:
-    1. Multi-scale volatility adaptation - adapts to different market conditions
-    2. Trend-aware thresholds - higher threshold in strong trends (avoid noise)
-    3. Time-weighted future returns - near-term matters more than far-term
-    4. Robust outlier handling
+    1. Focus on catching BIG moves (impulses) - 2+ ATR
+    2. Multi-timeframe momentum detection
+    3. Stricter direction filter - only trade when move is significant
+    4. Higher strength requirements for signal
     
     The model learns to predict:
-    - Direction: Which way will price move significantly?
-    - Timing: How good is this entry point? (0-5 scale)
-    - Strength: How big will the move be? (in ATR multiples)
+    - Direction: Which way will a BIG move happen?
+    - Timing: How good is this entry for catching the impulse?
+    - Strength: How big will the impulse be? (in ATR multiples)
     """
     df = df.copy()
     df['atr'] = calculate_atr(df)
     
-    # 1. Multi-scale volatility for adaptive thresholds
-    # Use multiple windows to capture both short and long-term volatility
-    vol_short = df['close'].pct_change().rolling(window=20, min_periods=10).std()
-    vol_medium = df['close'].pct_change().rolling(window=50, min_periods=25).std()
-    vol_long = df['close'].pct_change().rolling(window=100, min_periods=50).std()
+    # 1. Look for IMPULSE moves - at least 2 ATR
+    # Use multiple windows to catch different impulse types
+    future_highs_short = df['high'].rolling(6).max().shift(-6)   # 30min impulse
+    future_lows_short = df['low'].rolling(6).min().shift(-6)
+    future_highs_med = df['high'].rolling(12).max().shift(-12)   # 1hour impulse
+    future_lows_med = df['low'].rolling(12).min().shift(-12)
+    future_highs_long = df['high'].rolling(LOOKAHEAD).max().shift(-LOOKAHEAD)  # Full window
+    future_lows_long = df['low'].rolling(LOOKAHEAD).min().shift(-LOOKAHEAD)
     
-    # Combine: use the HIGHER of recent or historical volatility
-    # This prevents false signals in quiet periods after volatile ones
-    combined_vol = np.maximum(vol_short, (vol_medium + vol_long) / 2)
-    combined_vol = combined_vol.shift(1)  # Use only past data
+    # Best possible move in each direction (in ATR)
+    best_up_short = (future_highs_short - df['close']) / df['atr']
+    best_down_short = (df['close'] - future_lows_short) / df['atr']
+    best_up_med = (future_highs_med - df['close']) / df['atr']
+    best_down_med = (df['close'] - future_lows_med) / df['atr']
+    best_up_long = (future_highs_long - df['close']) / df['atr']
+    best_down_long = (df['close'] - future_lows_long) / df['atr']
     
-    # Adaptive threshold: at least 0.3% or 0.8x recent volatility
-    threshold = np.maximum(combined_vol * 0.8, 0.003)
+    # 2. Combine: Use the BEST opportunity across timeframes
+    # Weight shorter timeframes more (faster confirmation)
+    best_up = 0.4 * best_up_short + 0.35 * best_up_med + 0.25 * best_up_long
+    best_down = 0.4 * best_down_short + 0.35 * best_down_med + 0.25 * best_down_long
     
-    # 2. Calculate future return with time-weighting
-    # Near-term movement is more important than far-term
-    future_return_6 = df['close'].pct_change(6).shift(-6)   # 30min
-    future_return_12 = df['close'].pct_change(12).shift(-12) # 1hour
+    # 3. Direction: Only signal when IMPULSE is expected (>= 2 ATR)
+    # 0=Down impulse, 1=No impulse (sideways), 2=Up impulse
+    impulse_threshold = MIN_IMPULSE_ATR  # 2.0 ATR minimum
     
-    # Weight: 60% near-term, 40% full window
-    future_return = 0.6 * future_return_6.fillna(0) + 0.4 * future_return_12.fillna(0)
-    
-    # 3. Direction with trend confirmation
-    # 0=Down, 1=Sideways, 2=Up
     df['target_dir'] = np.where(
-        future_return > threshold, 2,
-        np.where(future_return < -threshold, 0, 1)
+        (best_up >= impulse_threshold) & (best_up > best_down * 1.2),  # Up impulse stronger
+        2,
+        np.where(
+            (best_down >= impulse_threshold) & (best_down > best_up * 1.2),  # Down impulse stronger
+            0,
+            1  # No clear impulse
+        )
     )
     
-    # 4. Timing Target: Entry quality score
-    future_lows = df['low'].rolling(LOOKAHEAD).min().shift(-LOOKAHEAD)
-    future_highs = df['high'].rolling(LOOKAHEAD).max().shift(-LOOKAHEAD)
+    # 4. Timing: Quality of entry for catching the impulse
+    # MAE = Maximum Adverse Excursion (drawdown before profit)
+    mae_long = (df['close'] - future_lows_long) / df['atr']
+    mae_short = (future_highs_long - df['close']) / df['atr']
     
-    # Maximum Adverse Excursion (MAE) - how much does price go against us first?
-    mae_long = (df['close'] - future_lows) / df['atr']
-    mae_short = (future_highs - df['close']) / df['atr']
+    # Timing = MFE / (1 + MAE) - penalize entries with high drawdown
+    timing_long = best_up_long / (1 + mae_long)
+    timing_short = best_down_long / (1 + mae_short)
     
-    # Maximum Favorable Excursion (MFE) - how much profit potential?
-    mfe_long = (future_highs - df['close']) / df['atr']
-    mfe_short = (df['close'] - future_lows) / df['atr']
-    
-    # Timing score = MFE / (1 + MAE) - penalize entries with high drawdown
-    timing_long = mfe_long / (1 + mae_long)
-    timing_short = mfe_short / (1 + mae_short)
-    
-    df['target_timing'] = np.maximum(timing_long, timing_short)
+    # Use timing for the predicted direction
+    df['target_timing'] = np.where(
+        df['target_dir'] == 2, timing_long,
+        np.where(df['target_dir'] == 0, timing_short, 0)
+    )
     df['target_timing'] = df['target_timing'].clip(0, 5)
     
-    # 5. Strength: Directional move potential
-    # How much does price move in the predicted direction?
+    # 5. Strength: Actual impulse size (in ATRs)
     df['target_strength'] = np.where(
-        df['target_dir'] == 2, mfe_long,
-        np.where(df['target_dir'] == 0, mfe_short, 0)
+        df['target_dir'] == 2, best_up_long,
+        np.where(df['target_dir'] == 0, best_down_long, 0)
     )
     df['target_strength'] = df['target_strength'].clip(0, 10)
     
