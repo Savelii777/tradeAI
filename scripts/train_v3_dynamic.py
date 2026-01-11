@@ -1,28 +1,30 @@
 #!/usr/bin/env python3
 """
-Train V12 - SMART ADAPTIVE Trading Model
-"Intelligence That Adapts to Market Conditions"
+Train V15 - MORE CONFIDENT Trading Model
+"Higher Confidence = More Signals on Live"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
-- Smart balanced model: not too simple (underfitting), not too complex (overfitting)
-- Target: Win Rate 60-70% with CONFIDENT predictions on live.
+- SIMPLER model = MORE CONFIDENT predictions
+- Target: Confidence 0.45-0.55+ on live (vs 0.37-0.44 before)
 
-V12 SMART ADAPTIVE IMPROVEMENTS:
-1. Balanced Models: 200 trees, depth 4, 12 leaves, min_child_samples=80
-2. Moderate Regularization: L1 + L2 = 0.5 each (not too strong, not too weak)
-3. Smart Subsampling: subsample=0.7, colsample_bytree=0.6 (more data per tree)
-4. Extra Trees: extra_trees=True for additional randomization
-5. Huber Loss: Robust to outliers in timing/strength prediction
-6. Class Weights: Balance direction labels automatically
-7. Multi-scale Volatility: Adapts thresholds to market conditions
-8. MAE/MFE Timing: Better entry quality scoring
+V15 MORE CONFIDENT IMPROVEMENTS:
+1. Shallower Model: max_depth 4→3, num_leaves 12→8
+2. More Samples per Leaf: min_child_samples 80→100
+3. Lighter Regularization: reg_alpha/lambda 0.5→0.3
+4. No Path Smoothing: Sharper probability estimates
+5. Fewer Trees: 200→150 (less overfitting)
+6. Lower MIN_CONF: 0.50→0.45 (more signals pass)
 
-KEY FEATURES:
-- Adapts to different volatility regimes (quiet vs volatile markets)
-- Class-balanced training (handles imbalanced direction labels)
-- Feature importance logging (see what model learns)
-- Robust to outliers via Huber loss
+WHY SIMPLER = MORE CONFIDENT:
+- Complex models hedge their bets (spread probability across classes)
+- Simple models make bolder predictions (concentrate probability)
+- Trade-off: Slightly lower accuracy, but much higher confidence
+
+EXPECTED RESULTS:
+- Confidence on live: 0.45-0.55+ (vs 0.37-0.44 before)
+- More signals passing the threshold
+- Win rate may drop slightly (60% vs 65%) but confidence compensates
 
 Run: python scripts/train_v3_dynamic.py --days 90 --test_days 30 --pairs 20 --walk-forward
 """
@@ -264,26 +266,26 @@ def train_models(X_train, y_train, X_val, y_val):
     class_weights = {k: total / (3 * v) for k, v in label_counts.items()}
     sample_weights = np.array([class_weights[y] for y in y_train['target_dir']])
     
-    # 1. Direction Model (Multiclass) - SMART BALANCED
-    print("   Training Direction Model (V12 Smart Adaptive)...")
+    # 1. Direction Model (Multiclass) - V15 MORE CONFIDENT
+    # Goal: Higher confidence predictions that pass the 0.45+ threshold
+    print("   Training Direction Model (V15 More Confident)...")
     dir_model = lgb.LGBMClassifier(
         objective='multiclass', 
         num_class=3, 
         metric='multi_logloss',
         boosting_type='gbdt',      # Standard gradient boosting
-        n_estimators=200,          # More trees for stable estimates
-        max_depth=4,               # Medium depth - capture patterns but not noise
-        num_leaves=12,             # Balanced leaves
-        min_child_samples=80,      # Robust splits
-        learning_rate=0.02,        # Slower learning = better generalization
-        subsample=0.7,             # Use 70% of data per tree
+        n_estimators=150,          # Fewer trees = less overfitting
+        max_depth=3,               # Shallower = more confident predictions
+        num_leaves=8,              # Fewer leaves = simpler patterns = higher confidence
+        min_child_samples=100,     # More samples per leaf = more confident
+        learning_rate=0.03,        # Moderate learning rate
+        subsample=0.8,             # Use 80% of data per tree
         subsample_freq=1,          # Subsample every iteration
-        colsample_bytree=0.6,      # Use 60% of features per tree
-        reg_alpha=0.5,             # L1 regularization
-        reg_lambda=0.5,            # L2 regularization
-        min_split_gain=0.005,      # Require meaningful splits
-        extra_trees=True,          # Extra randomization for generalization
-        path_smooth=0.1,           # Smoothing for path predictions
+        colsample_bytree=0.7,      # Use 70% of features per tree
+        reg_alpha=0.3,             # Light L1 regularization
+        reg_lambda=0.3,            # Light L2 regularization
+        min_split_gain=0.01,       # Require meaningful splits
+        path_smooth=0.0,           # No smoothing - sharper predictions
         random_state=42, 
         verbosity=-1,
         importance_type='gain'     # Use gain for feature importance
@@ -370,7 +372,7 @@ def train_models(X_train, y_train, X_val, y_val):
 # PORTFOLIO BACKTEST (V9 - Realistic Thresholds)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.50, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
+                    min_conf: float = 0.45, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
                     
     """
     Generate all valid signals for a single pair.

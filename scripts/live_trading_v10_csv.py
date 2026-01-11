@@ -108,8 +108,9 @@ class Config:
     # Timeframes
     TIMEFRAMES = ['1m', '5m', '15m']
     
-    # V8 Signal Thresholds (match backtest)
-    MIN_CONF = 0.50
+    # V15 Signal Thresholds (lowered MIN_CONF for more signals)
+    # For 3-class classification, random is ~0.33, so 0.45 is still meaningful
+    MIN_CONF = 0.45
     MIN_TIMING = 0.8
     MIN_STRENGTH = 1.4
     
