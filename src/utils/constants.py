@@ -144,15 +144,13 @@ SESSION_TIMES = {
 # CRITICAL: These cause massive feature drift between backtest and live!
 CUMSUM_PATTERNS = [
     # Full feature names (market_structure.py)
-    'bars_since_swing_high',  # swing_high.cumsum() - depends on data start
-    'bars_since_swing_low',   # swing_low.cumsum() - depends on data start
-    'swing_high_price',       # ffill() from first swing - depends on data start
-    'swing_low_price',        # ffill() from first swing - depends on data start
+    'bars_since_swing_high',  # Used cumsum() - now uses bars_since_true (stable)
+    'bars_since_swing_low',   # Used cumsum() - now uses bars_since_true (stable)
     
     # Partial patterns (feature_engine.py)
     'bars_since_swing',       # catches any variant of bars_since_swing
-    'consecutive_up',         # groupby().cumsum() - depends on data start
-    'consecutive_down',       # groupby().cumsum() - depends on data start
+    'consecutive_up',         # groupby().cumsum() - now uses count_consecutive (stable)
+    'consecutive_down',       # groupby().cumsum() - now uses count_consecutive (stable)
     
     # Volume cumsum patterns (indicators.py)
     'obv',                    # cumsum() from start of data - REMOVED, use obv_rolling_50
@@ -173,6 +171,10 @@ ABSOLUTE_PRICE_FEATURES = [
     'bb_upper', 'bb_middle', 'bb_lower',  # From indicators.py
     'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',  # From train_mtf.py
     
+    # Swing prices - absolute values that differ with price level
+    'swing_high_price', 'swing_low_price',  # From market_structure.py
+    'm5_swing_high_price', 'm5_swing_low_price',  # MTF variants
+    
     # Volume MA absolute values (differ between coins and time periods)
     'volume_ma_5', 'volume_ma_10', 'volume_ma_20',  # From indicators.py
     'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # From train_mtf.py
@@ -191,10 +193,11 @@ ABSOLUTE_PRICE_FEATURES = [
     'macd', 'macd_signal', 'macd_histogram', 'macd_histogram_change',  # From indicators.py
     'm5_macd', 'm5_macd_signal', 'm5_macd_histogram', 'm5_macd_histogram_change',  # From train_mtf.py
     
-    # Additional volume-based features with absolute scale issues
+    # OBV-based features with absolute scale issues
     'obv_rolling_50',  # Absolute volume sum - varies wildly between coins
+    'obv_slope',       # Rate of change of absolute volume - varies between coins
     'volume_delta_sum_20',  # Absolute volume sum
-    'm5_obv_rolling_50', 'm5_volume_delta_sum_20',  # MTF variants
+    'm5_obv_rolling_50', 'm5_obv_slope', 'm5_volume_delta_sum_20',  # MTF variants
 ]
 
 # Features to exclude from training (in addition to targets and raw OHLCV)
