@@ -141,14 +141,21 @@ SESSION_TIMES = {
 # Cumsum-dependent features: values depend on data window start position
 # In backtest: data starts from 2017 → cumsum accumulates for 8 years
 # In live: data starts from last 1000 candles → cumsum is 1000x smaller
+# CRITICAL: These cause massive feature drift between backtest and live!
 CUMSUM_PATTERNS = [
-    'bars_since_swing',       # cumsum() from start of data
-    'consecutive_up',         # groupby().cumsum()
-    'consecutive_down',       # groupby().cumsum()
-    'obv',                    # cumsum() from start of data
-    'volume_delta_cumsum',    # rolling cumsum
-    'swing_high_price',       # ffill() from first swing
-    'swing_low_price',        # ffill() from first swing
+    # Full feature names (market_structure.py)
+    'bars_since_swing_high',  # Used cumsum() - now uses bars_since_true (stable)
+    'bars_since_swing_low',   # Used cumsum() - now uses bars_since_true (stable)
+    
+    # Partial patterns (feature_engine.py)
+    'bars_since_swing',       # catches any variant of bars_since_swing
+    'consecutive_up',         # groupby().cumsum() - now uses count_consecutive (stable)
+    'consecutive_down',       # groupby().cumsum() - now uses count_consecutive (stable)
+    
+    # Volume cumsum patterns (indicators.py)
+    'obv',                    # cumsum() from start of data - REMOVED, use obv_rolling_50
+    'obv_ema',                # EMA of cumsum OBV - REMOVED
+    'volume_delta_cumsum',    # Old name, now volume_delta_sum_20
 ]
 
 # Absolute price-based features: values depend on current price level
@@ -156,15 +163,75 @@ CUMSUM_PATTERNS = [
 # In live: price is $420 → m5_ema_200 = 420 (completely different!)
 # Model sees different values and becomes "confused" → low confidence
 ABSOLUTE_PRICE_FEATURES = [
-    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # Absolute EMA values
-    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',        # Absolute BB levels  
-    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # Absolute volume MA
-    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',    # Absolute ATR values
-    'm5_volume_delta', 'm5_volume_trend',  # Absolute volume metrics
+    # EMA absolute values (both with and without m5_ prefix)
+    'ema_9', 'ema_21', 'ema_50', 'ema_200',  # From indicators.py
+    'm5_ema_9', 'm5_ema_21', 'm5_ema_50', 'm5_ema_200',  # From train_mtf.py
+    
+    # Bollinger Bands absolute levels
+    'bb_upper', 'bb_middle', 'bb_lower',  # From indicators.py
+    'm5_bb_upper', 'm5_bb_middle', 'm5_bb_lower',  # From train_mtf.py
+    
+    # Swing prices - absolute values that differ with price level
+    'swing_high_price', 'swing_low_price',  # From market_structure.py
+    'm5_swing_high_price', 'm5_swing_low_price',  # MTF variants
+    
+    # Volume MA absolute values (differ between coins and time periods)
+    'volume_ma_5', 'volume_ma_10', 'volume_ma_20',  # From indicators.py
+    'm5_volume_ma_5', 'm5_volume_ma_10', 'm5_volume_ma_20',  # From train_mtf.py
+    
+    # ATR absolute values
+    'atr_7', 'atr_14', 'atr_21', 'atr_14_ma',  # From indicators.py
+    'm5_atr_7', 'm5_atr_14', 'm5_atr_21', 'm5_atr_14_ma',  # From train_mtf.py
+    
+    # Volume delta/trend absolute metrics (scale varies wildly between coins)
+    'volume_delta', 'volume_trend',  # From indicators.py
+    'm5_volume_delta', 'm5_volume_trend',  # From train_mtf.py
+    
     # MACD features: MACD = EMA_fast - EMA_slow (absolute price difference!)
     # At BTC $25,000: MACD could be $500
     # At BTC $95,000: MACD could be $2,000 - causes Feature Distribution Shift
-    'm5_macd', 'm5_macd_signal', 'm5_macd_histogram', 'm5_macd_histogram_change',
+    'macd', 'macd_signal', 'macd_histogram', 'macd_histogram_change',  # From indicators.py
+    'm5_macd', 'm5_macd_signal', 'm5_macd_histogram', 'm5_macd_histogram_change',  # From train_mtf.py
+    
+    # OBV-based features with absolute scale issues
+    'obv_rolling_50',  # Absolute volume sum - varies wildly between coins
+    'obv_slope',       # Rate of change of absolute volume - varies between coins
+    'volume_delta_sum_20',  # Absolute volume sum
+    'm5_obv_rolling_50', 'm5_obv_slope', 'm5_volume_delta_sum_20',  # MTF variants
+    
+    # Linear regression slope - raw price slope depends on price level
+    # At BTC $90K: slope = 100 | At BTC $30K: slope = 33 (3x difference!)
+    'linreg_slope_20',  # Raw slope from market_structure.py
+    'm5_linreg_slope_20',  # MTF variant
+    
+    # EMA slopes - derived from absolute EMA values
+    # Even though normalized by /ema, the diff() still depends on price scale
+    'ema_fast_slope',  # From market_structure.py identify_trend()
+    'ema_slow_slope',  # From market_structure.py identify_trend()
+    'm5_ema_fast_slope', 'm5_ema_slow_slope',  # MTF variants
+    
+    # EMA slope features from indicators.py - same issue
+    'ema_9_slope', 'ema_21_slope', 'ema_50_slope', 'ema_200_slope',
+    'm5_ema_9_slope', 'm5_ema_21_slope', 'm5_ema_50_slope', 'm5_ema_200_slope',
+    
+    # Structure score can vary based on swing detection timing
+    'structure_score',  # From market_structure.py
+    'm5_structure_score',  # MTF variant
+    
+    # Market structure trend features that depend on swing detection or absolute values
+    'trend_strength',  # ADX-like, derived from ATR (absolute)
+    'trend_direction',  # Derived from trend_score which includes structure_score
+    'trend_score',  # Includes structure_trend from swing detection
+    'structure_trend',  # From structure_score (swing-based)
+    'm5_trend_strength', 'm5_trend_direction', 'm5_trend_score', 'm5_structure_trend',  # MTF
+    
+    # Linear regression trend features
+    'linreg_trend',  # Binary but based on linreg_slope_20
+    'm5_linreg_trend',  # MTF variant
+    
+    # Volatility features that can vary based on data window
+    'volatility_ratio',  # Ratio of volatility to historical average
+    'm5_volatility_ratio',  # MTF variant
 ]
 
 # Features to exclude from training (in addition to targets and raw OHLCV)

@@ -120,7 +120,10 @@ class Config:
     ENTRY_FEE = 0.0002
     EXIT_FEE = 0.0002
     SL_ATR_BASE = 1.5
-    MAX_POSITION_SIZE = 200000.0
+    # User requirement: up to $4M position, with leverage up to 50x
+    # At 50x leverage: need $80k margin for $4M position
+    # At 10x leverage: $400k max position, at 20x: $200k max position
+    MAX_POSITION_SIZE = 4000000.0  # Max $4M position
     SLIPPAGE_PCT = 0.0005
     
     # V8 Features
@@ -1195,6 +1198,12 @@ def parallel_scan(
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pair", type=str, default=None, help="Specific pair to trade (e.g., 'PIPPIN/USDT:USDT'). Overrides pairs_20.json.")
+    parser.add_argument("--pairs_list", type=str, default=None, help="Comma-separated list of pairs (e.g., 'PIPPIN/USDT:USDT,ASTER/USDT:USDT,ZEC/USDT:USDT'). Overrides pairs_20.json.")
+    cli_args = parser.parse_args()
+    
     logger.info("=" * 70)
     logger.info("V10 LIVE TRADING - CSV-BASED APPROACH (PARALLEL)")
     logger.info("=" * 70)
@@ -1235,7 +1244,15 @@ def main():
     # Load models
     try:
         models = load_models()
-        pairs = get_pairs()
+        # Support for pairs list mode (multiple pairs via comma-separated list)
+        if cli_args.pairs_list:
+            pairs = [p.strip() for p in cli_args.pairs_list.split(',')]
+            logger.info(f"🎯 MULTI PAIR MODE: {len(pairs)} pairs - {pairs}")
+        elif cli_args.pair:
+            pairs = [cli_args.pair]
+            logger.info(f"🎯 SINGLE PAIR MODE: {cli_args.pair}")
+        else:
+            pairs = get_pairs()
     except FileNotFoundError as e:
         logger.error(f"❌ {e}")
         return

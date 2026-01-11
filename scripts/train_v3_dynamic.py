@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 """
-Train V9 - MAXIMUM Anti-Overfitting Edition
-"Realistic Live Performance, Not Backtest Optimization"
+Train V10 - BALANCED Live Performance Edition
+"Strong Signals Without Overfitting"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
-- We prioritize REAL live performance over impressive backtest numbers.
-- Target: Win Rate 55-60% (realistic for ML trading), not 80%+ (overfit).
+- We balance model complexity with regularization for confident signals.
+- Target: Win Rate 55-65% with HIGH CONFIDENCE predictions.
 
-V9 ANTI-OVERFITTING IMPROVEMENTS:
-1. VERY Simple Models: 50 trees, depth 2, 4 leaves, min_child_samples=100
-2. Strong Regularization: L1 + L2 regularization (reg_alpha=1.0, reg_lambda=1.0)
-3. Aggressive Subsampling: subsample=0.5, colsample_bytree=0.3
+V10 BALANCED IMPROVEMENTS:
+1. Moderate Models: 100 trees, depth 4, 16 leaves, min_child_samples=50
+2. Strong Regularization: L1 + L2 regularization (reg_alpha=0.5, reg_lambda=0.5)
+3. Moderate Subsampling: subsample=0.6, colsample_bytree=0.5
 4. Embargo Period: 1-day gap between train/test to prevent data leakage
-5. Lower Thresholds: min_conf=0.40, min_timing=0.5, min_strength=1.0
-6. Realistic Expectations: Win Rate 55-65% is GOOD, 80%+ is OVERFIT
+5. Calibrated Thresholds: min_conf=0.50, min_timing=0.8, min_strength=1.4
+6. More Trees = More Confidence: Ensemble averages give stronger probabilities
 
 ⚠️ IMPORTANT: Win Rate 80%+ on backtest = OVERFIT!
 A realistic ML trading model should have:
 - Win Rate: 55-65%
 - Profit Factor: 1.2-1.5
 - Sharpe Ratio: 1.0-2.0
+- Confidence: 0.50-0.80 (not stuck at 0.35!)
 
 Run: python scripts/train_v3_dynamic.py --days 90 --test_days 30 --pairs 20 --walk-forward
 """
@@ -53,14 +54,17 @@ from train_mtf import MTFFeatureEngine
 # CONFIG
 # ============================================================
 SL_ATR_MULT = 1.5       # Base SL multiplier (adaptive based on strength)
-MAX_LEVERAGE = 50.0
+MAX_LEVERAGE = 50.0     # Maximum leverage (50x)
 RISK_PCT = 0.05         # 5% Risk per trade
 FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
 LOOKAHEAD = 12          # 1 hour on M5
 
-# REALISTIC LIMITS (V8 IMPROVED)
-MAX_POSITION_SIZE = 200000.0  # Max $50K position (realistic for liquidity)
-SLIPPAGE_PCT = 0.0005        # ✅ 0.05% slippage (REALISTIC! Was 0.01% - too optimistic)
+# POSITION SIZE LIMITS
+# User requirement: up to $4M position, with leverage up to 50x
+# At 50x leverage: need $80k margin for $4M position
+# At 10x leverage: $400k max position, at 20x: $200k max position
+MAX_POSITION_SIZE = 4000000.0  # Max $4M position
+SLIPPAGE_PCT = 0.0005         # 0.05% slippage (REALISTIC)
 
 # V8 IMPROVEMENTS
 USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
@@ -222,78 +226,80 @@ def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 def train_models(X_train, y_train, X_val, y_val):
     """
-    Train models with MAXIMUM anti-overfitting protection.
+    Train models with BALANCED complexity for confident signals.
     
-    Based on recommendations from ML trading articles:
-    - Very simple models (max_depth=2)
-    - Strong regularization (reg_alpha, reg_lambda)
-    - Aggressive subsampling (subsample=0.5)
-    - Minimum samples per leaf = 100 (robust splits only)
-    - Early stopping with small patience (20 rounds)
+    V10 Changes from V9:
+    - max_depth=4 (was 2) - allows more complex patterns
+    - num_leaves=16 (was 4) - more decision paths
+    - n_estimators=100 (was 50) - more trees = better probability estimates
+    - min_child_samples=50 (was 100) - still robust, but more flexible
+    - subsample=0.6, colsample_bytree=0.5 - moderate bagging
+    - reg_alpha/lambda=0.5 (was 1.0) - less aggressive regularization
     
-    Expected: Lower backtest results, but REAL live performance.
+    Result: Model can learn more patterns while still being regularized.
+    Expect confidence scores 0.50-0.80 instead of stuck at 0.35.
     """
     
-    # 1. Direction Model (Multiclass) - MAXIMUM REGULARIZATION
-    print("   Training Direction Model (Max Anti-Overfit)...")
+    # 1. Direction Model (Multiclass) - BALANCED COMPLEXITY
+    print("   Training Direction Model (Balanced V10)...")
     dir_model = lgb.LGBMClassifier(
         objective='multiclass', num_class=3, metric='multi_logloss',
-        n_estimators=50,          # ✅ Reduced from 100 → 50
-        max_depth=2,              # ✅ Reduced from 3 → 2 (VERY simple)
-        num_leaves=4,             # ✅ Reduced from 8 → 4
-        min_child_samples=100,    # ✅ Increased from 50 → 100 (more robust)
-        learning_rate=0.1,        # ✅ Higher LR with fewer trees
-        subsample=0.5,            # ✅ Reduced from 0.7 → 0.5 (more aggressive)
-        colsample_bytree=0.3,     # ✅ Reduced from 0.5 → 0.3 (fewer features per tree)
-        reg_alpha=1.0,            # ✅ NEW: L1 regularization
-        reg_lambda=1.0,           # ✅ NEW: L2 regularization
+        n_estimators=100,         # ✅ Increased from 50 → 100 (more confident)
+        max_depth=4,              # ✅ Increased from 2 → 4 (more patterns)
+        num_leaves=16,            # ✅ Increased from 4 → 16 (more paths)
+        min_child_samples=50,     # ✅ Reduced from 100 → 50 (more flexible)
+        learning_rate=0.05,       # ✅ Lower LR with more trees (better convergence)
+        subsample=0.6,            # ✅ Increased from 0.5 → 0.6 (less noise reduction)
+        colsample_bytree=0.5,     # ✅ Increased from 0.3 → 0.5 (more features)
+        reg_alpha=0.5,            # ✅ Reduced from 1.0 → 0.5 (less regularization)
+        reg_lambda=0.5,           # ✅ Reduced from 1.0 → 0.5 (less regularization)
         random_state=42, 
         verbosity=-1
     )
     dir_model.fit(X_train, y_train['target_dir'], 
                   eval_set=[(X_val, y_val['target_dir'])],
-                  callbacks=[lgb.early_stopping(20, verbose=False)])  # ✅ Reduced patience
+                  callbacks=[lgb.early_stopping(30, verbose=False)])  # ✅ Increased patience
     
     # 2. Timing Model (Regressor)
-    print("   Training Timing Model (Max Anti-Overfit)...")
+    print("   Training Timing Model (Balanced V10)...")
     timing_model = lgb.LGBMRegressor(
         objective='regression',
         metric='mae',
-        n_estimators=50,
-        max_depth=2,
-        num_leaves=4,
-        min_child_samples=100,
-        learning_rate=0.1,
-        subsample=0.5,
-        colsample_bytree=0.3,
-        reg_alpha=1.0,
-        reg_lambda=1.0,
+        n_estimators=100,
+        max_depth=4,
+        num_leaves=16,
+        min_child_samples=50,
+        learning_rate=0.05,
+        subsample=0.6,
+        colsample_bytree=0.5,
+        reg_alpha=0.5,
+        reg_lambda=0.5,
         random_state=42,
         verbosity=-1
     )
     timing_model.fit(X_train, y_train['target_timing'],
                      eval_set=[(X_val, y_val['target_timing'])],
-                     callbacks=[lgb.early_stopping(20, verbose=False)])
+                     callbacks=[lgb.early_stopping(30, verbose=False)])
     
     # 3. Strength Model (Regression)
-    print("   Training Strength Model (Max Anti-Overfit)...")
+    print("   Training Strength Model (Balanced V10)...")
     strength_model = lgb.LGBMRegressor(
         objective='regression', metric='mae',
-        n_estimators=50,
-        max_depth=2,
-        num_leaves=4,
-        min_child_samples=100,
-        learning_rate=0.1,
-        subsample=0.5,
-        colsample_bytree=0.3,
-        reg_alpha=1.0,
-        reg_lambda=1.0,
+        n_estimators=100,
+        max_depth=4,
+        num_leaves=16,
+        min_child_samples=50,
+        learning_rate=0.05,
+        subsample=0.6,
+        colsample_bytree=0.5,
+        reg_alpha=0.5,
+        reg_lambda=0.5,
         random_state=42,
         verbosity=-1
     )
     strength_model.fit(X_train, y_train['target_strength'],
                        eval_set=[(X_val, y_val['target_strength'])],
-                       callbacks=[lgb.early_stopping(20, verbose=False)])
+                       callbacks=[lgb.early_stopping(30, verbose=False)])
     
     return {
         'direction': dir_model,
@@ -661,12 +667,20 @@ def print_trade_list(trades):
         time_str = t['timestamp'].strftime("%H:%M")
         pair_clean = t['pair'].replace('_', '/').replace(':USDT', '')
         
-        # Add emoji based on result
-        emoji = "🚀" if t['pnl_pct'] > 20 else "✅" if t['net_profit'] > 0 else "❌"
-        if t['net_profit'] > 0 and t['pnl_pct'] < 1: emoji = "🛡️" # Breakeven/Small profit
+        # Calculate trade ROE (Return on Equity/Margin used)
+        roe = t.get('roe', t['pnl_pct'])  # Use ROE if available, else fall back to pnl_pct
         
-        print(f"{pair_clean} ({t['direction']}) {time_str} — Profit: ${t['net_profit']:+,.2f} ({t['pnl_pct']:+.1f}%) {emoji}")
+        # Add emoji based on result
+        emoji = "🚀" if roe > 20 else "✅" if t['net_profit'] > 0 else "❌"
+        if t['net_profit'] > 0 and roe < 5: emoji = "🛡️" # Breakeven/Small profit
+        
+        # Show position size and leverage for clarity
+        lev = t.get('leverage', 1)
+        pos_size = t.get('position_size', 0)
+        
+        print(f"{pair_clean} ({t['direction']}) {time_str} — Profit: ${t['net_profit']:+,.2f} (ROE: {roe:+.1f}%) {emoji}")
         print(f"   Entry: {t['entry_price']:.5f} | Exit: {t['exit_price']:.5f} | Reason: {t['outcome']}")
+        print(f"   Position: ${pos_size:,.0f} @ {lev:.1f}x leverage | Balance after: ${t.get('balance_after', 0):,.2f}")
         print("-" * 30)
 
 
@@ -898,7 +912,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=60, help="Training days (reduced from 90 for faster convergence)")
     parser.add_argument("--test_days", type=int, default=14, help="Test days (out-of-sample)")
-    parser.add_argument("--pairs", type=int, default=20)
+    parser.add_argument("--pairs", type=int, default=20, help="Number of pairs to use from pairs_20.json")
+    parser.add_argument("--pair", type=str, default=None, help="Specific pair to train on (e.g., 'PIPPIN/USDT:USDT'). Overrides --pairs.")
+    parser.add_argument("--pairs_list", type=str, default=None, help="Comma-separated list of pairs (e.g., 'PIPPIN/USDT:USDT,ASTER/USDT:USDT,ZEC/USDT:USDT'). Overrides --pairs.")
     parser.add_argument("--output", type=str, default="./models/v8_improved")
     parser.add_argument("--initial_balance", type=float, default=100.0, help="Initial portfolio balance (realistic $100 start)")
     parser.add_argument("--check-dec25", action="store_true", help="Fetch and test specifically for Dec 25, 2025")
@@ -919,14 +935,26 @@ def main():
     
     # Load pairs
     import json
-    pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_20.json'
-    if not pairs_file.exists():
-        pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_list.json'
-        
-    with open(pairs_file) as f:
-        pairs_data = json.load(f)
-    pairs = [p['symbol'] for p in pairs_data['pairs'][:args.pairs]]
-    print(f"Loaded {len(pairs)} pairs from {pairs_file.name}")
+    
+    # Support for pairs list mode (multiple pairs via comma-separated list)
+    if args.pairs_list:
+        # Multiple pairs from comma-separated list
+        pairs = [p.strip() for p in args.pairs_list.split(',')]
+        print(f"🎯 MULTI PAIR MODE: {len(pairs)} pairs - {pairs}")
+    elif args.pair:
+        # Single pair mode - use the specified pair
+        pairs = [args.pair]
+        print(f"🎯 SINGLE PAIR MODE: {args.pair}")
+    else:
+        # Multi-pair mode - load from JSON file
+        pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_20.json'
+        if not pairs_file.exists():
+            pairs_file = Path(__file__).parent.parent / 'config' / 'pairs_list.json'
+            
+        with open(pairs_file) as f:
+            pairs_data = json.load(f)
+        pairs = [p['symbol'] for p in pairs_data['pairs'][:args.pairs]]
+        print(f"Loaded {len(pairs)} pairs from {pairs_file.name}")
     
     # Load data
     data_dir = Path(__file__).parent.parent / 'data' / 'candles'
