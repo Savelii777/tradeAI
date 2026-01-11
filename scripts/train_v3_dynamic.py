@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 """
-Train V13 - IMPULSE CATCHING Trading Model
-"Catch Big Moves, Not Noise"
+Train V14 - TIGHT STOP IMPULSE CATCHING
+"Small Risk, Big Reward"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
-- Focus on catching IMPULSE moves (2+ ATR) - not small wiggles
-- Target: Win Rate 50-60% but with BIG winners (3-10+ ATR moves)
+- TIGHT STOPS (0.8-1.0 ATR) for small risk per trade
+- BIG TARGETS (3-5+ ATR) for asymmetric R:R (1:3 to 1:5+)
+- Target: Win Rate 40-50% but winners >> losers
 
-V13 IMPULSE CATCHING IMPROVEMENTS:
-1. LOOKAHEAD increased: 12 → 18 bars (1.5 hours) - catch bigger moves
-2. Impulse threshold: Only signal when move >= 2 ATR expected
-3. Multi-timeframe analysis: 30min/1hr/1.5hr windows for different impulses
-4. Direction filter: Require 1.2x stronger move in predicted direction
-5. Balanced Models: 200 trees, depth 4, 12 leaves, class weights
-6. Huber Loss: Robust to outliers
-7. Feature importance logging: See what predicts impulses
+V14 TIGHT STOP IMPROVEMENTS:
+1. LOOKAHEAD increased: 18 → 24 bars (2 hours) - catch even bigger moves
+2. Impulse threshold: Only signal when move >= 3 ATR expected (was 2)
+3. TIGHT STOP LOSS: 0.8-1.0 ATR (was 1.2-1.6) - small risk
+4. FAST BREAKEVEN: Move to BE at 1.0-1.5 ATR (was 1.5-2.0)
+5. TIGHT TRAILING: Lock profits faster (0.4-1.5 ATR trail)
+6. Risk per trade: 3% (was 5%) - survive more losses
 
-KEY STRATEGY:
-- Wait for HIGH PROBABILITY setups (not every wiggle)
-- Fewer trades but BIGGER winners
-- Let winners run with proper trailing
+R:R MATH:
+- Stop: 1 ATR loss
+- Target: 5 ATR profit
+- Win rate needed: 20%+ to be profitable!
+- With 40% win rate: Expected value = 0.4 * 5 - 0.6 * 1 = +1.4 ATR per trade
 
 Run: python scripts/train_v3_dynamic.py --days 90 --test_days 30 --pairs 20 --walk-forward
 """
@@ -52,11 +53,11 @@ from train_mtf import MTFFeatureEngine
 # ============================================================
 # CONFIG
 # ============================================================
-SL_ATR_MULT = 1.5       # Base SL multiplier (adaptive based on strength)
+SL_ATR_MULT = 1.0       # V14: Tight SL for impulse catching (was 1.5)
 MAX_LEVERAGE = 50.0     # Maximum leverage (50x)
-RISK_PCT = 0.05         # 5% Risk per trade
+RISK_PCT = 0.03         # V14: 3% Risk per trade (was 5%) - smaller risk, more trades
 FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
-LOOKAHEAD = 18          # V13: 1.5 hours on M5 (was 12) - catch bigger moves
+LOOKAHEAD = 24          # V14: 2 hours on M5 (was 18) - catch even bigger moves
 
 # POSITION SIZE LIMITS
 # User requirement: up to $4M position, with leverage up to 50x
@@ -70,9 +71,10 @@ USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
 USE_DYNAMIC_LEVERAGE = True  # Boost leverage for high-confidence signals
 USE_AGGRESSIVE_TRAIL = True  # Tighter trailing at medium R-multiples
 
-# V13 IMPULSE CATCHING
-MIN_IMPULSE_ATR = 2.0        # Minimum move to qualify as impulse (2 ATR)
-IMPULSE_WEIGHT = 1.5         # Extra weight for impulse detection features
+# V14 IMPULSE CATCHING - TIGHT STOPS, BIG TARGETS
+MIN_IMPULSE_ATR = 3.0        # V14: Increased to 3 ATR (was 2) - only BIG moves
+TARGET_RR = 5.0              # Target Risk:Reward ratio (1:5)
+MAX_IMPULSE_LEVERAGE = 20.0  # Cap leverage for impulse trades
 
 
 # ============================================================
@@ -444,31 +446,29 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     direction = signal['direction']
     pred_strength = signal.get('pred_strength', 2.0)
     
-    # === V8: ADAPTIVE STOP LOSS (CORRECTED) ===
-    # Strong signal (High Conf) -> WIDER SL (Give room to breathe for big move)
-    # Weak signal (Low Conf) -> TIGHT SL (Cut losses fast if not moving)
+    # === V14: TIGHT STOP LOSS FOR IMPULSE CATCHING ===
+    # Goal: Small risk (0.8-1.0 ATR), big reward (3-5+ ATR)
+    # This gives R:R of 1:3 to 1:5+
     if USE_ADAPTIVE_SL:
-        if pred_strength >= 3.0:      # Strong signal: room to breathe
-            sl_mult = 1.6
-        elif pred_strength >= 2.0:    # Medium signal: standard
-            sl_mult = 1.5
-        else:                          # Weak signal: tight leash
-            sl_mult = 1.2
+        if pred_strength >= 3.0:      # Strong impulse: slightly wider (still tight)
+            sl_mult = 1.0
+        elif pred_strength >= 2.0:    # Medium impulse: tight
+            sl_mult = 0.9
+        else:                          # Weak signal: very tight (quick cut)
+            sl_mult = 0.8
     else:
         sl_mult = SL_ATR_MULT
     
     sl_dist = atr * sl_mult
     
-    # === V8: DYNAMIC BREAKEVEN TRIGGER ===
-    # Strong signals → later BE (let it run)
-    # Weak signals → faster BE (protect capital)
-    # V11: Increased all triggers to let trades develop more
+    # === V14: AGGRESSIVE BREAKEVEN FOR IMPULSE CATCHING ===
+    # Move to breakeven FAST to lock in gains and reduce risk to zero
     if pred_strength >= 3.0:
-        be_trigger_mult = 2.0   # Wait for 2.0 ATR before BE (was 1.8)
+        be_trigger_mult = 1.5   # Strong: wait for 1.5 ATR
     elif pred_strength >= 2.0:
-        be_trigger_mult = 1.8   # Standard (was 1.5)
+        be_trigger_mult = 1.2   # Medium: 1.2 ATR
     else:
-        be_trigger_mult = 1.5   # Fast BE for weak signals (was 1.2)
+        be_trigger_mult = 1.0   # Weak: breakeven at 1 ATR (same as SL)
     
     be_trigger_dist = atr * be_trigger_mult
     
@@ -499,7 +499,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['high'] >= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price + (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
+                sl_price = entry_price + (atr * 0.3)  # V14: Tighter BE margin (0.3 ATR) - we want tight stops
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -507,17 +507,17 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V11: LESS AGGRESSIVE TRAILING ===
-                # Give trades more room to develop, especially at early stages
+                # === V14: TIGHT TRAILING FOR IMPULSE CATCHING ===
+                # Lock in profits quickly but give room for big moves
                 if USE_AGGRESSIVE_TRAIL:
-                    if r_multiple > 5.0:      # Super Pump: Lock it in
-                        trail_mult = 0.5      # (was 0.4)
-                    elif r_multiple > 3.0:    # Good Trend: Tight trail
-                        trail_mult = 1.0      # (was 0.8)
+                    if r_multiple > 5.0:      # Big winner: Lock it in tight!
+                        trail_mult = 0.4
+                    elif r_multiple > 3.0:    # Good move: Tight trail
+                        trail_mult = 0.7
                     elif r_multiple > 2.0:    # Medium: Medium trail
-                        trail_mult = 1.5      # (was 1.2)
-                    else:                      # Early: Very Loose trail - let it breathe!
-                        trail_mult = 2.2      # (was 1.8)
+                        trail_mult = 1.0
+                    else:                      # Early: Give some room
+                        trail_mult = 1.5
                 else:
                     # Original logic
                     trail_mult = 2.0
@@ -539,7 +539,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['low'] <= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price - (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
+                sl_price = entry_price - (atr * 0.3)  # V14: Tighter BE margin (0.3 ATR)
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -547,17 +547,16 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V11: LESS AGGRESSIVE TRAILING ===
-                # Give trades more room to develop, especially at early stages
+                # === V14: TIGHT TRAILING FOR IMPULSE CATCHING ===
                 if USE_AGGRESSIVE_TRAIL:
-                    if r_multiple > 5.0:      # Super Pump
-                        trail_mult = 0.5      # (was 0.4)
-                    elif r_multiple > 3.0:    # Good Trend
-                        trail_mult = 1.0      # (was 0.8)
+                    if r_multiple > 5.0:      # Big winner
+                        trail_mult = 0.4
+                    elif r_multiple > 3.0:    # Good move
+                        trail_mult = 0.7
                     elif r_multiple > 2.0:    # Medium
-                        trail_mult = 1.5      # (was 1.2)
+                        trail_mult = 1.0
                     else:                      # Early
-                        trail_mult = 2.2      # (was 1.8)
+                        trail_mult = 1.5
                 else:
                     trail_mult = 2.0
                     if r_multiple > 5.0:
