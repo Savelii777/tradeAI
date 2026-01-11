@@ -217,6 +217,21 @@ ABSOLUTE_PRICE_FEATURES = [
     # Structure score can vary based on swing detection timing
     'structure_score',  # From market_structure.py
     'm5_structure_score',  # MTF variant
+    
+    # Market structure trend features that depend on swing detection or absolute values
+    'trend_strength',  # ADX-like, derived from ATR (absolute)
+    'trend_direction',  # Derived from trend_score which includes structure_score
+    'trend_score',  # Includes structure_trend from swing detection
+    'structure_trend',  # From structure_score (swing-based)
+    'm5_trend_strength', 'm5_trend_direction', 'm5_trend_score', 'm5_structure_trend',  # MTF
+    
+    # Linear regression trend features
+    'linreg_trend',  # Binary but based on linreg_slope_20
+    'm5_linreg_trend',  # MTF variant
+    
+    # Volatility features that can vary based on data window
+    'volatility_ratio',  # Ratio of volatility to historical average
+    'm5_volatility_ratio',  # MTF variant
 ]
 
 # Features to exclude from training (in addition to targets and raw OHLCV)
