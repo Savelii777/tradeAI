@@ -198,6 +198,11 @@ ABSOLUTE_PRICE_FEATURES = [
     'obv_slope',       # Rate of change of absolute volume - varies between coins
     'volume_delta_sum_20',  # Absolute volume sum
     'm5_obv_rolling_50', 'm5_obv_slope', 'm5_volume_delta_sum_20',  # MTF variants
+    
+    # Linear regression slope - raw price slope depends on price level
+    # At BTC $90K: slope = 100 | At BTC $30K: slope = 33 (3x difference!)
+    'linreg_slope_20',  # Raw slope from market_structure.py
+    'm5_linreg_slope_20',  # MTF variant
 ]
 
 # Features to exclude from training (in addition to targets and raw OHLCV)
