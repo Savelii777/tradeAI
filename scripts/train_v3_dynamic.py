@@ -407,12 +407,13 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     # === V8: DYNAMIC BREAKEVEN TRIGGER ===
     # Strong signals → later BE (let it run)
     # Weak signals → faster BE (protect capital)
+    # V11: Increased all triggers to let trades develop more
     if pred_strength >= 3.0:
-        be_trigger_mult = 1.8   # Wait for 1.8 ATR before BE
+        be_trigger_mult = 2.0   # Wait for 2.0 ATR before BE (was 1.8)
     elif pred_strength >= 2.0:
-        be_trigger_mult = 1.5   # Standard
+        be_trigger_mult = 1.8   # Standard (was 1.5)
     else:
-        be_trigger_mult = 1.2   # Fast BE for weak signals
+        be_trigger_mult = 1.5   # Fast BE for weak signals (was 1.2)
     
     be_trigger_dist = atr * be_trigger_mult
     
@@ -443,7 +444,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['high'] >= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price + (atr * 0.3)  # V8: Higher BE margin to cover slippage
+                sl_price = entry_price + (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -451,16 +452,17 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V8: AGGRESSIVE TRAILING ===
+                # === V11: LESS AGGRESSIVE TRAILING ===
+                # Give trades more room to develop, especially at early stages
                 if USE_AGGRESSIVE_TRAIL:
                     if r_multiple > 5.0:      # Super Pump: Lock it in
-                        trail_mult = 0.4
+                        trail_mult = 0.5      # (was 0.4)
                     elif r_multiple > 3.0:    # Good Trend: Tight trail
-                        trail_mult = 0.8
+                        trail_mult = 1.0      # (was 0.8)
                     elif r_multiple > 2.0:    # Medium: Medium trail
-                        trail_mult = 1.2
-                    else:                      # Early: Loose trail
-                        trail_mult = 1.8
+                        trail_mult = 1.5      # (was 1.2)
+                    else:                      # Early: Very Loose trail - let it breathe!
+                        trail_mult = 2.2      # (was 1.8)
                 else:
                     # Original logic
                     trail_mult = 2.0
@@ -482,7 +484,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['low'] <= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price - (atr * 0.3)  # V8: Higher BE margin to cover slippage
+                sl_price = entry_price - (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -490,16 +492,17 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V8: AGGRESSIVE TRAILING ===
+                # === V11: LESS AGGRESSIVE TRAILING ===
+                # Give trades more room to develop, especially at early stages
                 if USE_AGGRESSIVE_TRAIL:
                     if r_multiple > 5.0:      # Super Pump
-                        trail_mult = 0.4
+                        trail_mult = 0.5      # (was 0.4)
                     elif r_multiple > 3.0:    # Good Trend
-                        trail_mult = 0.8
+                        trail_mult = 1.0      # (was 0.8)
                     elif r_multiple > 2.0:    # Medium
-                        trail_mult = 1.2
+                        trail_mult = 1.5      # (was 1.2)
                     else:                      # Early
-                        trail_mult = 1.8
+                        trail_mult = 2.2      # (was 1.8)
                 else:
                     trail_mult = 2.0
                     if r_multiple > 5.0:

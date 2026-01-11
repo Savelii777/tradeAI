@@ -738,7 +738,8 @@ class PortfolioManager:
             'position_value': position_value, 'leverage': leverage,
             'mexc_symbol': mexc_symbol, 'volume': volume,
             'pred_strength': pred_strength, 'breakeven_active': False,
-            'be_trigger_mult': 1.5 if pred_strength >= 2.0 else 1.2
+            # V11: Increased BE trigger to let trades develop more
+            'be_trigger_mult': 2.0 if pred_strength >= 3.0 else (1.8 if pred_strength >= 2.0 else 1.5)
         }
         self.save_state()
         
@@ -761,23 +762,25 @@ class PortfolioManager:
         if pos['direction'] == 'LONG':
             if not pos['breakeven_active'] and candle_high >= pos['entry_price'] + be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] + atr * 0.3
+                pos['stop_loss'] = pos['entry_price'] + atr * 0.5  # V11: Increased from 0.3 to cover fees
                 logger.info(f"✅ Breakeven activated")
             
             if pos['breakeven_active']:
                 r_mult = (candle_high - pos['entry_price']) / pos['stop_distance']
-                trail = 0.4 if r_mult > 5 else (0.8 if r_mult > 3 else (1.2 if r_mult > 2 else 1.8))
+                # V11: Less aggressive trailing - give trades more room
+                trail = 0.5 if r_mult > 5 else (1.0 if r_mult > 3 else (1.5 if r_mult > 2 else 2.2))
                 new_sl = candle_high - atr * trail
                 if new_sl > pos['stop_loss']:
                     pos['stop_loss'] = new_sl
         else:
             if not pos['breakeven_active'] and candle_low <= pos['entry_price'] - be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] - atr * 0.3
+                pos['stop_loss'] = pos['entry_price'] - atr * 0.5  # V11: Increased from 0.3 to cover fees
             
             if pos['breakeven_active']:
                 r_mult = (pos['entry_price'] - candle_low) / pos['stop_distance']
-                trail = 0.4 if r_mult > 5 else (0.8 if r_mult > 3 else (1.2 if r_mult > 2 else 1.8))
+                # V11: Less aggressive trailing - give trades more room
+                trail = 0.5 if r_mult > 5 else (1.0 if r_mult > 3 else (1.5 if r_mult > 2 else 2.2))
                 new_sl = candle_low + atr * trail
                 if new_sl < pos['stop_loss']:
                     pos['stop_loss'] = new_sl
