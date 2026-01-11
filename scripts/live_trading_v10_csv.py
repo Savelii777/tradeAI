@@ -1201,6 +1201,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--pair", type=str, default=None, help="Specific pair to trade (e.g., 'PIPPIN/USDT:USDT'). Overrides pairs_20.json.")
+    parser.add_argument("--pairs_list", type=str, default=None, help="Comma-separated list of pairs (e.g., 'PIPPIN/USDT:USDT,ASTER/USDT:USDT,ZEC/USDT:USDT'). Overrides pairs_20.json.")
     cli_args = parser.parse_args()
     
     logger.info("=" * 70)
@@ -1243,8 +1244,11 @@ def main():
     # Load models
     try:
         models = load_models()
-        # Support for single pair mode
-        if cli_args.pair:
+        # Support for pairs list mode (multiple pairs via comma-separated list)
+        if cli_args.pairs_list:
+            pairs = [p.strip() for p in cli_args.pairs_list.split(',')]
+            logger.info(f"🎯 MULTI PAIR MODE: {len(pairs)} pairs - {pairs}")
+        elif cli_args.pair:
             pairs = [cli_args.pair]
             logger.info(f"🎯 SINGLE PAIR MODE: {cli_args.pair}")
         else:
