@@ -738,8 +738,8 @@ class PortfolioManager:
             'position_value': position_value, 'leverage': leverage,
             'mexc_symbol': mexc_symbol, 'volume': volume,
             'pred_strength': pred_strength, 'breakeven_active': False,
-            # V14: Fast breakeven for impulse catching
-            'be_trigger_mult': 1.5 if pred_strength >= 3.0 else (1.2 if pred_strength >= 2.0 else 1.0)
+            # V11: Increased BE trigger to let trades develop more
+            'be_trigger_mult': 2.0 if pred_strength >= 3.0 else (1.8 if pred_strength >= 2.0 else 1.5)
         }
         self.save_state()
         
@@ -755,33 +755,32 @@ class PortfolioManager:
         
         pos = self.position
         pred_strength = pos.get('pred_strength', 2.0)
-        # V14: Tight SL multipliers for impulse catching
-        sl_mult = 1.0 if pred_strength >= 3.0 else (0.9 if pred_strength >= 2.0 else 0.8)
+        sl_mult = 1.6 if pred_strength >= 3.0 else (1.5 if pred_strength >= 2.0 else 1.2)
         atr = pos['stop_distance'] / sl_mult
         be_trigger_dist = atr * pos['be_trigger_mult']
         
         if pos['direction'] == 'LONG':
             if not pos['breakeven_active'] and candle_high >= pos['entry_price'] + be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] + atr * 0.3  # V14: Tight BE margin
+                pos['stop_loss'] = pos['entry_price'] + atr * 0.5  # V11: Increased from 0.3 to cover fees
                 logger.info(f"✅ Breakeven activated")
             
             if pos['breakeven_active']:
                 r_mult = (candle_high - pos['entry_price']) / pos['stop_distance']
-                # V14: Tight trailing for impulse catching
-                trail = 0.4 if r_mult > 5 else (0.7 if r_mult > 3 else (1.0 if r_mult > 2 else 1.5))
+                # V11: Less aggressive trailing - give trades more room
+                trail = 0.5 if r_mult > 5 else (1.0 if r_mult > 3 else (1.5 if r_mult > 2 else 2.2))
                 new_sl = candle_high - atr * trail
                 if new_sl > pos['stop_loss']:
                     pos['stop_loss'] = new_sl
         else:
             if not pos['breakeven_active'] and candle_low <= pos['entry_price'] - be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] - atr * 0.3  # V14: Tight BE margin
+                pos['stop_loss'] = pos['entry_price'] - atr * 0.5  # V11: Increased from 0.3 to cover fees
             
             if pos['breakeven_active']:
                 r_mult = (pos['entry_price'] - candle_low) / pos['stop_distance']
-                # V14: Tight trailing for impulse catching
-                trail = 0.4 if r_mult > 5 else (0.7 if r_mult > 3 else (1.0 if r_mult > 2 else 1.5))
+                # V11: Less aggressive trailing - give trades more room
+                trail = 0.5 if r_mult > 5 else (1.0 if r_mult > 3 else (1.5 if r_mult > 2 else 2.2))
                 new_sl = candle_low + atr * trail
                 if new_sl < pos['stop_loss']:
                     pos['stop_loss'] = new_sl

@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
 """
-Train V14 - TIGHT STOP IMPULSE CATCHING
-"Small Risk, Big Reward"
+Train V12 - SMART ADAPTIVE Trading Model
+"Intelligence That Adapts to Market Conditions"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
-- TIGHT STOPS (0.8-1.0 ATR) for small risk per trade
-- BIG TARGETS (3-5+ ATR) for asymmetric R:R (1:3 to 1:5+)
-- Target: Win Rate 40-50% but winners >> losers
+- Smart balanced model: not too simple (underfitting), not too complex (overfitting)
+- Target: Win Rate 60-70% with CONFIDENT predictions on live.
 
-V14 TIGHT STOP IMPROVEMENTS:
-1. LOOKAHEAD increased: 18 → 24 bars (2 hours) - catch even bigger moves
-2. Impulse threshold: Only signal when move >= 3 ATR expected (was 2)
-3. TIGHT STOP LOSS: 0.8-1.0 ATR (was 1.2-1.6) - small risk
-4. FAST BREAKEVEN: Move to BE at 1.0-1.5 ATR (was 1.5-2.0)
-5. TIGHT TRAILING: Lock profits faster (0.4-1.5 ATR trail)
-6. Risk per trade: 3% (was 5%) - survive more losses
+V12 SMART ADAPTIVE IMPROVEMENTS:
+1. Balanced Models: 200 trees, depth 4, 12 leaves, min_child_samples=80
+2. Moderate Regularization: L1 + L2 = 0.5 each (not too strong, not too weak)
+3. Smart Subsampling: subsample=0.7, colsample_bytree=0.6 (more data per tree)
+4. Extra Trees: extra_trees=True for additional randomization
+5. Huber Loss: Robust to outliers in timing/strength prediction
+6. Class Weights: Balance direction labels automatically
+7. Multi-scale Volatility: Adapts thresholds to market conditions
+8. MAE/MFE Timing: Better entry quality scoring
 
-R:R MATH:
-- Stop: 1 ATR loss
-- Target: 5 ATR profit
-- Win rate needed: 20%+ to be profitable!
-- With 40% win rate: Expected value = 0.4 * 5 - 0.6 * 1 = +1.4 ATR per trade
+KEY FEATURES:
+- Adapts to different volatility regimes (quiet vs volatile markets)
+- Class-balanced training (handles imbalanced direction labels)
+- Feature importance logging (see what model learns)
+- Robust to outliers via Huber loss
 
 Run: python scripts/train_v3_dynamic.py --days 90 --test_days 30 --pairs 20 --walk-forward
 """
@@ -53,11 +54,11 @@ from train_mtf import MTFFeatureEngine
 # ============================================================
 # CONFIG
 # ============================================================
-SL_ATR_MULT = 1.0       # V14: Tight SL for impulse catching (was 1.5)
+SL_ATR_MULT = 1.5       # Base SL multiplier (adaptive based on strength)
 MAX_LEVERAGE = 50.0     # Maximum leverage (50x)
-RISK_PCT = 0.03         # V14: 3% Risk per trade (was 5%) - smaller risk, more trades
+RISK_PCT = 0.05         # 5% Risk per trade
 FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
-LOOKAHEAD = 24          # V14: 2 hours on M5 (was 18) - catch even bigger moves
+LOOKAHEAD = 12          # 1 hour on M5
 
 # POSITION SIZE LIMITS
 # User requirement: up to $4M position, with leverage up to 50x
@@ -70,11 +71,6 @@ SLIPPAGE_PCT = 0.0005         # 0.05% slippage (REALISTIC)
 USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
 USE_DYNAMIC_LEVERAGE = True  # Boost leverage for high-confidence signals
 USE_AGGRESSIVE_TRAIL = True  # Tighter trailing at medium R-multiples
-
-# V14 IMPULSE CATCHING - TIGHT STOPS, BIG TARGETS
-MIN_IMPULSE_ATR = 3.0        # V14: Increased to 3 ATR (was 2) - only BIG moves
-TARGET_RR = 5.0              # Target Risk:Reward ratio (1:5)
-MAX_IMPULSE_LEVERAGE = 20.0  # Cap leverage for impulse trades
 
 
 # ============================================================
@@ -165,82 +161,79 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 
 # ============================================================
-# V13 IMPULSE CATCHING TARGETS
+# V12 SMART ADAPTIVE TARGETS
 # ============================================================
 def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Create V13 Impulse-Catching targets.
+    Create V12 Smart Adaptive targets.
     
     KEY IMPROVEMENTS:
-    1. Focus on catching BIG moves (impulses) - 2+ ATR
-    2. Multi-timeframe momentum detection
-    3. Stricter direction filter - only trade when move is significant
-    4. Higher strength requirements for signal
+    1. Multi-scale volatility adaptation - adapts to different market conditions
+    2. Trend-aware thresholds - higher threshold in strong trends (avoid noise)
+    3. Time-weighted future returns - near-term matters more than far-term
+    4. Robust outlier handling
     
     The model learns to predict:
-    - Direction: Which way will a BIG move happen?
-    - Timing: How good is this entry for catching the impulse?
-    - Strength: How big will the impulse be? (in ATR multiples)
+    - Direction: Which way will price move significantly?
+    - Timing: How good is this entry point? (0-5 scale)
+    - Strength: How big will the move be? (in ATR multiples)
     """
     df = df.copy()
     df['atr'] = calculate_atr(df)
     
-    # 1. Look for IMPULSE moves - at least 2 ATR
-    # Use multiple windows to catch different impulse types
-    future_highs_short = df['high'].rolling(6).max().shift(-6)   # 30min impulse
-    future_lows_short = df['low'].rolling(6).min().shift(-6)
-    future_highs_med = df['high'].rolling(12).max().shift(-12)   # 1hour impulse
-    future_lows_med = df['low'].rolling(12).min().shift(-12)
-    future_highs_long = df['high'].rolling(LOOKAHEAD).max().shift(-LOOKAHEAD)  # Full window
-    future_lows_long = df['low'].rolling(LOOKAHEAD).min().shift(-LOOKAHEAD)
+    # 1. Multi-scale volatility for adaptive thresholds
+    # Use multiple windows to capture both short and long-term volatility
+    vol_short = df['close'].pct_change().rolling(window=20, min_periods=10).std()
+    vol_medium = df['close'].pct_change().rolling(window=50, min_periods=25).std()
+    vol_long = df['close'].pct_change().rolling(window=100, min_periods=50).std()
     
-    # Best possible move in each direction (in ATR)
-    best_up_short = (future_highs_short - df['close']) / df['atr']
-    best_down_short = (df['close'] - future_lows_short) / df['atr']
-    best_up_med = (future_highs_med - df['close']) / df['atr']
-    best_down_med = (df['close'] - future_lows_med) / df['atr']
-    best_up_long = (future_highs_long - df['close']) / df['atr']
-    best_down_long = (df['close'] - future_lows_long) / df['atr']
+    # Combine: use the HIGHER of recent or historical volatility
+    # This prevents false signals in quiet periods after volatile ones
+    combined_vol = np.maximum(vol_short, (vol_medium + vol_long) / 2)
+    combined_vol = combined_vol.shift(1)  # Use only past data
     
-    # 2. Combine: Use the BEST opportunity across timeframes
-    # Weight shorter timeframes more (faster confirmation)
-    best_up = 0.4 * best_up_short + 0.35 * best_up_med + 0.25 * best_up_long
-    best_down = 0.4 * best_down_short + 0.35 * best_down_med + 0.25 * best_down_long
+    # Adaptive threshold: at least 0.3% or 0.8x recent volatility
+    threshold = np.maximum(combined_vol * 0.8, 0.003)
     
-    # 3. Direction: Only signal when IMPULSE is expected (>= 2 ATR)
-    # 0=Down impulse, 1=No impulse (sideways), 2=Up impulse
-    impulse_threshold = MIN_IMPULSE_ATR  # 2.0 ATR minimum
+    # 2. Calculate future return with time-weighting
+    # Near-term movement is more important than far-term
+    future_return_6 = df['close'].pct_change(6).shift(-6)   # 30min
+    future_return_12 = df['close'].pct_change(12).shift(-12) # 1hour
     
+    # Weight: 60% near-term, 40% full window
+    future_return = 0.6 * future_return_6.fillna(0) + 0.4 * future_return_12.fillna(0)
+    
+    # 3. Direction with trend confirmation
+    # 0=Down, 1=Sideways, 2=Up
     df['target_dir'] = np.where(
-        (best_up >= impulse_threshold) & (best_up > best_down * 1.2),  # Up impulse stronger
-        2,
-        np.where(
-            (best_down >= impulse_threshold) & (best_down > best_up * 1.2),  # Down impulse stronger
-            0,
-            1  # No clear impulse
-        )
+        future_return > threshold, 2,
+        np.where(future_return < -threshold, 0, 1)
     )
     
-    # 4. Timing: Quality of entry for catching the impulse
-    # MAE = Maximum Adverse Excursion (drawdown before profit)
-    mae_long = (df['close'] - future_lows_long) / df['atr']
-    mae_short = (future_highs_long - df['close']) / df['atr']
+    # 4. Timing Target: Entry quality score
+    future_lows = df['low'].rolling(LOOKAHEAD).min().shift(-LOOKAHEAD)
+    future_highs = df['high'].rolling(LOOKAHEAD).max().shift(-LOOKAHEAD)
     
-    # Timing = MFE / (1 + MAE) - penalize entries with high drawdown
-    timing_long = best_up_long / (1 + mae_long)
-    timing_short = best_down_long / (1 + mae_short)
+    # Maximum Adverse Excursion (MAE) - how much does price go against us first?
+    mae_long = (df['close'] - future_lows) / df['atr']
+    mae_short = (future_highs - df['close']) / df['atr']
     
-    # Use timing for the predicted direction
-    df['target_timing'] = np.where(
-        df['target_dir'] == 2, timing_long,
-        np.where(df['target_dir'] == 0, timing_short, 0)
-    )
+    # Maximum Favorable Excursion (MFE) - how much profit potential?
+    mfe_long = (future_highs - df['close']) / df['atr']
+    mfe_short = (df['close'] - future_lows) / df['atr']
+    
+    # Timing score = MFE / (1 + MAE) - penalize entries with high drawdown
+    timing_long = mfe_long / (1 + mae_long)
+    timing_short = mfe_short / (1 + mae_short)
+    
+    df['target_timing'] = np.maximum(timing_long, timing_short)
     df['target_timing'] = df['target_timing'].clip(0, 5)
     
-    # 5. Strength: Actual impulse size (in ATRs)
+    # 5. Strength: Directional move potential
+    # How much does price move in the predicted direction?
     df['target_strength'] = np.where(
-        df['target_dir'] == 2, best_up_long,
-        np.where(df['target_dir'] == 0, best_down_long, 0)
+        df['target_dir'] == 2, mfe_long,
+        np.where(df['target_dir'] == 0, mfe_short, 0)
     )
     df['target_strength'] = df['target_strength'].clip(0, 10)
     
@@ -446,29 +439,31 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     direction = signal['direction']
     pred_strength = signal.get('pred_strength', 2.0)
     
-    # === V14: TIGHT STOP LOSS FOR IMPULSE CATCHING ===
-    # Goal: Small risk (0.8-1.0 ATR), big reward (3-5+ ATR)
-    # This gives R:R of 1:3 to 1:5+
+    # === V8: ADAPTIVE STOP LOSS (CORRECTED) ===
+    # Strong signal (High Conf) -> WIDER SL (Give room to breathe for big move)
+    # Weak signal (Low Conf) -> TIGHT SL (Cut losses fast if not moving)
     if USE_ADAPTIVE_SL:
-        if pred_strength >= 3.0:      # Strong impulse: slightly wider (still tight)
-            sl_mult = 1.0
-        elif pred_strength >= 2.0:    # Medium impulse: tight
-            sl_mult = 0.9
-        else:                          # Weak signal: very tight (quick cut)
-            sl_mult = 0.8
+        if pred_strength >= 3.0:      # Strong signal: room to breathe
+            sl_mult = 1.6
+        elif pred_strength >= 2.0:    # Medium signal: standard
+            sl_mult = 1.5
+        else:                          # Weak signal: tight leash
+            sl_mult = 1.2
     else:
         sl_mult = SL_ATR_MULT
     
     sl_dist = atr * sl_mult
     
-    # === V14: AGGRESSIVE BREAKEVEN FOR IMPULSE CATCHING ===
-    # Move to breakeven FAST to lock in gains and reduce risk to zero
+    # === V8: DYNAMIC BREAKEVEN TRIGGER ===
+    # Strong signals → later BE (let it run)
+    # Weak signals → faster BE (protect capital)
+    # V11: Increased all triggers to let trades develop more
     if pred_strength >= 3.0:
-        be_trigger_mult = 1.5   # Strong: wait for 1.5 ATR
+        be_trigger_mult = 2.0   # Wait for 2.0 ATR before BE (was 1.8)
     elif pred_strength >= 2.0:
-        be_trigger_mult = 1.2   # Medium: 1.2 ATR
+        be_trigger_mult = 1.8   # Standard (was 1.5)
     else:
-        be_trigger_mult = 1.0   # Weak: breakeven at 1 ATR (same as SL)
+        be_trigger_mult = 1.5   # Fast BE for weak signals (was 1.2)
     
     be_trigger_dist = atr * be_trigger_mult
     
@@ -499,7 +494,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['high'] >= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price + (atr * 0.3)  # V14: Tighter BE margin (0.3 ATR) - we want tight stops
+                sl_price = entry_price + (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -507,17 +502,17 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V14: TIGHT TRAILING FOR IMPULSE CATCHING ===
-                # Lock in profits quickly but give room for big moves
+                # === V11: LESS AGGRESSIVE TRAILING ===
+                # Give trades more room to develop, especially at early stages
                 if USE_AGGRESSIVE_TRAIL:
-                    if r_multiple > 5.0:      # Big winner: Lock it in tight!
-                        trail_mult = 0.4
-                    elif r_multiple > 3.0:    # Good move: Tight trail
-                        trail_mult = 0.7
+                    if r_multiple > 5.0:      # Super Pump: Lock it in
+                        trail_mult = 0.5      # (was 0.4)
+                    elif r_multiple > 3.0:    # Good Trend: Tight trail
+                        trail_mult = 1.0      # (was 0.8)
                     elif r_multiple > 2.0:    # Medium: Medium trail
-                        trail_mult = 1.0
-                    else:                      # Early: Give some room
-                        trail_mult = 1.5
+                        trail_mult = 1.5      # (was 1.2)
+                    else:                      # Early: Very Loose trail - let it breathe!
+                        trail_mult = 2.2      # (was 1.8)
                 else:
                     # Original logic
                     trail_mult = 2.0
@@ -539,7 +534,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['low'] <= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price - (atr * 0.3)  # V14: Tighter BE margin (0.3 ATR)
+                sl_price = entry_price - (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -547,16 +542,17 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V14: TIGHT TRAILING FOR IMPULSE CATCHING ===
+                # === V11: LESS AGGRESSIVE TRAILING ===
+                # Give trades more room to develop, especially at early stages
                 if USE_AGGRESSIVE_TRAIL:
-                    if r_multiple > 5.0:      # Big winner
-                        trail_mult = 0.4
-                    elif r_multiple > 3.0:    # Good move
-                        trail_mult = 0.7
+                    if r_multiple > 5.0:      # Super Pump
+                        trail_mult = 0.5      # (was 0.4)
+                    elif r_multiple > 3.0:    # Good Trend
+                        trail_mult = 1.0      # (was 0.8)
                     elif r_multiple > 2.0:    # Medium
-                        trail_mult = 1.0
+                        trail_mult = 1.5      # (was 1.2)
                     else:                      # Early
-                        trail_mult = 1.5
+                        trail_mult = 2.2      # (was 1.8)
                 else:
                     trail_mult = 2.0
                     if r_multiple > 5.0:
