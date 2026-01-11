@@ -108,10 +108,10 @@ class Config:
     # Timeframes
     TIMEFRAMES = ['1m', '5m', '15m']
     
-    # V8 Signal Thresholds (match backtest)
-    MIN_CONF = 0.50
-    MIN_TIMING = 0.8
-    MIN_STRENGTH = 1.4
+    # V16 Signal Thresholds (optimized for higher win rate)
+    MIN_CONF = 0.62
+    MIN_TIMING = 1.5
+    MIN_STRENGTH = 1.8
     
     # Risk Management
     RISK_PCT = 0.05
@@ -738,8 +738,8 @@ class PortfolioManager:
             'position_value': position_value, 'leverage': leverage,
             'mexc_symbol': mexc_symbol, 'volume': volume,
             'pred_strength': pred_strength, 'breakeven_active': False,
-            # V11: Increased BE trigger to let trades develop more
-            'be_trigger_mult': 2.0 if pred_strength >= 3.0 else (1.8 if pred_strength >= 2.0 else 1.5)
+            # V14: Balanced BE trigger - not too early (small profits), not too late (more SL hits)
+            'be_trigger_mult': 2.5 if pred_strength >= 3.0 else (2.2 if pred_strength >= 2.0 else 1.8)
         }
         self.save_state()
         
@@ -762,25 +762,25 @@ class PortfolioManager:
         if pos['direction'] == 'LONG':
             if not pos['breakeven_active'] and candle_high >= pos['entry_price'] + be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] + atr * 0.5  # V11: Increased from 0.3 to cover fees
-                logger.info(f"✅ Breakeven activated")
+                pos['stop_loss'] = pos['entry_price'] + atr * 1.0  # V14: Lock meaningful profit when BE triggers
+                logger.info(f"✅ Breakeven activated at +{atr * 1.0:.6f}")
             
             if pos['breakeven_active']:
                 r_mult = (candle_high - pos['entry_price']) / pos['stop_distance']
-                # V11: Less aggressive trailing - give trades more room
-                trail = 0.5 if r_mult > 5 else (1.0 if r_mult > 3 else (1.5 if r_mult > 2 else 2.2))
+                # V14: Balanced trailing - tighter at high R, looser early
+                trail = 0.6 if r_mult > 5 else (1.2 if r_mult > 3 else (1.8 if r_mult > 2 else 2.5))
                 new_sl = candle_high - atr * trail
                 if new_sl > pos['stop_loss']:
                     pos['stop_loss'] = new_sl
         else:
             if not pos['breakeven_active'] and candle_low <= pos['entry_price'] - be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] - atr * 0.5  # V11: Increased from 0.3 to cover fees
+                pos['stop_loss'] = pos['entry_price'] - atr * 1.0  # V14: Lock meaningful profit when BE triggers
             
             if pos['breakeven_active']:
                 r_mult = (pos['entry_price'] - candle_low) / pos['stop_distance']
-                # V11: Less aggressive trailing - give trades more room
-                trail = 0.5 if r_mult > 5 else (1.0 if r_mult > 3 else (1.5 if r_mult > 2 else 2.2))
+                # V14: Balanced trailing - tighter at high R, looser early
+                trail = 0.6 if r_mult > 5 else (1.2 if r_mult > 3 else (1.8 if r_mult > 2 else 2.5))
                 new_sl = candle_low + atr * trail
                 if new_sl < pos['stop_loss']:
                     pos['stop_loss'] = new_sl
@@ -840,9 +840,15 @@ def prepare_features(data: Dict[str, pd.DataFrame], mtf_fe: MTFFeatureEngine) ->
     
     This is the key function that ensures live matches backtest.
     """
-    m1 = data['1m']
-    m5 = data['5m']
-    m15 = data['15m']
+    # Use only last N candles - matches backtest window size
+    # This ensures rolling indicators have same context as training
+    LOOKBACK_M1 = 7500   # ~5 days of 1m data
+    LOOKBACK_M5 = 1500   # ~5 days of 5m data  
+    LOOKBACK_M15 = 500   # ~5 days of 15m data
+    
+    m1 = data['1m'].tail(LOOKBACK_M1)
+    m5 = data['5m'].tail(LOOKBACK_M5)
+    m15 = data['15m'].tail(LOOKBACK_M15)
     
     logger.debug(f"Preparing features from CSV: M1={len(m1)}, M5={len(m5)}, M15={len(m15)}")
     

@@ -240,3 +240,190 @@ DEFAULT_EXCLUDE_FEATURES = [
     'open', 'high', 'low', 'close', 'volume', 'atr', 'price_change',
     'vol_sma_20', 'm15_volume_ma', 'm15_atr', 'vwap',
 ]
+
+# ============================================================
+# CORE 20 FEATURES (V15) - Absolute minimum for live trading
+# ============================================================
+# Only 20 features that are:
+# 1. 100% relative/normalized (no absolute prices)
+# 2. Bounded or stable range
+# 3. High predictive power (top importance)
+# 4. Work identically in live and backtest
+CORE_20_FEATURES = [
+    # === ATR % (3) - Most important, always relative ===
+    'm5_atr_14_pct',           # ATR as % of price - core volatility
+    'm5_atr_ratio',            # ATR vs its moving average
+    'm15_atr_pct',             # M15 context volatility
+    
+    # === RETURNS % (4) - Inherently relative ===
+    'm5_return_1',             # 1-bar return %
+    'm5_return_5',             # 5-bar return %
+    'm5_return_10',            # 10-bar return %
+    'm5_return_20',            # 20-bar return %
+    
+    # === RSI (3) - Bounded 0-100, universal ===
+    'm5_rsi_7',                # Fast RSI
+    'm5_rsi_14',               # Standard RSI
+    'm15_rsi',                 # M15 RSI context
+    
+    # === POSITION (3) - All 0-1 or normalized ===
+    'm5_close_position',       # Where close is in H/L range (0-1)
+    'm5_bb_position',          # Position in Bollinger Bands
+    'm5_bb_width',             # BB width normalized
+    
+    # === VOLUME (3) - Ratios, always relative ===
+    'm5_volume_ratio_5',       # Volume vs 5-period MA
+    'm5_volume_ratio_20',      # Volume vs 20-period MA
+    'vol_ratio',               # Current volume ratio
+    
+    # === STRUCTURE (2) - Binary, universal ===
+    'm5_higher_high',          # Made higher high (0/1)
+    'm5_lower_low',            # Made lower low (0/1)
+    
+    # === M15 CONTEXT (2) - Trend/momentum ===
+    'm15_trend',               # M15 trend direction
+    'm15_momentum',            # M15 momentum
+    
+    # === ADDITIONAL STABLE (3) - Proven stable in live ===
+    'vol_zscore',              # Volume z-score (relative)
+    'm5_ema_9_dist',           # Distance to EMA9 as % (relative)
+    'm5_atr_vs_avg',           # ATR vs 50-period average (more stable than MACD)
+]
+# Total: 23 features - core set with 3 extra proven stable
+
+# ============================================================
+# ULTRA MINIMAL FEATURES (V14) - Only TOP 40 by importance
+# ============================================================
+# Based on feature importance analysis from all 3 models
+# These features have the highest predictive power and are STABLE
+ULTRA_MINIMAL_FEATURES = [
+    # === TOP ATR FEATURES (highest importance!) ===
+    'm5_atr_7_pct', 'm5_atr_14_pct', 'm5_atr_21_pct',  # ATR as % of price
+    'm5_atr_ratio', 'm5_atr_vs_avg',                   # ATR ratios
+    'm15_atr_pct',                                      # M15 ATR %
+    
+    # === SWING STRUCTURE (top importance in direction model) ===
+    'm5_swing_high', 'm5_swing_low',                   # Binary swing points
+    'm5_higher_high', 'm5_higher_low',                 # Structure patterns
+    'm5_lower_high', 'm5_lower_low',
+    
+    # === RANGE FEATURES ===
+    'm5_hl_range_ratio',                               # Range ratio (relative)
+    'm5_close_position',                               # Position in range (0-1)
+    'm5_bb_width',                                     # BB width (normalized)
+    'm5_bb_position',                                  # Position in BB
+    
+    # === RETURNS (always percentage, inherently stable) ===
+    'm5_return_1', 'm5_return_5', 'm5_return_10', 'm5_return_20',
+    
+    # === TIME FEATURES (cyclical, stable) ===
+    'm5_hour_sin', 'm5_hour_cos',
+    'm5_day_sin', 'm5_day_cos',
+    'm5_session_asian', 'm5_session_european', 'm5_session_american',
+    
+    # === REGIME (categorical, stable) ===
+    'm5_regime_strong_downtrend', 'm5_regime_strong_uptrend',
+    'm5_regime_high_volatility',
+    
+    # === RSI (0-100 bounded, stable) ===
+    'm5_rsi_7', 'm5_rsi_14',
+    'm5_rsi_7_change', 'm5_rsi_14_change',
+    
+    # === VOLUME RATIOS (relative, stable) ===
+    'm5_volume_ratio_5', 'm5_volume_ratio_10', 'm5_volume_ratio_20',
+    'vol_ratio', 'vol_zscore',
+    
+    # === EMA DISTANCES (percentage, stable) ===
+    'm5_ema_9_dist', 'm5_ema_21_dist',
+    'm5_ema_50_200_cross',
+    
+    # === SUPPORT/RESISTANCE (binary/relative) ===
+    'm5_at_support', 'm5_at_resistance',
+    'm5_dist_to_support', 'm5_dist_to_resistance',
+    
+    # === M15 CONTEXT (minimal, relative only) ===
+    'm15_trend', 'm15_momentum', 'm15_rsi',
+]
+# Total: ~50 features - ultra minimal and stable!
+
+# ============================================================
+# MINIMAL STABLE FEATURES (V13)
+# ============================================================
+# ONLY relative/normalized features that are STABLE between backtest and live
+# These features don't depend on absolute price level or historical window size
+#
+# Key principles:
+# 1. All values are RELATIVE (ratios, percentages, normalized)
+# 2. No cumsum-dependent calculations
+# 3. No absolute price values (EMA, BB levels, ATR in dollars)
+# 4. Remove useless features (importance=0 in analysis)
+
+MINIMAL_STABLE_FEATURES = [
+    # === CORE MOMENTUM (RSI, Stoch - always 0-100, stable) ===
+    'm5_rsi_7', 'm5_rsi_14',                    # RSI: 0-100 range, stable
+    'm5_rsi_7_change', 'm5_rsi_14_change',      # RSI momentum
+    'm5_stoch_k', 'm5_stoch_d', 'm5_stoch_cross',  # Stochastic: 0-100
+    
+    # === PRICE POSITION (relative to recent range) ===
+    'm5_close_position',          # Where close is in today's range (0-1)
+    'm5_range_position',          # Position in recent range (0-1)
+    'm5_bb_position',             # Position in Bollinger Bands (-1 to +1)
+    'm5_bb_squeeze',              # BB squeeze (normalized)
+    
+    # === EMA DISTANCES (relative, not absolute) ===
+    'm5_ema_9_dist', 'm5_ema_21_dist', 'm5_ema_50_dist', 'm5_ema_200_dist',  # % distance
+    'm5_ema_trend',               # EMA alignment direction
+    'm5_price_above_ema_9', 'm5_price_above_ema_21',   # Binary: above/below
+    'm5_price_above_ema_50', 'm5_price_above_ema_200',
+    'm5_ema_9_21_cross', 'm5_ema_50_200_cross',  # Cross signals
+    
+    # === VOLATILITY (normalized to ATR) ===
+    'm5_atr_7_pct', 'm5_atr_14_pct', 'm5_atr_21_pct',  # ATR as % of price
+    'm5_atr_ratio', 'm5_atr_vs_avg',           # ATR relative to average
+    'm5_hl_range_ratio',                       # Range ratio (not absolute!)
+    
+    # === SWING STRUCTURE (binary/relative) ===
+    'm5_swing_high', 'm5_swing_low',           # Binary: is swing
+    'm5_higher_high', 'm5_higher_low',         # Structure binary
+    'm5_lower_high', 'm5_lower_low',
+    
+    # === RETURNS (always percentage, stable) ===
+    'm5_return_1', 'm5_return_5', 'm5_return_10', 'm5_return_20',
+    'm5_log_return_1',
+    
+    # === VOLUME (relative ratios) ===
+    'm5_volume_ratio_5', 'm5_volume_ratio_10', 'm5_volume_ratio_20',  # Ratios
+    'vol_ratio', 'vol_zscore',                 # Normalized volume
+    
+    # === MACD (normalized signals only, not absolute values) ===
+    'm5_macd_above_zero', 'm5_macd_cross',     # Binary signals
+    
+    # === TIME FEATURES (cyclical, stable) ===
+    'm5_hour_sin', 'm5_hour_cos',              # Hour of day (0-1)
+    'm5_day_sin', 'm5_day_cos',                # Day of week (0-1)
+    'm5_session_asian', 'm5_session_european', 'm5_session_american',  # Binary
+    
+    # === REGIME (one-hot encoded, stable) ===
+    'm5_regime_strong_uptrend', 'm5_regime_weak_uptrend',
+    'm5_regime_strong_downtrend', 'm5_regime_weak_downtrend',
+    'm5_regime_ranging', 'm5_regime_high_volatility',
+    
+    # === SUPPORT/RESISTANCE (relative) ===
+    'm5_at_support', 'm5_at_resistance',       # Binary
+    'm5_dist_to_support', 'm5_dist_to_resistance',  # Relative distance
+    'm5_breakout_up', 'm5_breakout_down',      # Binary
+    
+    # === M15 CONTEXT (relative only) ===
+    'm15_rsi', 'm15_trend', 'm15_momentum',
+    'm15_atr_pct',                             # ATR as % (not absolute)
+    'm15_volume_ratio',                        # Relative
+    
+    # === M1 MICRO (relative only) ===
+    'm1_momentum_1_last', 'm1_momentum_3_last', 'm1_momentum_5_last',  # Returns %
+    'm1_rsi_5_last', 'm1_rsi_9_last',          # RSI 0-100
+    'm1_micro_trend_last',                     # Trend direction
+    'm1_vwap_dist_last',                       # % distance to VWAP
+]
+
+# Total: ~75 features (down from 125)
+# All STABLE between backtest and live!

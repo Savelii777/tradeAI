@@ -46,10 +46,19 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.features.feature_engine import FeatureEngine
 from src.utils.constants import (
-    CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES, DEFAULT_EXCLUDE_FEATURES
+    CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES, DEFAULT_EXCLUDE_FEATURES,
+    MINIMAL_STABLE_FEATURES, ULTRA_MINIMAL_FEATURES, CORE_20_FEATURES
 )
 from train_mtf import MTFFeatureEngine
 
+# ============================================================
+# FEATURE MODE: 
+#   'core20' = only 20 most stable features (EXPERIMENTAL)
+#   'ultra' = only TOP 50 features by importance (RECOMMENDED for live)
+#   'minimal' = 75 stable features
+#   'full' = all 125 features
+# ============================================================
+FEATURE_MODE = 'core20'  # 'core20', 'ultra', 'minimal' or 'full'
 
 # ============================================================
 # CONFIG
@@ -264,91 +273,82 @@ def train_models(X_train, y_train, X_val, y_val):
     class_weights = {k: total / (3 * v) for k, v in label_counts.items()}
     sample_weights = np.array([class_weights[y] for y in y_train['target_dir']])
     
-    # 1. Direction Model (Multiclass) - SMART BALANCED
-    print("   Training Direction Model (V12 Smart Adaptive)...")
+    # 1. Direction Model (Multiclass) - ANTI-OVERFIT VERSION
+    print("   Training Direction Model (High Confidence)...")
     dir_model = lgb.LGBMClassifier(
         objective='multiclass', 
         num_class=3, 
         metric='multi_logloss',
-        boosting_type='gbdt',      # Standard gradient boosting
-        n_estimators=200,          # More trees for stable estimates
-        max_depth=4,               # Medium depth - capture patterns but not noise
-        num_leaves=12,             # Balanced leaves
-        min_child_samples=80,      # Robust splits
-        learning_rate=0.02,        # Slower learning = better generalization
-        subsample=0.7,             # Use 70% of data per tree
-        subsample_freq=1,          # Subsample every iteration
-        colsample_bytree=0.6,      # Use 60% of features per tree
-        reg_alpha=0.5,             # L1 regularization
-        reg_lambda=0.5,            # L2 regularization
-        min_split_gain=0.005,      # Require meaningful splits
-        extra_trees=True,          # Extra randomization for generalization
-        path_smooth=0.1,           # Smoothing for path predictions
+        boosting_type='gbdt',
+        n_estimators=100,          # Fewer trees = less overfit
+        max_depth=3,               # Very shallow
+        num_leaves=8,              # Minimal leaves
+        min_child_samples=100,     # High = only robust patterns
+        learning_rate=0.05,        # Faster = less memorization
+        subsample=0.7,             # More randomness
+        colsample_bytree=0.6,      # Less features per tree
+        reg_alpha=0.5,             # Strong L1 regularization
+        reg_lambda=0.5,            # Strong L2 regularization
+        min_split_gain=0.01,       # Higher threshold for splits
         random_state=42, 
         verbosity=-1,
-        importance_type='gain'     # Use gain for feature importance
+        importance_type='gain'
     )
     dir_model.fit(
         X_train, y_train['target_dir'], 
-        sample_weight=sample_weights,  # Class balancing
+        sample_weight=sample_weights,
         eval_set=[(X_val, y_val['target_dir'])],
-        callbacks=[lgb.early_stopping(80, verbose=False)]  # More patience
+        callbacks=[lgb.early_stopping(30, verbose=False)]
     )
     
-    # 2. Timing Model (Regressor) - Predicts entry quality
-    print("   Training Timing Model (V12 Smart Adaptive)...")
+    # 2. Timing Model (Regressor) - ANTI-OVERFIT VERSION
+    print("   Training Timing Model (High Predictions)...")
     timing_model = lgb.LGBMRegressor(
-        objective='huber',         # Huber loss - robust to outliers
+        objective='regression',
         metric='mae',
         boosting_type='gbdt',
-        n_estimators=200,
-        max_depth=4,
-        num_leaves=12,
-        min_child_samples=80,
-        learning_rate=0.02,
+        n_estimators=100,
+        max_depth=3,
+        num_leaves=8,
+        min_child_samples=100,
+        learning_rate=0.05,
         subsample=0.7,
-        subsample_freq=1,
         colsample_bytree=0.6,
         reg_alpha=0.5,
         reg_lambda=0.5,
-        min_split_gain=0.005,
-        extra_trees=True,
-        path_smooth=0.1,
+        min_split_gain=0.01,
         random_state=42,
         verbosity=-1
     )
     timing_model.fit(
         X_train, y_train['target_timing'],
         eval_set=[(X_val, y_val['target_timing'])],
-        callbacks=[lgb.early_stopping(80, verbose=False)]
+        callbacks=[lgb.early_stopping(30, verbose=False)]
     )
     
-    # 3. Strength Model (Regression) - Predicts move magnitude
-    print("   Training Strength Model (V12 Smart Adaptive)...")
+    # 3. Strength Model (Regression) - ANTI-OVERFIT VERSION
+    print("   Training Strength Model (High Predictions)...")
     strength_model = lgb.LGBMRegressor(
-        objective='huber',         # Huber loss - robust to outliers
+        objective='regression',
         metric='mae',
         boosting_type='gbdt',
-        n_estimators=200,
-        max_depth=4,
-        num_leaves=12,
-        min_child_samples=80,
-        learning_rate=0.02,
+        n_estimators=100,
+        max_depth=3,
+        num_leaves=8,
+        min_child_samples=100,
+        learning_rate=0.05,
         subsample=0.7,
-        subsample_freq=1,
         colsample_bytree=0.6,
         reg_alpha=0.5,
         reg_lambda=0.5,
-        min_split_gain=0.005,
-        extra_trees=True,
-        path_smooth=0.1,
+        min_split_gain=0.01,
         random_state=42,
         verbosity=-1
     )
     strength_model.fit(
         X_train, y_train['target_strength'],
         eval_set=[(X_val, y_val['target_strength'])],
-        callbacks=[lgb.early_stopping(80, verbose=False)]
+        callbacks=[lgb.early_stopping(30, verbose=False)]
     )
     
     # Log feature importance for top 20 features
@@ -370,7 +370,7 @@ def train_models(X_train, y_train, X_val, y_val):
 # PORTFOLIO BACKTEST (V9 - Realistic Thresholds)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.50, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
+                    min_conf: float = 0.62, min_timing: float = 1.5, min_strength: float = 1.8) -> list:
                     
     """
     Generate all valid signals for a single pair.
@@ -454,16 +454,14 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     
     sl_dist = atr * sl_mult
     
-    # === V8: DYNAMIC BREAKEVEN TRIGGER ===
-    # Strong signals → later BE (let it run)
-    # Weak signals → faster BE (protect capital)
-    # V11: Increased all triggers to let trades develop more
+    # === BALANCED BREAKEVEN TRIGGER ===
+    # Not too early (loses profits), not too late (more stop losses)
     if pred_strength >= 3.0:
-        be_trigger_mult = 2.0   # Wait for 2.0 ATR before BE (was 1.8)
+        be_trigger_mult = 2.5   # Strong: wait for 2.5 ATR before BE
     elif pred_strength >= 2.0:
-        be_trigger_mult = 1.8   # Standard (was 1.5)
+        be_trigger_mult = 2.2   # Medium: wait for 2.2 ATR
     else:
-        be_trigger_mult = 1.5   # Fast BE for weak signals (was 1.2)
+        be_trigger_mult = 1.8   # Weak: wait for 1.8 ATR
     
     be_trigger_dist = atr * be_trigger_mult
     
@@ -494,7 +492,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['high'] >= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price + (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
+                sl_price = entry_price + (atr * 1.0)  # BE margin = 1.0 ATR profit locked
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -502,17 +500,17 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V11: LESS AGGRESSIVE TRAILING ===
-                # Give trades more room to develop, especially at early stages
+                # === BALANCED TRAILING ===
+                # Lock profits but give room for continuation
                 if USE_AGGRESSIVE_TRAIL:
-                    if r_multiple > 5.0:      # Super Pump: Lock it in
-                        trail_mult = 0.5      # (was 0.4)
-                    elif r_multiple > 3.0:    # Good Trend: Tight trail
-                        trail_mult = 1.0      # (was 0.8)
-                    elif r_multiple > 2.0:    # Medium: Medium trail
-                        trail_mult = 1.5      # (was 1.2)
-                    else:                      # Early: Very Loose trail - let it breathe!
-                        trail_mult = 2.2      # (was 1.8)
+                    if r_multiple > 5.0:      # Super Pump: Lock it
+                        trail_mult = 0.6
+                    elif r_multiple > 3.0:    # Good Trend: Medium trail
+                        trail_mult = 1.2
+                    elif r_multiple > 2.0:    # Developing: Loose trail
+                        trail_mult = 1.8
+                    else:                      # Early: Let it breathe
+                        trail_mult = 2.5
                 else:
                     # Original logic
                     trail_mult = 2.0
@@ -534,7 +532,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['low'] <= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price - (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
+                sl_price = entry_price - (atr * 1.0)  # BE margin = 1.0 ATR profit locked
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -542,17 +540,17 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V11: LESS AGGRESSIVE TRAILING ===
-                # Give trades more room to develop, especially at early stages
+                # === BALANCED TRAILING ===
+                # Lock profits but give room for continuation
                 if USE_AGGRESSIVE_TRAIL:
                     if r_multiple > 5.0:      # Super Pump
-                        trail_mult = 0.5      # (was 0.4)
+                        trail_mult = 0.6
                     elif r_multiple > 3.0:    # Good Trend
-                        trail_mult = 1.0      # (was 0.8)
-                    elif r_multiple > 2.0:    # Medium
-                        trail_mult = 1.5      # (was 1.2)
+                        trail_mult = 1.2
+                    elif r_multiple > 2.0:    # Developing
+                        trail_mult = 1.8
                     else:                      # Early
-                        trail_mult = 2.2      # (was 1.8)
+                        trail_mult = 2.5
                 else:
                     trail_mult = 2.0
                     if r_multiple > 5.0:
@@ -774,25 +772,31 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
     # because features may "leak" information from the target period
     EMBARGO_DAYS = 1  # 1 day gap = 288 M5 candles (12 * 24)
     
-    # Define periods (each period: 15 days train, embargo gap, 7 days test)
-    now = datetime.now(timezone.utc)
-    periods = []
-    
-    # Create 4 rolling windows going backwards in time
-    for i in range(4):
-        test_end = now - timedelta(days=i*7)
-        test_start = test_end - timedelta(days=7)
-        # EMBARGO: train ends 1 day before test starts
-        train_end = test_start - timedelta(days=EMBARGO_DAYS)
-        train_start = train_end - timedelta(days=15)
-        
-        periods.append({
-            'name': f"Period_{i+1}",
-            'train_start': train_start,
-            'train_end': train_end,
-            'test_start': test_start,
-            'test_end': test_end
-        })
+    # Define periods on DECEMBER data only (we have data from Dec 7)
+    # Fixed dates for reproducible validation
+    periods = [
+        {
+            'name': "Period_1",
+            'train_start': datetime(2025, 12, 8, tzinfo=timezone.utc),
+            'train_end': datetime(2025, 12, 18, tzinfo=timezone.utc),  # 10 days train
+            'test_start': datetime(2025, 12, 19, tzinfo=timezone.utc),
+            'test_end': datetime(2025, 12, 24, tzinfo=timezone.utc)    # 5 days test
+        },
+        {
+            'name': "Period_2",
+            'train_start': datetime(2025, 12, 12, tzinfo=timezone.utc),
+            'train_end': datetime(2025, 12, 22, tzinfo=timezone.utc),
+            'test_start': datetime(2025, 12, 23, tzinfo=timezone.utc),
+            'test_end': datetime(2025, 12, 28, tzinfo=timezone.utc)
+        },
+        {
+            'name': "Period_3",
+            'train_start': datetime(2025, 12, 16, tzinfo=timezone.utc),
+            'train_end': datetime(2025, 12, 26, tzinfo=timezone.utc),
+            'test_start': datetime(2025, 12, 27, tzinfo=timezone.utc),
+            'test_end': datetime(2025, 12, 31, 23, 59, tzinfo=timezone.utc)
+        },
+    ]
     
     all_results = []
     
@@ -812,24 +816,18 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
             pair_name = pair.replace('/', '_').replace(':', '_')
             
             try:
-                m1 = pd.read_csv(data_dir / f"{pair_name}_1m.csv", parse_dates=['timestamp'], index_col='timestamp')
-                m5 = pd.read_csv(data_dir / f"{pair_name}_5m.csv", parse_dates=['timestamp'], index_col='timestamp')
-                m15 = pd.read_csv(data_dir / f"{pair_name}_15m.csv", parse_dates=['timestamp'], index_col='timestamp')
+                # ✅ FIX: Use Parquet files (same as main backtest) - they have latest data!
+                m1 = pd.read_parquet(data_dir / f"{pair_name}_1m.parquet")
+                m5 = pd.read_parquet(data_dir / f"{pair_name}_5m.parquet")
+                m15 = pd.read_parquet(data_dir / f"{pair_name}_15m.parquet")
                 
                 # Ensure timezone-aware indices (UTC) for comparison with timezone-aware datetimes
-                # Handle both tz-naive and tz-aware indices
                 if m1.index.tz is None:
                     m1.index = m1.index.tz_localize('UTC')
-                else:
-                    m1.index = m1.index.tz_convert('UTC')
                 if m5.index.tz is None:
                     m5.index = m5.index.tz_localize('UTC')
-                else:
-                    m5.index = m5.index.tz_convert('UTC')
                 if m15.index.tz is None:
                     m15.index = m15.index.tz_localize('UTC')
-                else:
-                    m15.index = m15.index.tz_convert('UTC')
             except FileNotFoundError:
                 continue
             except Exception as e:
@@ -872,14 +870,28 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
         # Train models on THIS period
         train_df = pd.concat(all_train).dropna()
         
-        # Use centralized constants for feature exclusion
-        exclude = list(DEFAULT_EXCLUDE_FEATURES)
+        # === FEATURE SELECTION BASED ON MODE ===
+        available_cols = set(train_df.columns)
         
-        # Combine all exclusion patterns
-        all_exclude = set(exclude) | set(ABSOLUTE_PRICE_FEATURES)
-        
-        features = [c for c in train_df.columns if c not in all_exclude 
-                    and not any(p in c.lower() for p in CUMSUM_PATTERNS)]
+        if FEATURE_MODE == 'core20':
+            # Use only 20 most stable features (maximum stability for live)
+            features = [f for f in CORE_20_FEATURES if f in available_cols]
+            print(f"   📊 Using CORE20 mode: {len(features)} core features")
+        elif FEATURE_MODE == 'ultra':
+            # Use only TOP 50 features by importance (most stable for live trading)
+            features = [f for f in ULTRA_MINIMAL_FEATURES if f in available_cols]
+            print(f"   📊 Using ULTRA mode: {len(features)} top features")
+        elif FEATURE_MODE == 'minimal':
+            # Use only the minimal stable features (75 features)
+            features = [f for f in MINIMAL_STABLE_FEATURES if f in available_cols]
+            print(f"   📊 Using MINIMAL mode: {len(features)} stable features")
+        else:
+            # Full mode: exclude problematic features
+            exclude = list(DEFAULT_EXCLUDE_FEATURES)
+            all_exclude = set(exclude) | set(ABSOLUTE_PRICE_FEATURES)
+            features = [c for c in train_df.columns if c not in all_exclude 
+                        and not any(p in c.lower() for p in CUMSUM_PATTERNS)]
+            print(f"   📊 Using FULL mode: {len(features)} features")
         
         X_train = train_df[features]
         y_train = {
@@ -1113,15 +1125,28 @@ def main():
     # Train
     train_df = pd.concat(all_train).dropna()
     
-    # Use centralized constants for feature exclusion
-    # These exclude absolute price features, cumsum-dependent features, and raw OHLCV
-    exclude = list(DEFAULT_EXCLUDE_FEATURES)
+    # === FEATURE SELECTION BASED ON MODE ===
+    available_cols = set(train_df.columns)
     
-    # Combine all exclusion patterns
-    all_exclude = set(exclude) | set(ABSOLUTE_PRICE_FEATURES)
-    
-    features = [c for c in train_df.columns if c not in all_exclude 
-                and not any(p in c.lower() for p in CUMSUM_PATTERNS)]
+    if FEATURE_MODE == 'core20':
+        # Use only 20 most stable features (maximum stability for live)
+        features = [f for f in CORE_20_FEATURES if f in available_cols]
+        print(f"📊 Using CORE20 mode: {len(features)} core features")
+    elif FEATURE_MODE == 'ultra':
+        # Use only TOP 50 features by importance (most stable for live trading)
+        features = [f for f in ULTRA_MINIMAL_FEATURES if f in available_cols]
+        print(f"📊 Using ULTRA mode: {len(features)} top features")
+    elif FEATURE_MODE == 'minimal':
+        # Use only the minimal stable features (75 features)
+        features = [f for f in MINIMAL_STABLE_FEATURES if f in available_cols]
+        print(f"📊 Using MINIMAL mode: {len(features)} stable features")
+    else:
+        # Full mode: exclude problematic features
+        exclude = list(DEFAULT_EXCLUDE_FEATURES)
+        all_exclude = set(exclude) | set(ABSOLUTE_PRICE_FEATURES)
+        features = [c for c in train_df.columns if c not in all_exclude 
+                    and not any(p in c.lower() for p in CUMSUM_PATTERNS)]
+        print(f"📊 Using FULL mode: {len(features)} features")
     
     X_train = train_df[features]
     y_train = {
