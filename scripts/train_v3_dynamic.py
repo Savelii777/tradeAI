@@ -1,40 +1,27 @@
 #!/usr/bin/env python3
 """
-Train V11 Pro - OPTIMIZED Live Performance Edition
-"Maximum Confidence with Perfect Generalization"
+Train V10 - BALANCED Live Performance Edition
+"Strong Signals Without Overfitting"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
-- Optimized model complexity for strong, confident signals.
-- Target: Win Rate 65-75% with HIGH CONFIDENCE predictions (0.50-0.85).
+- We balance model complexity with regularization for confident signals.
+- Target: Win Rate 55-65% with HIGH CONFIDENCE predictions.
 
-V11 PRO IMPROVEMENTS:
-1. More Trees (150): Better probability calibration through ensemble averaging
-2. Deeper Trees (depth=5, 24 leaves): Capture complex market patterns
-3. Lower Learning Rate (0.03): Better convergence, less overfitting
-4. Subsample Frequency: Row sampling every iteration (better generalization)
-5. Path Smoothing: Smoother predictions at leaf nodes
-6. Min Split Gain: Only meaningful splits (reduces noise)
-7. Multi-threading: n_jobs=-1 for faster training
-
-HYPERPARAMETERS V11 PRO:
-- n_estimators=150 (was 100): More trees = more confident probabilities
-- max_depth=5 (was 4): Deeper patterns without overfitting
-- num_leaves=24 (was 16): More decision paths
-- min_child_samples=40: Good generalization
-- learning_rate=0.03: Slow, careful learning
-- subsample=0.7, subsample_freq=1: Row bagging every iteration
-- colsample_bytree=0.6: Feature sampling per tree
-- reg_alpha/lambda=0.3: Light regularization (model is complex enough)
-- min_split_gain=0.01: Require meaningful improvements
-- path_smooth=0.1: Smooth leaf predictions
-- early_stopping=50: More patience for convergence
+V10 BALANCED IMPROVEMENTS:
+1. Moderate Models: 100 trees, depth 4, 16 leaves, min_child_samples=50
+2. Strong Regularization: L1 + L2 regularization (reg_alpha=0.5, reg_lambda=0.5)
+3. Moderate Subsampling: subsample=0.6, colsample_bytree=0.5
+4. Embargo Period: 1-day gap between train/test to prevent data leakage
+5. Calibrated Thresholds: min_conf=0.50, min_timing=0.8, min_strength=1.4
+6. More Trees = More Confidence: Ensemble averages give stronger probabilities
 
 ⚠️ IMPORTANT: Win Rate 80%+ on backtest = OVERFIT!
 A realistic ML trading model should have:
-- Win Rate: 60-75%
-- Profit Factor: 1.5-3.0
-- Confidence: 0.50-0.85 (not stuck at 0.35!)
+- Win Rate: 55-65%
+- Profit Factor: 1.2-1.5
+- Sharpe Ratio: 1.0-2.0
+- Confidence: 0.50-0.80 (not stuck at 0.35!)
 
 Run: python scripts/train_v3_dynamic.py --days 90 --test_days 30 --pairs 20 --walk-forward
 """
@@ -235,101 +222,84 @@ def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ============================================================
-# TRAINING (V11 Pro - Optimized for Strong Signals)
+# TRAINING (V9 - Maximum Anti-Overfitting)
 # ============================================================
 def train_models(X_train, y_train, X_val, y_val):
     """
-    Train models with V11 Pro optimized parameters for maximum confidence.
+    Train models with BALANCED complexity for confident signals.
     
-    V11 Pro Changes from V10:
-    - n_estimators=150 (was 100) - more trees = better calibrated probabilities
-    - max_depth=5 (was 4) - capture more complex patterns
-    - num_leaves=24 (was 16) - more decision paths
-    - min_child_samples=40 (was 50) - slightly more flexible
-    - learning_rate=0.03 (was 0.05) - slower, more careful learning
-    - subsample=0.7, subsample_freq=1 - row bagging every iteration
-    - colsample_bytree=0.6 (was 0.5) - use more features per tree
-    - reg_alpha/lambda=0.3 (was 0.5) - lighter regularization
-    - min_split_gain=0.01 - require meaningful splits
-    - path_smooth=0.1 - smooth predictions at leaf nodes
-    - early_stopping=50 (was 30) - more patience for convergence
-    - n_jobs=-1 - use all CPU cores for speed
+    V10 Changes from V9:
+    - max_depth=4 (was 2) - allows more complex patterns
+    - num_leaves=16 (was 4) - more decision paths
+    - n_estimators=100 (was 50) - more trees = better probability estimates
+    - min_child_samples=50 (was 100) - still robust, but more flexible
+    - subsample=0.6, colsample_bytree=0.5 - moderate bagging
+    - reg_alpha/lambda=0.5 (was 1.0) - less aggressive regularization
     
-    Result: Stronger confidence signals (0.50-0.85) with good generalization.
+    Result: Model can learn more patterns while still being regularized.
+    Expect confidence scores 0.50-0.80 instead of stuck at 0.35.
     """
     
-    # 1. Direction Model (Multiclass) - V11 PRO OPTIMIZED
-    print("   Training Direction Model (V11 Pro)...")
+    # 1. Direction Model (Multiclass) - BALANCED COMPLEXITY
+    print("   Training Direction Model (Balanced V10)...")
     dir_model = lgb.LGBMClassifier(
         objective='multiclass', num_class=3, metric='multi_logloss',
-        n_estimators=150,         # ✅ 150 trees for stronger probability estimates
-        max_depth=5,              # ✅ Depth 5 captures more complex patterns
-        num_leaves=24,            # ✅ 24 leaves (balanced complexity)
-        min_child_samples=40,     # ✅ 40 samples per leaf (good generalization)
-        learning_rate=0.03,       # ✅ Lower LR = better convergence with more trees
-        subsample=0.7,            # ✅ 70% row sampling (reduce overfit)
-        subsample_freq=1,         # ✅ Subsample every iteration
-        colsample_bytree=0.6,     # ✅ 60% feature sampling per tree
-        reg_alpha=0.3,            # ✅ Light L1 regularization
-        reg_lambda=0.3,           # ✅ Light L2 regularization
-        min_split_gain=0.01,      # ✅ Require meaningful splits
-        path_smooth=0.1,          # ✅ Smooth predictions at leaves
+        n_estimators=100,         # ✅ Increased from 50 → 100 (more confident)
+        max_depth=4,              # ✅ Increased from 2 → 4 (more patterns)
+        num_leaves=16,            # ✅ Increased from 4 → 16 (more paths)
+        min_child_samples=50,     # ✅ Reduced from 100 → 50 (more flexible)
+        learning_rate=0.05,       # ✅ Lower LR with more trees (better convergence)
+        subsample=0.6,            # ✅ Increased from 0.5 → 0.6 (less noise reduction)
+        colsample_bytree=0.5,     # ✅ Increased from 0.3 → 0.5 (more features)
+        reg_alpha=0.5,            # ✅ Reduced from 1.0 → 0.5 (less regularization)
+        reg_lambda=0.5,           # ✅ Reduced from 1.0 → 0.5 (less regularization)
         random_state=42, 
-        verbosity=-1,
-        n_jobs=-1                 # ✅ Use all CPU cores
+        verbosity=-1
     )
     dir_model.fit(X_train, y_train['target_dir'], 
                   eval_set=[(X_val, y_val['target_dir'])],
-                  callbacks=[lgb.early_stopping(50, verbose=False)])  # ✅ More patience for convergence
+                  callbacks=[lgb.early_stopping(30, verbose=False)])  # ✅ Increased patience
     
-    # 2. Timing Model (Regressor) - V11 PRO OPTIMIZED
-    print("   Training Timing Model (V11 Pro)...")
+    # 2. Timing Model (Regressor)
+    print("   Training Timing Model (Balanced V10)...")
     timing_model = lgb.LGBMRegressor(
         objective='regression',
         metric='mae',
-        n_estimators=150,
-        max_depth=5,
-        num_leaves=24,
-        min_child_samples=40,
-        learning_rate=0.03,
-        subsample=0.7,
-        subsample_freq=1,
-        colsample_bytree=0.6,
-        reg_alpha=0.3,
-        reg_lambda=0.3,
-        min_split_gain=0.01,
-        path_smooth=0.1,
+        n_estimators=100,
+        max_depth=4,
+        num_leaves=16,
+        min_child_samples=50,
+        learning_rate=0.05,
+        subsample=0.6,
+        colsample_bytree=0.5,
+        reg_alpha=0.5,
+        reg_lambda=0.5,
         random_state=42,
-        verbosity=-1,
-        n_jobs=-1
+        verbosity=-1
     )
     timing_model.fit(X_train, y_train['target_timing'],
                      eval_set=[(X_val, y_val['target_timing'])],
-                     callbacks=[lgb.early_stopping(50, verbose=False)])
+                     callbacks=[lgb.early_stopping(30, verbose=False)])
     
-    # 3. Strength Model (Regression) - V11 PRO OPTIMIZED
-    print("   Training Strength Model (V11 Pro)...")
+    # 3. Strength Model (Regression)
+    print("   Training Strength Model (Balanced V10)...")
     strength_model = lgb.LGBMRegressor(
         objective='regression', metric='mae',
-        n_estimators=150,
-        max_depth=5,
-        num_leaves=24,
-        min_child_samples=40,
-        learning_rate=0.03,
-        subsample=0.7,
-        subsample_freq=1,
-        colsample_bytree=0.6,
-        reg_alpha=0.3,
-        reg_lambda=0.3,
-        min_split_gain=0.01,
-        path_smooth=0.1,
+        n_estimators=100,
+        max_depth=4,
+        num_leaves=16,
+        min_child_samples=50,
+        learning_rate=0.05,
+        subsample=0.6,
+        colsample_bytree=0.5,
+        reg_alpha=0.5,
+        reg_lambda=0.5,
         random_state=42,
-        verbosity=-1,
-        n_jobs=-1
+        verbosity=-1
     )
     strength_model.fit(X_train, y_train['target_strength'],
                        eval_set=[(X_val, y_val['target_strength'])],
-                       callbacks=[lgb.early_stopping(50, verbose=False)])
+                       callbacks=[lgb.early_stopping(30, verbose=False)])
     
     return {
         'direction': dir_model,
