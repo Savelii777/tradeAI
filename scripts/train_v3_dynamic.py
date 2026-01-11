@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """
-Train V10 - BALANCED Live Performance Edition
-"Strong Signals Without Overfitting"
+Train V11 - ANTI-OVERFIT Live Performance Edition
+"Generalization Over Training Accuracy"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
-- We balance model complexity with regularization for confident signals.
-- Target: Win Rate 55-65% with HIGH CONFIDENCE predictions.
+- Strong regularization to prevent overfitting and ensure live consistency.
+- Target: Win Rate 55-65% with REALISTIC confidence predictions.
 
-V10 BALANCED IMPROVEMENTS:
-1. Moderate Models: 100 trees, depth 4, 16 leaves, min_child_samples=50
-2. Strong Regularization: L1 + L2 regularization (reg_alpha=0.5, reg_lambda=0.5)
-3. Moderate Subsampling: subsample=0.6, colsample_bytree=0.5
+V11 ANTI-OVERFIT IMPROVEMENTS:
+1. Simple Models: 150 trees, depth 3, 8 leaves, min_child_samples=100
+2. Strong Regularization: L1 + L2 regularization (reg_alpha=1.0, reg_lambda=1.0)
+3. Strong Subsampling: subsample=0.5, colsample_bytree=0.4
 4. Embargo Period: 1-day gap between train/test to prevent data leakage
-5. Calibrated Thresholds: min_conf=0.50, min_timing=0.8, min_strength=1.4
-6. More Trees = More Confidence: Ensemble averages give stronger probabilities
+5. Realistic Thresholds: min_conf=0.40, min_timing=0.8, min_strength=1.4
+6. Lower learning rate (0.03) for better convergence with more trees
 
 ⚠️ IMPORTANT: Win Rate 80%+ on backtest = OVERFIT!
 A realistic ML trading model should have:
 - Win Rate: 55-65%
 - Profit Factor: 1.2-1.5
 - Sharpe Ratio: 1.0-2.0
-- Confidence: 0.50-0.80 (not stuck at 0.35!)
+- Confidence: 0.40-0.70 (not stuck at 0.35!)
 
 Run: python scripts/train_v3_dynamic.py --days 90 --test_days 30 --pairs 20 --walk-forward
 """
@@ -39,7 +39,6 @@ import joblib
 import ccxt
 from loguru import logger
 import lightgbm as lgb
-from sklearn.calibration import CalibratedClassifierCV
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
@@ -306,21 +305,10 @@ def train_models(X_train, y_train, X_val, y_val):
                        eval_set=[(X_val, y_val['target_strength'])],
                        callbacks=[lgb.early_stopping(50, verbose=False)])
     
-    # 4. Calibrate Direction Model for better probability estimates
-    # Isotonic calibration helps when model is overconfident or underconfident
-    print("   Calibrating Direction Model probabilities...")
-    try:
-        # Use validation data for calibration (separate from test)
-        calibrated_dir = CalibratedClassifierCV(
-            dir_model,
-            method='isotonic',  # isotonic works better for tree models
-            cv='prefit'  # Model is already trained
-        )
-        calibrated_dir.fit(X_val.values, y_val['target_dir'].values)
-        print("   ✅ Direction Model calibrated successfully")
-        dir_model = calibrated_dir
-    except Exception as e:
-        print(f"   ⚠️ Calibration failed, using uncalibrated model: {e}")
+    # Note: Probability calibration (CalibratedClassifierCV) was considered here
+    # but requires truly held-out data to avoid data leakage.
+    # Instead, we rely on strong regularization to produce realistic probabilities.
+    # The lower MIN_CONF threshold (0.40) accommodates less confident predictions.
     
     return {
         'direction': dir_model,

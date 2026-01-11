@@ -1322,13 +1322,23 @@ def main():
                     if result['is_signal']:
                         signals_found.append(result)
                 
-                # Log confidence distribution statistics for diagnosis
+                # Log confidence distribution statistics for diagnosis (optimized single pass)
                 if confidence_values:
-                    avg_conf = sum(confidence_values) / len(confidence_values)
-                    max_conf = max(confidence_values)
-                    min_conf = min(confidence_values)
-                    above_threshold = sum(1 for c in confidence_values if c >= Config.MIN_CONF)
-                    logger.info(f"📊 Confidence Stats: Avg={avg_conf:.2f} | Min={min_conf:.2f} | Max={max_conf:.2f} | Above {Config.MIN_CONF}={above_threshold}/{len(confidence_values)}")
+                    n = len(confidence_values)
+                    min_conf_val = float('inf')
+                    max_conf_val = float('-inf')
+                    total = 0.0
+                    above_threshold = 0
+                    for c in confidence_values:
+                        total += c
+                        if c < min_conf_val:
+                            min_conf_val = c
+                        if c > max_conf_val:
+                            max_conf_val = c
+                        if c >= Config.MIN_CONF:
+                            above_threshold += 1
+                    avg_conf = total / n
+                    logger.info(f"📊 Confidence Stats: Avg={avg_conf:.2f} | Min={min_conf_val:.2f} | Max={max_conf_val:.2f} | Above {Config.MIN_CONF}={above_threshold}/{n}")
                 
                 logger.info(f"⏱️ Scan completed in {scan_time:.1f}s for {len(active_pairs)} pairs")
                 
