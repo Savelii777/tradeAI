@@ -109,7 +109,10 @@ class Config:
     TIMEFRAMES = ['1m', '5m', '15m']
     
     # V8 Signal Thresholds (match backtest)
-    MIN_CONF = 0.50
+    # NOTE: For 3-class classification, random guess gives ~0.33 confidence.
+    # Lowered MIN_CONF from 0.50 to 0.40 to allow more signals through
+    # while still requiring meaningful model confidence above random.
+    MIN_CONF = 0.40
     MIN_TIMING = 0.8
     MIN_STRENGTH = 1.4
     
@@ -1310,12 +1313,22 @@ def main():
                 
                 # Log all results
                 signals_found = []
+                confidence_values = []
                 for result in sorted(results, key=lambda x: x['pair']):
                     status = "✅ SIGNAL" if result['is_signal'] else ""
                     logger.info(f"  {result['pair']}: {result['direction']} | Conf: {result['conf']:.2f} | Tim: {result['timing']:.2f} | Str: {result['strength']:.1f} {status}")
+                    confidence_values.append(result['conf'])
                     
                     if result['is_signal']:
                         signals_found.append(result)
+                
+                # Log confidence distribution statistics for diagnosis
+                if confidence_values:
+                    avg_conf = sum(confidence_values) / len(confidence_values)
+                    max_conf = max(confidence_values)
+                    min_conf = min(confidence_values)
+                    above_threshold = sum(1 for c in confidence_values if c >= Config.MIN_CONF)
+                    logger.info(f"📊 Confidence Stats: Avg={avg_conf:.2f} | Min={min_conf:.2f} | Max={max_conf:.2f} | Above {Config.MIN_CONF}={above_threshold}/{len(confidence_values)}")
                 
                 logger.info(f"⏱️ Scan completed in {scan_time:.1f}s for {len(active_pairs)} pairs")
                 

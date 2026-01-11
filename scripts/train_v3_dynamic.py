@@ -39,6 +39,7 @@ import joblib
 import ccxt
 from loguru import logger
 import lightgbm as lgb
+from sklearn.calibration import CalibratedClassifierCV
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
@@ -226,80 +227,100 @@ def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 def train_models(X_train, y_train, X_val, y_val):
     """
-    Train models with BALANCED complexity for confident signals.
+    Train models with STRONG REGULARIZATION to prevent overfitting.
     
-    V10 Changes from V9:
-    - max_depth=4 (was 2) - allows more complex patterns
-    - num_leaves=16 (was 4) - more decision paths
-    - n_estimators=100 (was 50) - more trees = better probability estimates
-    - min_child_samples=50 (was 100) - still robust, but more flexible
-    - subsample=0.6, colsample_bytree=0.5 - moderate bagging
-    - reg_alpha/lambda=0.5 (was 1.0) - less aggressive regularization
+    V11 Anti-Overfit Changes:
+    - max_depth=3 (reduced from 4) - simpler patterns, less overfitting
+    - num_leaves=8 (reduced from 16) - fewer decision paths
+    - n_estimators=150 (increased from 100) - more trees for better averaging
+    - min_child_samples=100 (increased from 50) - robust splits only
+    - subsample=0.5, colsample_bytree=0.4 - stronger bagging
+    - reg_alpha=1.0, reg_lambda=1.0 (increased from 0.5) - stronger regularization
+    - min_split_gain=0.01 - requires meaningful improvement for splits
     
-    Result: Model can learn more patterns while still being regularized.
-    Expect confidence scores 0.50-0.80 instead of stuck at 0.35.
+    These settings prioritize generalization over training accuracy.
+    Expected: Lower backtest accuracy (55-65%) but consistent live performance.
     """
     
-    # 1. Direction Model (Multiclass) - BALANCED COMPLEXITY
-    print("   Training Direction Model (Balanced V10)...")
+    # 1. Direction Model (Multiclass) - STRONG REGULARIZATION
+    print("   Training Direction Model (V11 Anti-Overfit)...")
     dir_model = lgb.LGBMClassifier(
         objective='multiclass', num_class=3, metric='multi_logloss',
-        n_estimators=100,         # ✅ Increased from 50 → 100 (more confident)
-        max_depth=4,              # ✅ Increased from 2 → 4 (more patterns)
-        num_leaves=16,            # ✅ Increased from 4 → 16 (more paths)
-        min_child_samples=50,     # ✅ Reduced from 100 → 50 (more flexible)
-        learning_rate=0.05,       # ✅ Lower LR with more trees (better convergence)
-        subsample=0.6,            # ✅ Increased from 0.5 → 0.6 (less noise reduction)
-        colsample_bytree=0.5,     # ✅ Increased from 0.3 → 0.5 (more features)
-        reg_alpha=0.5,            # ✅ Reduced from 1.0 → 0.5 (less regularization)
-        reg_lambda=0.5,           # ✅ Reduced from 1.0 → 0.5 (less regularization)
+        n_estimators=150,         # More trees for stable probability estimates
+        max_depth=3,              # Shallow trees - less overfitting
+        num_leaves=8,             # Few leaves - simpler patterns
+        min_child_samples=100,    # Robust splits only
+        learning_rate=0.03,       # Slower learning - better generalization
+        subsample=0.5,            # Strong bagging
+        colsample_bytree=0.4,     # Use fewer features per tree
+        reg_alpha=1.0,            # Strong L1 regularization
+        reg_lambda=1.0,           # Strong L2 regularization
+        min_split_gain=0.01,      # Require meaningful splits
         random_state=42, 
         verbosity=-1
     )
     dir_model.fit(X_train, y_train['target_dir'], 
                   eval_set=[(X_val, y_val['target_dir'])],
-                  callbacks=[lgb.early_stopping(30, verbose=False)])  # ✅ Increased patience
+                  callbacks=[lgb.early_stopping(50, verbose=False)])  # More patience
     
-    # 2. Timing Model (Regressor)
-    print("   Training Timing Model (Balanced V10)...")
+    # 2. Timing Model (Regressor) - STRONG REGULARIZATION
+    print("   Training Timing Model (V11 Anti-Overfit)...")
     timing_model = lgb.LGBMRegressor(
         objective='regression',
         metric='mae',
-        n_estimators=100,
-        max_depth=4,
-        num_leaves=16,
-        min_child_samples=50,
-        learning_rate=0.05,
-        subsample=0.6,
-        colsample_bytree=0.5,
-        reg_alpha=0.5,
-        reg_lambda=0.5,
+        n_estimators=150,
+        max_depth=3,
+        num_leaves=8,
+        min_child_samples=100,
+        learning_rate=0.03,
+        subsample=0.5,
+        colsample_bytree=0.4,
+        reg_alpha=1.0,
+        reg_lambda=1.0,
+        min_split_gain=0.01,
         random_state=42,
         verbosity=-1
     )
     timing_model.fit(X_train, y_train['target_timing'],
                      eval_set=[(X_val, y_val['target_timing'])],
-                     callbacks=[lgb.early_stopping(30, verbose=False)])
+                     callbacks=[lgb.early_stopping(50, verbose=False)])
     
-    # 3. Strength Model (Regression)
-    print("   Training Strength Model (Balanced V10)...")
+    # 3. Strength Model (Regression) - STRONG REGULARIZATION
+    print("   Training Strength Model (V11 Anti-Overfit)...")
     strength_model = lgb.LGBMRegressor(
         objective='regression', metric='mae',
-        n_estimators=100,
-        max_depth=4,
-        num_leaves=16,
-        min_child_samples=50,
-        learning_rate=0.05,
-        subsample=0.6,
-        colsample_bytree=0.5,
-        reg_alpha=0.5,
-        reg_lambda=0.5,
+        n_estimators=150,
+        max_depth=3,
+        num_leaves=8,
+        min_child_samples=100,
+        learning_rate=0.03,
+        subsample=0.5,
+        colsample_bytree=0.4,
+        reg_alpha=1.0,
+        reg_lambda=1.0,
+        min_split_gain=0.01,
         random_state=42,
         verbosity=-1
     )
     strength_model.fit(X_train, y_train['target_strength'],
                        eval_set=[(X_val, y_val['target_strength'])],
-                       callbacks=[lgb.early_stopping(30, verbose=False)])
+                       callbacks=[lgb.early_stopping(50, verbose=False)])
+    
+    # 4. Calibrate Direction Model for better probability estimates
+    # Isotonic calibration helps when model is overconfident or underconfident
+    print("   Calibrating Direction Model probabilities...")
+    try:
+        # Use validation data for calibration (separate from test)
+        calibrated_dir = CalibratedClassifierCV(
+            dir_model,
+            method='isotonic',  # isotonic works better for tree models
+            cv='prefit'  # Model is already trained
+        )
+        calibrated_dir.fit(X_val.values, y_val['target_dir'].values)
+        print("   ✅ Direction Model calibrated successfully")
+        dir_model = calibrated_dir
+    except Exception as e:
+        print(f"   ⚠️ Calibration failed, using uncalibrated model: {e}")
     
     return {
         'direction': dir_model,
@@ -309,10 +330,10 @@ def train_models(X_train, y_train, X_val, y_val):
 
 
 # ============================================================
-# PORTFOLIO BACKTEST (V9 - Realistic Thresholds)
+# PORTFOLIO BACKTEST (V11 - Anti-Overfit Thresholds)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.50, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
+                    min_conf: float = 0.40, min_timing: float = 0.8, min_strength: float = 1.4) -> list:
                     
     """
     Generate all valid signals for a single pair.
