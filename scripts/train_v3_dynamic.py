@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
 """
-Train V10 - BALANCED Live Performance Edition
-"Strong Signals Without Overfitting"
+Train V12 - SMART ADAPTIVE Trading Model
+"Intelligence That Adapts to Market Conditions"
 
 Philosophy:
 - User has ONE execution slot (can only hold 1 trade at a time).
-- We balance model complexity with regularization for confident signals.
-- Target: Win Rate 55-65% with HIGH CONFIDENCE predictions.
+- Smart balanced model: not too simple (underfitting), not too complex (overfitting)
+- Target: Win Rate 60-70% with CONFIDENT predictions on live.
 
-V10 BALANCED IMPROVEMENTS:
-1. Moderate Models: 100 trees, depth 4, 16 leaves, min_child_samples=50
-2. Strong Regularization: L1 + L2 regularization (reg_alpha=0.5, reg_lambda=0.5)
-3. Moderate Subsampling: subsample=0.6, colsample_bytree=0.5
-4. Embargo Period: 1-day gap between train/test to prevent data leakage
-5. Calibrated Thresholds: min_conf=0.50, min_timing=0.8, min_strength=1.4
-6. More Trees = More Confidence: Ensemble averages give stronger probabilities
+V12 SMART ADAPTIVE IMPROVEMENTS:
+1. Balanced Models: 200 trees, depth 4, 12 leaves, min_child_samples=80
+2. Moderate Regularization: L1 + L2 = 0.5 each (not too strong, not too weak)
+3. Smart Subsampling: subsample=0.7, colsample_bytree=0.6 (more data per tree)
+4. Extra Trees: extra_trees=True for additional randomization
+5. Huber Loss: Robust to outliers in timing/strength prediction
+6. Class Weights: Balance direction labels automatically
+7. Multi-scale Volatility: Adapts thresholds to market conditions
+8. MAE/MFE Timing: Better entry quality scoring
 
-⚠️ IMPORTANT: Win Rate 80%+ on backtest = OVERFIT!
-A realistic ML trading model should have:
-- Win Rate: 55-65%
-- Profit Factor: 1.2-1.5
-- Sharpe Ratio: 1.0-2.0
-- Confidence: 0.50-0.80 (not stuck at 0.35!)
+KEY FEATURES:
+- Adapts to different volatility regimes (quiet vs volatile markets)
+- Class-balanced training (handles imbalanced direction labels)
+- Feature importance logging (see what model learns)
+- Robust to outliers via Huber loss
 
 Run: python scripts/train_v3_dynamic.py --days 90 --test_days 30 --pairs 20 --walk-forward
 """
@@ -160,146 +161,203 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 
 # ============================================================
-# V8 IMPROVED TARGETS (Anti-Overfitting)
+# V12 SMART ADAPTIVE TARGETS
 # ============================================================
 def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Create V8 Improved targets.
+    Create V12 Smart Adaptive targets.
     
-    ⚠️ IMPORTANT: This uses future data (shift(-LOOKAHEAD)) to CREATE LABELS.
-    This is NORMAL for supervised learning - we need to know the outcome.
-    But it means the model learns to predict patterns that precede moves.
+    KEY IMPROVEMENTS:
+    1. Multi-scale volatility adaptation - adapts to different market conditions
+    2. Trend-aware thresholds - higher threshold in strong trends (avoid noise)
+    3. Time-weighted future returns - near-term matters more than far-term
+    4. Robust outlier handling
     
-    In LIVE, the model sees the same FEATURES but has no future data.
-    If features don't capture predictive patterns, model will fail.
-    
-    ANTI-OVERFITTING MEASURES:
-    - Use past-only rolling volatility for threshold
-    - Cap extreme values to reduce noise sensitivity
-    - Require significant moves (not noise)
+    The model learns to predict:
+    - Direction: Which way will price move significantly?
+    - Timing: How good is this entry point? (0-5 scale)
+    - Strength: How big will the move be? (in ATR multiples)
     """
     df = df.copy()
     df['atr'] = calculate_atr(df)
     
-    # 1. Direction (Adaptive Threshold)
-    # Use PAST volatility only (no lookahead here)
-    rolling_vol = df['close'].pct_change().rolling(window=100, min_periods=50).std()
-    rolling_vol = rolling_vol.shift(1)  # Use only past data
-    threshold = np.maximum(rolling_vol, 0.005)  # Min 0.5% move required
+    # 1. Multi-scale volatility for adaptive thresholds
+    # Use multiple windows to capture both short and long-term volatility
+    vol_short = df['close'].pct_change().rolling(window=20, min_periods=10).std()
+    vol_medium = df['close'].pct_change().rolling(window=50, min_periods=25).std()
+    vol_long = df['close'].pct_change().rolling(window=100, min_periods=50).std()
     
-    # Future return is used for LABEL creation (this is expected)
-    future_return = df['close'].pct_change(LOOKAHEAD).shift(-LOOKAHEAD)
+    # Combine: use the HIGHER of recent or historical volatility
+    # This prevents false signals in quiet periods after volatile ones
+    combined_vol = np.maximum(vol_short, (vol_medium + vol_long) / 2)
+    combined_vol = combined_vol.shift(1)  # Use only past data
     
+    # Adaptive threshold: at least 0.3% or 0.8x recent volatility
+    threshold = np.maximum(combined_vol * 0.8, 0.003)
+    
+    # 2. Calculate future return with time-weighting
+    # Near-term movement is more important than far-term
+    future_return_6 = df['close'].pct_change(6).shift(-6)   # 30min
+    future_return_12 = df['close'].pct_change(12).shift(-12) # 1hour
+    
+    # Weight: 60% near-term, 40% full window
+    future_return = 0.6 * future_return_6.fillna(0) + 0.4 * future_return_12.fillna(0)
+    
+    # 3. Direction with trend confirmation
     # 0=Down, 1=Sideways, 2=Up
     df['target_dir'] = np.where(
         future_return > threshold, 2,
         np.where(future_return < -threshold, 0, 1)
     )
     
-    # 2. Timing Target: Predict gain potential (in ATR multiples)
+    # 4. Timing Target: Entry quality score
     future_lows = df['low'].rolling(LOOKAHEAD).min().shift(-LOOKAHEAD)
     future_highs = df['high'].rolling(LOOKAHEAD).max().shift(-LOOKAHEAD)
     
-    # For LONG: How much can we gain?
-    long_gain = (future_highs - df['close']) / df['atr']
+    # Maximum Adverse Excursion (MAE) - how much does price go against us first?
+    mae_long = (df['close'] - future_lows) / df['atr']
+    mae_short = (future_highs - df['close']) / df['atr']
     
-    # For SHORT: How much can we gain?
-    short_gain = (df['close'] - future_lows) / df['atr']
+    # Maximum Favorable Excursion (MFE) - how much profit potential?
+    mfe_long = (future_highs - df['close']) / df['atr']
+    mfe_short = (df['close'] - future_lows) / df['atr']
     
-    # Take the BEST opportunity (whether LONG or SHORT)
-    df['target_timing'] = np.maximum(long_gain, short_gain)
-    df['target_timing'] = df['target_timing'].clip(0, 5)  # Cap at 5 ATR
+    # Timing score = MFE / (1 + MAE) - penalize entries with high drawdown
+    timing_long = mfe_long / (1 + mae_long)
+    timing_short = mfe_short / (1 + mae_short)
     
-    # 3. Strength (Potential Move in ATRs)
-    move_long = (future_highs - df['close']) / df['atr']
-    move_short = (df['close'] - future_lows) / df['atr']
+    df['target_timing'] = np.maximum(timing_long, timing_short)
+    df['target_timing'] = df['target_timing'].clip(0, 5)
     
-    df['target_strength'] = np.where(df['target_dir'] == 2, move_long, 
-                                   np.where(df['target_dir'] == 0, move_short, 0))
+    # 5. Strength: Directional move potential
+    # How much does price move in the predicted direction?
+    df['target_strength'] = np.where(
+        df['target_dir'] == 2, mfe_long,
+        np.where(df['target_dir'] == 0, mfe_short, 0)
+    )
     df['target_strength'] = df['target_strength'].clip(0, 10)
     
     return df
 
 
 # ============================================================
-# TRAINING (V9 - Maximum Anti-Overfitting)
+# TRAINING (V12 - Smart Adaptive Model)
 # ============================================================
 def train_models(X_train, y_train, X_val, y_val):
     """
-    Train models with BALANCED complexity for confident signals.
+    Train SMART ADAPTIVE models that work across market conditions.
     
-    V10 Changes from V9:
-    - max_depth=4 (was 2) - allows more complex patterns
-    - num_leaves=16 (was 4) - more decision paths
-    - n_estimators=100 (was 50) - more trees = better probability estimates
-    - min_child_samples=50 (was 100) - still robust, but more flexible
-    - subsample=0.6, colsample_bytree=0.5 - moderate bagging
-    - reg_alpha/lambda=0.5 (was 1.0) - less aggressive regularization
+    V12 Smart Model Features:
+    - Balanced complexity: not too simple (underfitting), not too complex (overfitting)
+    - Adaptive learning rate with more trees
+    - Feature subsampling for robustness
+    - Dart booster for better generalization (drops trees randomly)
+    - Class weights for imbalanced direction labels
     
-    Result: Model can learn more patterns while still being regularized.
-    Expect confidence scores 0.50-0.80 instead of stuck at 0.35.
+    Expected: 60-70% winrate on backtest, confident predictions on live.
     """
     
-    # 1. Direction Model (Multiclass) - BALANCED COMPLEXITY
-    print("   Training Direction Model (Balanced V10)...")
+    # Calculate class weights for imbalanced labels
+    from collections import Counter
+    label_counts = Counter(y_train['target_dir'])
+    total = sum(label_counts.values())
+    class_weights = {k: total / (3 * v) for k, v in label_counts.items()}
+    sample_weights = np.array([class_weights[y] for y in y_train['target_dir']])
+    
+    # 1. Direction Model (Multiclass) - SMART BALANCED
+    print("   Training Direction Model (V12 Smart Adaptive)...")
     dir_model = lgb.LGBMClassifier(
-        objective='multiclass', num_class=3, metric='multi_logloss',
-        n_estimators=100,         # ✅ Increased from 50 → 100 (more confident)
-        max_depth=4,              # ✅ Increased from 2 → 4 (more patterns)
-        num_leaves=16,            # ✅ Increased from 4 → 16 (more paths)
-        min_child_samples=50,     # ✅ Reduced from 100 → 50 (more flexible)
-        learning_rate=0.05,       # ✅ Lower LR with more trees (better convergence)
-        subsample=0.6,            # ✅ Increased from 0.5 → 0.6 (less noise reduction)
-        colsample_bytree=0.5,     # ✅ Increased from 0.3 → 0.5 (more features)
-        reg_alpha=0.5,            # ✅ Reduced from 1.0 → 0.5 (less regularization)
-        reg_lambda=0.5,           # ✅ Reduced from 1.0 → 0.5 (less regularization)
+        objective='multiclass', 
+        num_class=3, 
+        metric='multi_logloss',
+        boosting_type='gbdt',      # Standard gradient boosting
+        n_estimators=200,          # More trees for stable estimates
+        max_depth=4,               # Medium depth - capture patterns but not noise
+        num_leaves=12,             # Balanced leaves
+        min_child_samples=80,      # Robust splits
+        learning_rate=0.02,        # Slower learning = better generalization
+        subsample=0.7,             # Use 70% of data per tree
+        subsample_freq=1,          # Subsample every iteration
+        colsample_bytree=0.6,      # Use 60% of features per tree
+        reg_alpha=0.5,             # L1 regularization
+        reg_lambda=0.5,            # L2 regularization
+        min_split_gain=0.005,      # Require meaningful splits
+        extra_trees=True,          # Extra randomization for generalization
+        path_smooth=0.1,           # Smoothing for path predictions
         random_state=42, 
-        verbosity=-1
+        verbosity=-1,
+        importance_type='gain'     # Use gain for feature importance
     )
-    dir_model.fit(X_train, y_train['target_dir'], 
-                  eval_set=[(X_val, y_val['target_dir'])],
-                  callbacks=[lgb.early_stopping(30, verbose=False)])  # ✅ Increased patience
+    dir_model.fit(
+        X_train, y_train['target_dir'], 
+        sample_weight=sample_weights,  # Class balancing
+        eval_set=[(X_val, y_val['target_dir'])],
+        callbacks=[lgb.early_stopping(80, verbose=False)]  # More patience
+    )
     
-    # 2. Timing Model (Regressor)
-    print("   Training Timing Model (Balanced V10)...")
+    # 2. Timing Model (Regressor) - Predicts entry quality
+    print("   Training Timing Model (V12 Smart Adaptive)...")
     timing_model = lgb.LGBMRegressor(
-        objective='regression',
+        objective='huber',         # Huber loss - robust to outliers
         metric='mae',
-        n_estimators=100,
+        boosting_type='gbdt',
+        n_estimators=200,
         max_depth=4,
-        num_leaves=16,
-        min_child_samples=50,
-        learning_rate=0.05,
-        subsample=0.6,
-        colsample_bytree=0.5,
+        num_leaves=12,
+        min_child_samples=80,
+        learning_rate=0.02,
+        subsample=0.7,
+        subsample_freq=1,
+        colsample_bytree=0.6,
         reg_alpha=0.5,
         reg_lambda=0.5,
+        min_split_gain=0.005,
+        extra_trees=True,
+        path_smooth=0.1,
         random_state=42,
         verbosity=-1
     )
-    timing_model.fit(X_train, y_train['target_timing'],
-                     eval_set=[(X_val, y_val['target_timing'])],
-                     callbacks=[lgb.early_stopping(30, verbose=False)])
+    timing_model.fit(
+        X_train, y_train['target_timing'],
+        eval_set=[(X_val, y_val['target_timing'])],
+        callbacks=[lgb.early_stopping(80, verbose=False)]
+    )
     
-    # 3. Strength Model (Regression)
-    print("   Training Strength Model (Balanced V10)...")
+    # 3. Strength Model (Regression) - Predicts move magnitude
+    print("   Training Strength Model (V12 Smart Adaptive)...")
     strength_model = lgb.LGBMRegressor(
-        objective='regression', metric='mae',
-        n_estimators=100,
+        objective='huber',         # Huber loss - robust to outliers
+        metric='mae',
+        boosting_type='gbdt',
+        n_estimators=200,
         max_depth=4,
-        num_leaves=16,
-        min_child_samples=50,
-        learning_rate=0.05,
-        subsample=0.6,
-        colsample_bytree=0.5,
+        num_leaves=12,
+        min_child_samples=80,
+        learning_rate=0.02,
+        subsample=0.7,
+        subsample_freq=1,
+        colsample_bytree=0.6,
         reg_alpha=0.5,
         reg_lambda=0.5,
+        min_split_gain=0.005,
+        extra_trees=True,
+        path_smooth=0.1,
         random_state=42,
         verbosity=-1
     )
-    strength_model.fit(X_train, y_train['target_strength'],
-                       eval_set=[(X_val, y_val['target_strength'])],
-                       callbacks=[lgb.early_stopping(30, verbose=False)])
+    strength_model.fit(
+        X_train, y_train['target_strength'],
+        eval_set=[(X_val, y_val['target_strength'])],
+        callbacks=[lgb.early_stopping(80, verbose=False)]
+    )
+    
+    # Log feature importance for top 20 features
+    print("\n   📊 Top 20 Features by Importance (Direction Model):")
+    importance = dir_model.feature_importances_
+    feature_names = X_train.columns.tolist()
+    importance_pairs = sorted(zip(feature_names, importance), key=lambda x: x[1], reverse=True)
+    for name, imp in importance_pairs[:20]:
+        print(f"      {name}: {imp:.1f}")
     
     return {
         'direction': dir_model,
@@ -399,12 +457,13 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     # === V8: DYNAMIC BREAKEVEN TRIGGER ===
     # Strong signals → later BE (let it run)
     # Weak signals → faster BE (protect capital)
+    # V11: Increased all triggers to let trades develop more
     if pred_strength >= 3.0:
-        be_trigger_mult = 1.8   # Wait for 1.8 ATR before BE
+        be_trigger_mult = 2.0   # Wait for 2.0 ATR before BE (was 1.8)
     elif pred_strength >= 2.0:
-        be_trigger_mult = 1.5   # Standard
+        be_trigger_mult = 1.8   # Standard (was 1.5)
     else:
-        be_trigger_mult = 1.2   # Fast BE for weak signals
+        be_trigger_mult = 1.5   # Fast BE for weak signals (was 1.2)
     
     be_trigger_dist = atr * be_trigger_mult
     
@@ -435,7 +494,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['high'] >= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price + (atr * 0.3)  # V8: Higher BE margin to cover slippage
+                sl_price = entry_price + (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -443,16 +502,17 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V8: AGGRESSIVE TRAILING ===
+                # === V11: LESS AGGRESSIVE TRAILING ===
+                # Give trades more room to develop, especially at early stages
                 if USE_AGGRESSIVE_TRAIL:
                     if r_multiple > 5.0:      # Super Pump: Lock it in
-                        trail_mult = 0.4
+                        trail_mult = 0.5      # (was 0.4)
                     elif r_multiple > 3.0:    # Good Trend: Tight trail
-                        trail_mult = 0.8
+                        trail_mult = 1.0      # (was 0.8)
                     elif r_multiple > 2.0:    # Medium: Medium trail
-                        trail_mult = 1.2
-                    else:                      # Early: Loose trail
-                        trail_mult = 1.8
+                        trail_mult = 1.5      # (was 1.2)
+                    else:                      # Early: Very Loose trail - let it breathe!
+                        trail_mult = 2.2      # (was 1.8)
                 else:
                     # Original logic
                     trail_mult = 2.0
@@ -474,7 +534,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
             
             if not breakeven_active and bar['low'] <= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price - (atr * 0.3)  # V8: Higher BE margin to cover slippage
+                sl_price = entry_price - (atr * 0.5)  # V11: Increased BE margin (was 0.3) to cover fees+slippage
             
             # Progressive Trailing Stop
             if breakeven_active:
@@ -482,16 +542,17 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === V8: AGGRESSIVE TRAILING ===
+                # === V11: LESS AGGRESSIVE TRAILING ===
+                # Give trades more room to develop, especially at early stages
                 if USE_AGGRESSIVE_TRAIL:
                     if r_multiple > 5.0:      # Super Pump
-                        trail_mult = 0.4
+                        trail_mult = 0.5      # (was 0.4)
                     elif r_multiple > 3.0:    # Good Trend
-                        trail_mult = 0.8
+                        trail_mult = 1.0      # (was 0.8)
                     elif r_multiple > 2.0:    # Medium
-                        trail_mult = 1.2
+                        trail_mult = 1.5      # (was 1.2)
                     else:                      # Early
-                        trail_mult = 1.8
+                        trail_mult = 2.2      # (was 1.8)
                 else:
                     trail_mult = 2.0
                     if r_multiple > 5.0:

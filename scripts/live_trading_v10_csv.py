@@ -738,7 +738,8 @@ class PortfolioManager:
             'position_value': position_value, 'leverage': leverage,
             'mexc_symbol': mexc_symbol, 'volume': volume,
             'pred_strength': pred_strength, 'breakeven_active': False,
-            'be_trigger_mult': 1.5 if pred_strength >= 2.0 else 1.2
+            # V11: Increased BE trigger to let trades develop more
+            'be_trigger_mult': 2.0 if pred_strength >= 3.0 else (1.8 if pred_strength >= 2.0 else 1.5)
         }
         self.save_state()
         
@@ -761,23 +762,25 @@ class PortfolioManager:
         if pos['direction'] == 'LONG':
             if not pos['breakeven_active'] and candle_high >= pos['entry_price'] + be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] + atr * 0.3
+                pos['stop_loss'] = pos['entry_price'] + atr * 0.5  # V11: Increased from 0.3 to cover fees
                 logger.info(f"✅ Breakeven activated")
             
             if pos['breakeven_active']:
                 r_mult = (candle_high - pos['entry_price']) / pos['stop_distance']
-                trail = 0.4 if r_mult > 5 else (0.8 if r_mult > 3 else (1.2 if r_mult > 2 else 1.8))
+                # V11: Less aggressive trailing - give trades more room
+                trail = 0.5 if r_mult > 5 else (1.0 if r_mult > 3 else (1.5 if r_mult > 2 else 2.2))
                 new_sl = candle_high - atr * trail
                 if new_sl > pos['stop_loss']:
                     pos['stop_loss'] = new_sl
         else:
             if not pos['breakeven_active'] and candle_low <= pos['entry_price'] - be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] - atr * 0.3
+                pos['stop_loss'] = pos['entry_price'] - atr * 0.5  # V11: Increased from 0.3 to cover fees
             
             if pos['breakeven_active']:
                 r_mult = (pos['entry_price'] - candle_low) / pos['stop_distance']
-                trail = 0.4 if r_mult > 5 else (0.8 if r_mult > 3 else (1.2 if r_mult > 2 else 1.8))
+                # V11: Less aggressive trailing - give trades more room
+                trail = 0.5 if r_mult > 5 else (1.0 if r_mult > 3 else (1.5 if r_mult > 2 else 2.2))
                 new_sl = candle_low + atr * trail
                 if new_sl < pos['stop_loss']:
                     pos['stop_loss'] = new_sl
@@ -1310,12 +1313,32 @@ def main():
                 
                 # Log all results
                 signals_found = []
+                confidence_values = []
                 for result in sorted(results, key=lambda x: x['pair']):
                     status = "✅ SIGNAL" if result['is_signal'] else ""
                     logger.info(f"  {result['pair']}: {result['direction']} | Conf: {result['conf']:.2f} | Tim: {result['timing']:.2f} | Str: {result['strength']:.1f} {status}")
+                    confidence_values.append(result['conf'])
                     
                     if result['is_signal']:
                         signals_found.append(result)
+                
+                # Log confidence distribution statistics for diagnosis (optimized single pass)
+                if confidence_values:
+                    n = len(confidence_values)
+                    min_conf_val = float('inf')
+                    max_conf_val = float('-inf')
+                    total = 0.0
+                    above_threshold = 0
+                    for c in confidence_values:
+                        total += c
+                        if c < min_conf_val:
+                            min_conf_val = c
+                        if c > max_conf_val:
+                            max_conf_val = c
+                        if c >= Config.MIN_CONF:
+                            above_threshold += 1
+                    avg_conf = total / n
+                    logger.info(f"📊 Confidence Stats: Avg={avg_conf:.2f} | Min={min_conf_val:.2f} | Max={max_conf_val:.2f} | Above {Config.MIN_CONF}={above_threshold}/{n}")
                 
                 logger.info(f"⏱️ Scan completed in {scan_time:.1f}s for {len(active_pairs)} pairs")
                 
