@@ -203,6 +203,20 @@ ABSOLUTE_PRICE_FEATURES = [
     # At BTC $90K: slope = 100 | At BTC $30K: slope = 33 (3x difference!)
     'linreg_slope_20',  # Raw slope from market_structure.py
     'm5_linreg_slope_20',  # MTF variant
+    
+    # EMA slopes - derived from absolute EMA values
+    # Even though normalized by /ema, the diff() still depends on price scale
+    'ema_fast_slope',  # From market_structure.py identify_trend()
+    'ema_slow_slope',  # From market_structure.py identify_trend()
+    'm5_ema_fast_slope', 'm5_ema_slow_slope',  # MTF variants
+    
+    # EMA slope features from indicators.py - same issue
+    'ema_9_slope', 'ema_21_slope', 'ema_50_slope', 'ema_200_slope',
+    'm5_ema_9_slope', 'm5_ema_21_slope', 'm5_ema_50_slope', 'm5_ema_200_slope',
+    
+    # Structure score can vary based on swing detection timing
+    'structure_score',  # From market_structure.py
+    'm5_structure_score',  # MTF variant
 ]
 
 # Features to exclude from training (in addition to targets and raw OHLCV)
