@@ -108,8 +108,8 @@ class Config:
     # Timeframes
     TIMEFRAMES = ['1m', '5m', '15m']
     
-    # V16 Signal Thresholds (optimized for higher win rate)
-    MIN_CONF = 0.62
+    # V17 Signal Thresholds
+    MIN_CONF = 0.50
     MIN_TIMING = 1.5
     MIN_STRENGTH = 1.8
     
@@ -908,11 +908,16 @@ def load_models() -> Dict:
     if not Config.MODEL_DIR.exists():
         raise FileNotFoundError(f"Model directory not found: {Config.MODEL_DIR}")
     
+    # Load scaler if exists
+    scaler_path = Config.MODEL_DIR / 'scaler.joblib'
+    scaler = joblib.load(scaler_path) if scaler_path.exists() else None
+    
     return {
         'direction': joblib.load(Config.MODEL_DIR / 'direction_model.joblib'),
         'timing': joblib.load(Config.MODEL_DIR / 'timing_model.joblib'),
         'strength': joblib.load(Config.MODEL_DIR / 'strength_model.joblib'),
-        'features': joblib.load(Config.MODEL_DIR / 'feature_names.joblib')
+        'features': joblib.load(Config.MODEL_DIR / 'feature_names.joblib'),
+        'scaler': scaler
     }
 
 
@@ -1058,6 +1063,10 @@ def startup_data_sync(csv_manager: CSVDataManager, pairs: list, mtf_fe: MTFFeatu
             X = row[models['features']].values.astype(np.float64)
             X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
             
+            # Scale features if scaler is available
+            if models.get('scaler') is not None:
+                X = models['scaler'].transform(X)
+            
             dir_proba = models['direction'].predict_proba(X)
             dir_conf = float(np.max(dir_proba))
             timing = float(models['timing'].predict(X)[0])
@@ -1131,6 +1140,10 @@ def process_pair_for_signal(
         # Get predictions
         X = row[models['features']].values.astype(np.float64)
         X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Scale features if scaler is available
+        if models.get('scaler') is not None:
+            X = models['scaler'].transform(X)
         
         dir_proba = models['direction'].predict_proba(X)
         dir_conf = float(np.max(dir_proba))

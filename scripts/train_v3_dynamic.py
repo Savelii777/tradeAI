@@ -40,6 +40,7 @@ import joblib
 import ccxt
 from loguru import logger
 import lightgbm as lgb
+from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
@@ -201,8 +202,9 @@ def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
     combined_vol = np.maximum(vol_short, (vol_medium + vol_long) / 2)
     combined_vol = combined_vol.shift(1)  # Use only past data
     
-    # Adaptive threshold: at least 0.3% or 0.8x recent volatility
-    threshold = np.maximum(combined_vol * 0.8, 0.003)
+    # Adaptive threshold: LOWER threshold for more direction signals
+    # Changed from 0.8x/0.3% to 0.4x/0.15% for ~40% direction labels instead of ~22%
+    threshold = np.maximum(combined_vol * 0.4, 0.0015)
     
     # 2. Calculate future return with time-weighting
     # Near-term movement is more important than far-term
@@ -262,9 +264,25 @@ def train_models(X_train, y_train, X_val, y_val):
     - Feature subsampling for robustness
     - Dart booster for better generalization (drops trees randomly)
     - Class weights for imbalanced direction labels
+    - StandardScaler for consistent feature ranges
     
     Expected: 60-70% winrate on backtest, confident predictions on live.
     """
+    
+    # Scale features for consistent ranges (RSI 0-100, returns -0.1 to 0.1, etc)
+    scaler = StandardScaler()
+    X_train_scaled = pd.DataFrame(
+        scaler.fit_transform(X_train),
+        columns=X_train.columns,
+        index=X_train.index
+    )
+    X_val_scaled = pd.DataFrame(
+        scaler.transform(X_val),
+        columns=X_val.columns,
+        index=X_val.index
+    )
+    
+    print(f"   📐 Features scaled: mean=0, std=1")
     
     # Calculate class weights for imbalanced labels
     from collections import Counter
@@ -273,81 +291,82 @@ def train_models(X_train, y_train, X_val, y_val):
     class_weights = {k: total / (3 * v) for k, v in label_counts.items()}
     sample_weights = np.array([class_weights[y] for y in y_train['target_dir']])
     
-    # 1. Direction Model (Multiclass) - ANTI-OVERFIT VERSION
+    # 1. Direction Model (Multiclass) - CONFIDENT VERSION
+    # More aggressive params to get higher confidence predictions
     print("   Training Direction Model (High Confidence)...")
     dir_model = lgb.LGBMClassifier(
         objective='multiclass', 
         num_class=3, 
         metric='multi_logloss',
         boosting_type='gbdt',
-        n_estimators=100,          # Fewer trees = less overfit
-        max_depth=3,               # Very shallow
-        num_leaves=8,              # Minimal leaves
-        min_child_samples=100,     # High = only robust patterns
-        learning_rate=0.05,        # Faster = less memorization
-        subsample=0.7,             # More randomness
-        colsample_bytree=0.6,      # Less features per tree
-        reg_alpha=0.5,             # Strong L1 regularization
-        reg_lambda=0.5,            # Strong L2 regularization
-        min_split_gain=0.01,       # Higher threshold for splits
+        n_estimators=300,          # More trees
+        max_depth=8,               # Deeper trees = more confident
+        num_leaves=64,             # More leaves = sharper splits
+        min_child_samples=20,      # Lower = fits data better
+        learning_rate=0.03,        # Slower learning, more iterations
+        subsample=0.9,             # More data per tree
+        colsample_bytree=0.8,      # More features per tree
+        reg_alpha=0.0,             # NO regularization
+        reg_lambda=0.0,            # NO regularization
+        min_split_gain=0.0,        # Allow all splits
         random_state=42, 
         verbosity=-1,
         importance_type='gain'
     )
     dir_model.fit(
-        X_train, y_train['target_dir'], 
+        X_train_scaled, y_train['target_dir'], 
         sample_weight=sample_weights,
-        eval_set=[(X_val, y_val['target_dir'])],
+        eval_set=[(X_val_scaled, y_val['target_dir'])],
         callbacks=[lgb.early_stopping(30, verbose=False)]
     )
     
-    # 2. Timing Model (Regressor) - ANTI-OVERFIT VERSION
+    # 2. Timing Model (Regressor) - CONFIDENT VERSION
     print("   Training Timing Model (High Predictions)...")
     timing_model = lgb.LGBMRegressor(
         objective='regression',
         metric='mae',
         boosting_type='gbdt',
-        n_estimators=100,
-        max_depth=3,
-        num_leaves=8,
-        min_child_samples=100,
-        learning_rate=0.05,
-        subsample=0.7,
-        colsample_bytree=0.6,
-        reg_alpha=0.5,
-        reg_lambda=0.5,
-        min_split_gain=0.01,
+        n_estimators=300,
+        max_depth=8,
+        num_leaves=64,
+        min_child_samples=20,
+        learning_rate=0.03,
+        subsample=0.9,
+        colsample_bytree=0.8,
+        reg_alpha=0.0,
+        reg_lambda=0.0,
+        min_split_gain=0.0,
         random_state=42,
         verbosity=-1
     )
     timing_model.fit(
-        X_train, y_train['target_timing'],
-        eval_set=[(X_val, y_val['target_timing'])],
+        X_train_scaled, y_train['target_timing'],
+        eval_set=[(X_val_scaled, y_val['target_timing'])],
         callbacks=[lgb.early_stopping(30, verbose=False)]
     )
     
-    # 3. Strength Model (Regression) - ANTI-OVERFIT VERSION
+    # 3. Strength Model (Regression) - CONFIDENT VERSION
     print("   Training Strength Model (High Predictions)...")
     strength_model = lgb.LGBMRegressor(
         objective='regression',
         metric='mae',
         boosting_type='gbdt',
-        n_estimators=100,
-        max_depth=3,
-        num_leaves=8,
-        min_child_samples=100,
-        learning_rate=0.05,
-        subsample=0.7,
-        colsample_bytree=0.6,
-        reg_alpha=0.5,
-        reg_lambda=0.5,
-        min_split_gain=0.01,
+        n_estimators=300,
+        max_depth=8,
+        num_leaves=64,
+        min_child_samples=20,
+        learning_rate=0.03,
+        subsample=0.9,
+        colsample_bytree=0.8,
+        reg_alpha=0.0,
+        reg_lambda=0.0,
+        min_split_gain=0.0,
         random_state=42,
         verbosity=-1
     )
     strength_model.fit(
-        X_train, y_train['target_strength'],
-        eval_set=[(X_val, y_val['target_strength'])],
+        X_train_scaled, y_train['target_strength'],
+        eval_set=[(X_val_scaled, y_val['target_strength'])],
         callbacks=[lgb.early_stopping(30, verbose=False)]
     )
     
@@ -362,7 +381,8 @@ def train_models(X_train, y_train, X_val, y_val):
     return {
         'direction': dir_model,
         'timing': timing_model,
-        'strength': strength_model
+        'strength': strength_model,
+        'scaler': scaler
     }
 
 
@@ -370,7 +390,7 @@ def train_models(X_train, y_train, X_val, y_val):
 # PORTFOLIO BACKTEST (V9 - Realistic Thresholds)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = 0.62, min_timing: float = 1.5, min_strength: float = 1.8) -> list:
+                    min_conf: float = 0.50, min_timing: float = 1.5, min_strength: float = 1.8) -> list:
                     
     """
     Generate all valid signals for a single pair.
@@ -379,6 +399,10 @@ def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_na
     
     # Predict in batches for speed
     X = df[feature_cols].values
+    
+    # Scale features if scaler is provided
+    if 'scaler' in models and models['scaler'] is not None:
+        X = models['scaler'].transform(X)
     
     # 1. Direction
     dir_proba = models['direction'].predict_proba(X)
@@ -1190,8 +1214,9 @@ def main():
     joblib.dump(models['direction'], out / 'direction_model.joblib')
     joblib.dump(models['timing'], out / 'timing_model.joblib')
     joblib.dump(models['strength'], out / 'strength_model.joblib')
+    joblib.dump(models['scaler'], out / 'scaler.joblib')
     joblib.dump(features, out / 'feature_names.joblib')
-    print("Models saved.")
+    print("Models and scaler saved.")
 
     if trades:
         pd.DataFrame(trades).to_csv(out / f'backtest_trades_{args.test_days}d.csv', index=False)
