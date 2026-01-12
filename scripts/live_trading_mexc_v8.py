@@ -240,7 +240,7 @@ class MEXCClient:
         }
         
         logger.info(f"📤 Placing MEXC order: {params}")
-        result = self._request('POST', '/api/v1/private/order/submit', params)
+        result = self._request('POST', '/api/v1/private/order/create', params)
         
         if result and result.get('success'):
             logger.info(f"✅ Order placed successfully! Order ID: {result.get('data')}")
@@ -276,7 +276,7 @@ class MEXCClient:
         }
         
         logger.info(f"📤 Placing STOP order @ {stop_price}: {params}")
-        result = self._request('POST', '/api/v1/private/planorder/place', params)
+        result = self._request('POST', '/api/v1/private/planorder/place/v2', params)
         
         if result and result.get('success'):
             order_id = result.get('data')

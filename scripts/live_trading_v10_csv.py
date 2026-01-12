@@ -50,6 +50,15 @@ import numpy as np
 import yaml
 from loguru import logger
 
+# MEXC WEB API requires curl_cffi for TLS fingerprinting bypass
+try:
+    from curl_cffi import requests as curl_requests
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    CURL_CFFI_AVAILABLE = False
+    logger.warning("⚠️ curl_cffi not installed - MEXC WEB API won't work")
+    logger.warning("  Install with: pip install curl-cffi")
+
 # Check for pyarrow availability (for Parquet support)
 try:
     import pyarrow
@@ -539,99 +548,241 @@ class CSVDataManager:
 
 
 # ============================================================
-# MEXC CLIENT (same as V9)
+# MEXC WEB API CLIENT (Bypass maintenance mode)
+# Uses internal WEB API instead of public OpenAPI
+# Based on: https://github.com/biberhund/MEXC_Future_Order_API_Maintenance_Bypass
 # ============================================================
 class MEXCClient:
-    """Direct MEXC Futures API client."""
+    """MEXC Futures WEB API client - bypasses maintenance mode."""
     
-    def __init__(self, api_key: str, api_secret: str):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.base_url = Config.MEXC_BASE_URL
-        logger.info("✅ MEXC Client initialized")
-    
-    def _generate_signature(self, sign_str: str) -> str:
-        return hmac.new(
-            self.api_secret.encode('utf-8'),
-            sign_str.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
-    
-    def _request(self, method: str, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
-        timestamp = int(time.time() * 1000)
-        if params is None:
-            params = {}
-        params['timestamp'] = timestamp
+    def __init__(self, web_cookie: str):
+        """
+        Initialize MEXC WEB API client.
         
-        sorted_params = sorted(params.items())
-        params_str = '&'.join([f"{k}={v}" for k, v in sorted_params])
-        sign_str = f"{self.api_key}{timestamp}{params_str}"
-        signature = self._generate_signature(sign_str)
+        Args:
+            web_cookie: Browser cookie (u_id starting with 'WEB...')
+                       Get from browser DevTools > Application > Cookies > futures.mexc.com
+        """
+        self.web_cookie = web_cookie
+        self.base_url = "https://futures.mexc.com"
+        
+        if not CURL_CFFI_AVAILABLE:
+            raise ImportError("curl_cffi is required for MEXC WEB API. Install with: pip install curl-cffi")
+        
+        logger.info("✅ MEXC WEB API Client initialized")
+    
+    def _md5(self, value: str) -> str:
+        """Calculate MD5 hash."""
+        return hashlib.md5(value.encode('utf-8')).hexdigest()
+    
+    def _generate_signature(self, obj: dict) -> dict:
+        """Generate MEXC WEB API signature."""
+        date_now = str(int(time.time() * 1000))
+        g = self._md5(self.web_cookie + date_now)[7:]
+        s = json.dumps(obj, separators=(',', ':'))
+        sign = self._md5(date_now + s + g)
+        return {'time': date_now, 'sign': sign}
+    
+    def _request(self, method: str, endpoint: str, obj: Optional[Dict] = None) -> Optional[Dict]:
+        """Make authenticated request to MEXC WEB API."""
+        if obj is None:
+            obj = {}
+        
+        signature = self._generate_signature(obj)
         
         headers = {
-            'ApiKey': self.api_key,
-            'Request-Time': str(timestamp),
-            'Signature': signature,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'x-mxc-sign': signature['sign'],
+            'x-mxc-nonce': signature['time'],
+            'x-kl-ajax-request': 'Ajax_Request',
+            'Authorization': self.web_cookie,
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Origin': 'https://futures.mexc.com',
+            'Referer': 'https://futures.mexc.com/'
         }
         
         url = f"{self.base_url}{endpoint}"
         
-        try:
-            if method == 'GET':
-                response = requests.get(url, params=params, headers=headers, timeout=30, verify=True)
-            elif method == 'POST':
-                response = requests.post(url, params=params, headers=headers, timeout=30, verify=True)
-            else:
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if method == 'GET':
+                    if obj:
+                        params = '&'.join([f"{k}={v}" for k, v in obj.items()])
+                        url = f"{url}?{params}"
+                    response = curl_requests.get(url, headers=headers, impersonate="chrome", timeout=15)
+                else:
+                    response = curl_requests.post(url, headers=headers, json=obj, impersonate="chrome", timeout=15)
+                
+                return response.json()
+            except Exception as e:
+                logger.warning(f"MEXC WEB API error (attempt {attempt+1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
                 return None
-            
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"MEXC API error: {e}")
-            return None
+        return None
     
     def get_account_assets(self) -> float:
+        """Get USDT balance."""
         result = self._request('GET', '/api/v1/private/account/assets', {})
         if result and result.get('success'):
             for asset in result.get('data', []):
-                if asset['currency'] == 'USDT':
+                if asset.get('currency') == 'USDT':
                     return float(asset.get('availableBalance', 0))
         return 0.0
     
+    def get_open_positions(self, symbol: str = None) -> list:
+        """Get open positions."""
+        obj = {'symbol': symbol} if symbol else {}
+        result = self._request('GET', '/api/v1/private/position/open_positions', obj)
+        if result and result.get('success'):
+            return result.get('data', [])
+        return []
+    
+    def change_leverage(self, symbol: str, leverage: int, position_type: int = 1) -> bool:
+        """Change leverage (position_type: 1=long, 2=short)."""
+        obj = {
+            "symbol": symbol,
+            "leverage": leverage,
+            "openType": 1,  # Isolated
+            "positionType": position_type
+        }
+        result = self._request('POST', '/api/v1/private/position/change_leverage', obj)
+        return result and result.get('success', False)
+    
     def place_order(self, symbol: str, side: int, volume: int, leverage: int,
                    price: float = 0, order_type: int = 5, open_type: int = 1) -> Optional[str]:
-        params = {
-            'symbol': symbol, 'price': price, 'vol': volume,
-            'leverage': leverage, 'side': side, 'type': order_type, 'openType': open_type
+        """
+        Place order on MEXC Futures.
+        
+        Args:
+            symbol: e.g., 'BTC_USDT'
+            side: 1=open long, 2=close short, 3=open short, 4=close long
+            volume: Number of contracts
+            leverage: Leverage multiplier
+            order_type: 1=limit, 5=market
+            open_type: 1=isolated, 2=cross
+        """
+        # Set leverage first (for both long and short)
+        self.change_leverage(symbol, leverage, position_type=1)
+        self.change_leverage(symbol, leverage, position_type=2)
+        
+        obj = {
+            "symbol": symbol,
+            "side": side,
+            "openType": open_type,
+            "type": str(order_type),
+            "vol": volume,
+            "leverage": leverage,
+            "priceProtect": "0"
         }
-        logger.info(f"📤 Placing order: {params}")
-        result = self._request('POST', '/api/v1/private/order/submit', params)
+        
+        if price > 0 and order_type == 1:
+            obj["price"] = price
+        
+        logger.info(f"📤 Placing order: {symbol} side={side} vol={volume} lev={leverage}x")
+        result = self._request('POST', '/api/v1/private/order/create', obj)
+        
         if result and result.get('success'):
-            return result.get('data')
-        return None
+            order_id = result.get('data', {}).get('orderId')
+            logger.info(f"✅ Order placed! ID: {order_id}")
+            return str(order_id)
+        else:
+            logger.error(f"❌ Order failed: {result}")
+            return None
+    
+    def _get_price_precision(self, price: float) -> int:
+        """Determine price precision based on price magnitude."""
+        if price >= 1000:
+            return 2  # BTC, ETH at high prices
+        elif price >= 100:
+            return 2  # BCH, SOL, etc.
+        elif price >= 10:
+            return 3  # Many altcoins
+        elif price >= 1:
+            return 4  # Lower priced coins
+        elif price >= 0.1:
+            return 5  # Small coins
+        else:
+            return 6  # Meme coins like PEPE
     
     def place_stop_order(self, symbol: str, side: int, volume: int, 
                         stop_price: float, leverage: int) -> Optional[str]:
-        params = {
-            'symbol': symbol, 'price': 0, 'vol': volume, 'leverage': leverage,
-            'side': side, 'type': 5, 'openType': 1, 'triggerPrice': stop_price,
-            'triggerType': 1, 'executeCycle': 1, 'trend': 1 if side == 3 else 2
+        """
+        Place stop loss order using position-based TP/SL.
+        
+        Args:
+            symbol: e.g., 'BTC_USDT'
+            side: 4=close long (SL for LONG position), 2=close short (SL for SHORT position)
+            volume: Number of contracts
+            stop_price: Trigger price
+            leverage: Leverage (not used for position-based SL, but kept for interface compatibility)
+        """
+        # Get position ID first
+        positions = self.get_open_positions(symbol)
+        if not positions:
+            logger.warning(f"No position found for {symbol}, cannot place stop order")
+            return None
+        
+        # side=4 means close long, so we need LONG position (positionType=1)
+        # side=2 means close short, so we need SHORT position (positionType=2)
+        position_type = 1 if side == 4 else 2  # 4=close long -> need long pos, 2=close short -> need short pos
+        position = None
+        for pos in positions:
+            if pos.get('symbol') == symbol and pos.get('positionType') == position_type:
+                position = pos
+                break
+        
+        if not position:
+            logger.warning(f"No matching position for {symbol} side={side}")
+            return None
+        
+        position_id = int(position.get('positionId'))
+        
+        # Round stop price based on price magnitude
+        precision = self._get_price_precision(stop_price)
+        stop_price = round(stop_price, precision)
+        
+        obj = {
+            "positionId": position_id,
+            "vol": volume,
+            "stopLossPrice": stop_price,
+            "lossTrend": 1  # 1=last price
         }
-        result = self._request('POST', '/api/v1/private/planorder/place', params)
+        
+        logger.info(f"📤 Placing stop order @ {stop_price} for position {position_id}")
+        result = self._request('POST', '/api/v1/private/stoporder/place', obj)
+        
         if result and result.get('success'):
-            return result.get('data')
-        return None
+            logger.info(f"✅ Stop order placed!")
+            return str(result.get('data', ''))
+        else:
+            logger.error(f"❌ Stop order failed: {result}")
+            return None
     
     def cancel_stop_orders(self, symbol: str) -> bool:
-        result = self._request('GET', '/api/v1/private/planorder/list', {'symbol': symbol})
-        if not result or not result.get('success'):
-            return False
-        for order in result.get('data', []):
-            if order.get('id'):
-                self._request('POST', '/api/v1/private/planorder/cancel', 
-                            {'symbol': symbol, 'orderId': order['id']})
-        return True
+        """Cancel all stop orders for a symbol."""
+        obj = {'symbol': symbol}
+        result = self._request('POST', '/api/v1/private/stoporder/cancel_all', obj)
+        if result and result.get('success'):
+            logger.info(f"✅ Cancelled stop orders for {symbol}")
+            return True
+        return False
+    
+    def update_stop_order(self, stop_order_id: int, new_stop_price: float) -> bool:
+        """Update/move an existing stop order (trailing stop)."""
+        precision = self._get_price_precision(new_stop_price)
+        new_stop_price = round(new_stop_price, precision)
+        obj = {
+            "stopPlanOrderId": stop_order_id,
+            "stopLossPrice": new_stop_price,
+            "lossTrend": 1
+        }
+        result = self._request('POST', '/api/v1/private/stoporder/change_plan_price', obj)
+        return result and result.get('success', False)
 
 
 # ============================================================
@@ -695,9 +846,69 @@ class PortfolioManager:
         with open(Config.TRADES_FILE, 'w') as f:
             json.dump({'capital': self.capital, 'position': pos, 'history': self.trades_history}, f, indent=2)
     
+    def sync_position_with_exchange(self) -> bool:
+        """
+        Check if local position still exists on exchange.
+        If position was closed manually, clear local state.
+        Returns True if position still exists, False if cleared.
+        """
+        if not self.position:
+            return False
+        
+        mexc_symbol = self.position.get('mexc_symbol')
+        direction = self.position.get('direction')
+        
+        # Get real positions from exchange
+        positions = self.mexc.get_open_positions(mexc_symbol)
+        
+        # Check if our position still exists
+        position_type = 1 if direction == 'LONG' else 2  # 1=long, 2=short
+        position_exists = False
+        
+        for pos in positions:
+            if pos.get('symbol') == mexc_symbol and pos.get('positionType') == position_type:
+                # Position still open
+                position_exists = True
+                break
+        
+        if not position_exists:
+            logger.warning(f"⚠️ Position {self.position['pair']} {direction} not found on exchange - was closed manually?")
+            
+            # Update capital from exchange
+            real_balance = self.mexc.get_account_assets()
+            if real_balance > 0:
+                old_capital = self.capital
+                self.capital = real_balance
+                pnl = self.capital - old_capital
+                logger.info(f"💰 Capital updated: ${old_capital:.2f} → ${self.capital:.2f} (PnL: ${pnl:+.2f})")
+            
+            # Clear position
+            self.position = None
+            self.save_state()
+            
+            self.telegram.send(
+                f"📭 Position closed externally",
+                f"Detected manual close. Capital: ${self.capital:.2f}"
+            )
+            return False
+        
+        return True
+    
     def open_position(self, signal: Dict) -> bool:
         if self.position:
             return False
+        
+        # Get REAL balance from exchange before opening position
+        real_balance = self.mexc.get_account_assets()
+        if real_balance <= 0:
+            logger.error("❌ Could not get balance from MEXC or balance is 0")
+            return False
+        
+        # Update local capital to match exchange
+        if abs(self.capital - real_balance) > 0.01:
+            logger.info(f"💰 Syncing capital: ${self.capital:.2f} → ${real_balance:.2f}")
+            self.capital = real_balance
+            self.save_state()
         
         entry_price = signal['price']
         atr = signal['atr']
@@ -720,15 +931,34 @@ class PortfolioManager:
         position_value = min(risk_amount / stop_loss_pct, Config.MAX_POSITION_SIZE)
         leverage = min(position_value / self.capital, Config.MAX_LEVERAGE)
         
+        # SAFETY: Ensure we don't exceed available margin (with 10% buffer for fees)
+        max_margin_available = self.capital * 0.90  # Keep 10% buffer
+        required_margin = position_value / leverage
+        if required_margin > max_margin_available:
+            # Scale down position to fit available margin
+            position_value = max_margin_available * leverage
+            logger.warning(f"⚠️ Scaled down position to fit margin: ${position_value:.2f}")
+        
+        # Minimum position check
+        if position_value < 1.0:
+            logger.error(f"❌ Position too small: ${position_value:.2f} (need at least $1)")
+            return False
+        
         mexc_symbol = signal['pair'].replace('/USDT:USDT', '_USDT').replace('/', '_')
         volume = max(1, int(position_value / entry_price))
-        mexc_side = 1 if signal['direction'] == 'LONG' else 2
+        # WEB API: 1=open long, 3=open short
+        mexc_side = 1 if signal['direction'] == 'LONG' else 3
+        
+        logger.info(f"📊 Position: ${position_value:.2f} | Margin: ${required_margin:.2f} | Lev: {leverage:.0f}x | Vol: {volume}")
         
         order_id = self.mexc.place_order(mexc_symbol, mexc_side, volume, int(leverage))
         if not order_id:
             return False
+        if not order_id:
+            return False
         
-        stop_side = 3 if signal['direction'] == 'LONG' else 4
+        # WEB API: 4=close long (SL), 2=close short (SL)
+        stop_side = 4 if signal['direction'] == 'LONG' else 2
         stop_order_id = self.mexc.place_stop_order(mexc_symbol, stop_side, volume, stop_loss, int(leverage))
         
         self.position = {
@@ -793,7 +1023,8 @@ class PortfolioManager:
         
         pos = self.position
         self.mexc.cancel_stop_orders(pos['mexc_symbol'])
-        self.mexc.place_order(pos['mexc_symbol'], 3 if pos['direction'] == 'LONG' else 4, 
+        # WEB API: 4=close long, 2=close short
+        self.mexc.place_order(pos['mexc_symbol'], 4 if pos['direction'] == 'LONG' else 2, 
                              pos['volume'], int(pos['leverage']))
         
         if pos['direction'] == 'LONG':
@@ -1244,10 +1475,15 @@ def main():
         return
     
     # Initialize clients
-    mexc = MEXCClient(
-        secrets['mexc']['api_key'],
-        secrets['mexc']['api_secret']
-    )
+    # MEXC WEB API uses browser cookie instead of API keys
+    mexc_cookie = secrets['mexc'].get('web_cookie', '')
+    if not mexc_cookie:
+        logger.error("❌ MEXC web_cookie not found in secrets.yaml!")
+        logger.error("   Add 'web_cookie' under 'mexc' section in config/secrets.yaml")
+        logger.error("   Get cookie from browser: DevTools > Application > Cookies > futures.mexc.com > u_id")
+        return
+    
+    mexc = MEXCClient(mexc_cookie)
     
     telegram = TelegramNotifier(
         secrets.get('notifications', {}).get('telegram', {}).get('bot_token', ''),
@@ -1308,13 +1544,25 @@ def main():
         try:
             wait_until_candle_close(5)
             
+            # Sync position with exchange (detect manual closes)
+            if portfolio.position:
+                if not portfolio.sync_position_with_exchange():
+                    # Position was closed externally, skip to scanning
+                    logger.info("🔄 Position cleared, resuming scan mode...")
+            
             # Update position if exists
             if portfolio.position:
                 pos = portfolio.position
+                logger.info(f"📍 Monitoring {pos['pair']} {pos['direction']} | Entry: {pos['entry_price']:.4f} | SL: {pos['stop_loss']:.4f}")
                 ticker = binance.fetch_ticker(pos['pair'])
                 candles = binance.fetch_ohlcv(pos['pair'], '5m', limit=2)
                 if len(candles) >= 2:
-                    portfolio.update_position(ticker['last'], candles[-2][2], candles[-2][3])
+                    current_price = ticker['last']
+                    pnl_pct = ((current_price - pos['entry_price']) / pos['entry_price']) * 100
+                    if pos['direction'] == 'SHORT':
+                        pnl_pct = -pnl_pct
+                    logger.info(f"📈 Price: {current_price:.4f} | PnL: {pnl_pct:+.2f}%")
+                    portfolio.update_position(current_price, candles[-2][2], candles[-2][3])
             
             # Scan for signals using PARALLEL processing
             if not portfolio.position:
