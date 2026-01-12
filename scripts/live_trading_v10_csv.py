@@ -625,6 +625,19 @@ class MEXCClient:
                 return None
         return None
     
+    def get_contract_size(self, symbol: str) -> float:
+        """Get contract size for a symbol. Returns how many units 1 contract represents."""
+        try:
+            url = f"{self.base_url}/api/v1/contract/detail?symbol={symbol}"
+            response = curl_requests.get(url, impersonate="chrome", timeout=10)
+            data = response.json()
+            if data.get('success'):
+                contract_size = float(data['data'].get('contractSize', 1.0))
+                return contract_size
+        except Exception as e:
+            logger.warning(f"Failed to get contract size for {symbol}: {e}")
+        return 0.0001  # Default fallback for most coins
+    
     def get_account_assets(self) -> float:
         """Get USDT balance."""
         result = self._request('GET', '/api/v1/private/account/assets', {})
@@ -931,8 +944,8 @@ class PortfolioManager:
         position_value = min(risk_amount / stop_loss_pct, Config.MAX_POSITION_SIZE)
         leverage = min(position_value / self.capital, Config.MAX_LEVERAGE)
         
-        # SAFETY: Ensure we don't exceed available margin (with 10% buffer for fees)
-        max_margin_available = self.capital * 0.90  # Keep 10% buffer
+        # SAFETY: Ensure we don't exceed available margin (with 2% buffer for fees)
+        max_margin_available = self.capital * 0.98  # Keep 2% buffer for fees only
         required_margin = position_value / leverage
         if required_margin > max_margin_available:
             # Scale down position to fit available margin
@@ -945,11 +958,22 @@ class PortfolioManager:
             return False
         
         mexc_symbol = signal['pair'].replace('/USDT:USDT', '_USDT').replace('/', '_')
-        volume = max(1, int(position_value / entry_price))
+        
+        # Get contract size (e.g., LINK = 0.1, BTC = 0.0001)
+        contract_size = self.mexc.get_contract_size(mexc_symbol)
+        # Calculate volume: position_value / (price * contract_size)
+        # Example: $14.84 / ($13.20 * 0.1) = 11.2 -> 11 contracts
+        contract_value = entry_price * contract_size
+        volume = max(1, int(position_value / contract_value))
+        
+        # Recalculate actual position value after rounding
+        actual_position_value = volume * contract_value
+        actual_margin = actual_position_value / leverage
+        
         # WEB API: 1=open long, 3=open short
         mexc_side = 1 if signal['direction'] == 'LONG' else 3
         
-        logger.info(f"📊 Position: ${position_value:.2f} | Margin: ${required_margin:.2f} | Lev: {leverage:.0f}x | Vol: {volume}")
+        logger.info(f"📊 Position: ${actual_position_value:.2f} | Margin: ${actual_margin:.2f} | Lev: {leverage:.0f}x | Vol: {volume} | ContractSize: {contract_size}")
         
         order_id = self.mexc.place_order(mexc_symbol, mexc_side, volume, int(leverage))
         if not order_id:
@@ -965,8 +989,10 @@ class PortfolioManager:
             'pair': signal['pair'], 'direction': signal['direction'],
             'entry_price': entry_price, 'entry_time': datetime.now(timezone.utc),
             'stop_loss': stop_loss, 'stop_distance': stop_distance,
-            'position_value': position_value, 'leverage': leverage,
+            'position_value': actual_position_value, 'leverage': leverage,
             'mexc_symbol': mexc_symbol, 'volume': volume,
+            'contract_size': contract_size,
+            'stop_order_id': int(stop_order_id) if stop_order_id else None,
             'pred_strength': pred_strength, 'breakeven_active': False,
             # V14: Balanced BE trigger - not too early (small profits), not too late (more SL hits)
             'be_trigger_mult': 2.5 if pred_strength >= 3.0 else (2.2 if pred_strength >= 2.0 else 1.8)
@@ -993,7 +1019,10 @@ class PortfolioManager:
             if not pos['breakeven_active'] and candle_high >= pos['entry_price'] + be_trigger_dist:
                 pos['breakeven_active'] = True
                 pos['stop_loss'] = pos['entry_price'] + atr * 1.0  # V14: Lock meaningful profit when BE triggers
-                logger.info(f"✅ Breakeven activated at +{atr * 1.0:.6f}")
+                # Update stop on exchange for breakeven
+                if pos.get('stop_order_id'):
+                    self.mexc.update_stop_order(pos['stop_order_id'], pos['stop_loss'])
+                logger.info(f"✅ Breakeven SL set to {pos['stop_loss']:.4f}")
             
             if pos['breakeven_active']:
                 r_mult = (candle_high - pos['entry_price']) / pos['stop_distance']
@@ -1001,11 +1030,20 @@ class PortfolioManager:
                 trail = 0.6 if r_mult > 5 else (1.2 if r_mult > 3 else (1.8 if r_mult > 2 else 2.5))
                 new_sl = candle_high - atr * trail
                 if new_sl > pos['stop_loss']:
+                    old_sl = pos['stop_loss']
                     pos['stop_loss'] = new_sl
+                    # Update stop on exchange
+                    if pos.get('stop_order_id'):
+                        if self.mexc.update_stop_order(pos['stop_order_id'], new_sl):
+                            logger.info(f"🔄 Trailing SL: {old_sl:.4f} → {new_sl:.4f}")
         else:
             if not pos['breakeven_active'] and candle_low <= pos['entry_price'] - be_trigger_dist:
                 pos['breakeven_active'] = True
                 pos['stop_loss'] = pos['entry_price'] - atr * 1.0  # V14: Lock meaningful profit when BE triggers
+                # Update stop on exchange for breakeven
+                if pos.get('stop_order_id'):
+                    self.mexc.update_stop_order(pos['stop_order_id'], pos['stop_loss'])
+                    logger.info(f"✅ Breakeven SL set to {pos['stop_loss']:.4f}")
             
             if pos['breakeven_active']:
                 r_mult = (pos['entry_price'] - candle_low) / pos['stop_distance']
@@ -1013,7 +1051,12 @@ class PortfolioManager:
                 trail = 0.6 if r_mult > 5 else (1.2 if r_mult > 3 else (1.8 if r_mult > 2 else 2.5))
                 new_sl = candle_low + atr * trail
                 if new_sl < pos['stop_loss']:
+                    old_sl = pos['stop_loss']
                     pos['stop_loss'] = new_sl
+                    # Update stop on exchange
+                    if pos.get('stop_order_id'):
+                        if self.mexc.update_stop_order(pos['stop_order_id'], new_sl):
+                            logger.info(f"🔄 Trailing SL: {old_sl:.4f} → {new_sl:.4f}")
         
         self.save_state()
     
