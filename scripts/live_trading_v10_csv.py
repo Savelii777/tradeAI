@@ -712,19 +712,27 @@ class MEXCClient:
             return None
     
     def _get_price_precision(self, price: float) -> int:
-        """Determine price precision based on price magnitude."""
+        """Determine price precision based on price magnitude.
+        
+        MEXC Futures precision requirements (conservative):
+        - High prices (>=1000): 2 decimals
+        - Medium (>=10): 2-3 decimals  
+        - Low (>=1): 3 decimals (NEAR, LINK, etc.)
+        - Very low (>=0.01): 4 decimals
+        - Tiny (<0.01): 5-6 decimals (PEPE, etc.)
+        """
         if price >= 1000:
-            return 2  # BTC, ETH at high prices
+            return 1  # BTC at 95000 -> 95000.0
         elif price >= 100:
-            return 2  # BCH, SOL, etc.
+            return 2  # BCH at 600 -> 600.00
         elif price >= 10:
-            return 3  # Many altcoins
+            return 2  # SOL at 180 -> 180.00
         elif price >= 1:
-            return 4  # Lower priced coins
-        elif price >= 0.1:
-            return 5  # Small coins
+            return 3  # NEAR at 1.70 -> 1.700
+        elif price >= 0.01:
+            return 4  # Small coins
         else:
-            return 6  # Meme coins like PEPE
+            return 5  # Meme coins like PEPE
     
     def place_stop_order(self, symbol: str, side: int, volume: int, 
                         stop_price: float, leverage: int) -> Optional[str]:
@@ -800,6 +808,34 @@ class MEXCClient:
         }
         result = self._request('POST', '/api/v1/private/stoporder/change_plan_price', obj)
         return result and result.get('success', False)
+    
+    def get_history_positions(self, symbol: str = None, page_num: int = 1, page_size: int = 20) -> list:
+        """
+        Get closed positions history from exchange.
+        Returns list of closed positions with PnL data.
+        """
+        obj = {
+            "page_num": page_num,
+            "page_size": page_size
+        }
+        if symbol:
+            obj["symbol"] = symbol
+        
+        result = self._request('GET', '/api/v1/private/position/list/history_positions', obj)
+        if result and result.get('success'):
+            return result.get('data', [])
+        return []
+    
+    def get_order_deals(self, symbol: str, order_id: str) -> list:
+        """Get filled trades for an order."""
+        obj = {
+            "symbol": symbol,
+            "orderId": order_id
+        }
+        result = self._request('GET', '/api/v1/private/order/deal_details', obj)
+        if result and result.get('success'):
+            return result.get('data', [])
+        return []
 
 
 # ============================================================
@@ -834,11 +870,21 @@ class PortfolioManager:
         self.trades_history = []
         
         if self.load_state():
-            logger.info(f"📂 State loaded. Capital: ${self.capital:.2f}")
+            logger.info(f"📂 State loaded. Capital from file: ${self.capital:.2f}")
         else:
-            self.capital = self.mexc.get_account_assets() or 20.0
-            logger.info(f"💰 Capital: ${self.capital:.2f}")
-            self.save_state()
+            self.capital = 0
+        
+        # ALWAYS sync capital with exchange on startup!
+        real_balance = self.mexc.get_account_assets()
+        if real_balance and real_balance > 0:
+            if abs(self.capital - real_balance) > 0.01:
+                logger.info(f"💰 Syncing capital: ${self.capital:.2f} → ${real_balance:.2f}")
+            self.capital = real_balance
+        elif self.capital <= 0:
+            self.capital = 20.0  # Fallback if API fails and no saved state
+            
+        logger.info(f"💰 Capital: ${self.capital:.2f}")
+        self.save_state()
     
     def load_state(self) -> bool:
         if Config.TRADES_FILE.exists():
@@ -895,24 +941,92 @@ class PortfolioManager:
                 break
         
         if not position_exists:
-            logger.warning(f"⚠️ Position {self.position['pair']} {direction} not found on exchange - was closed manually?")
+            logger.warning(f"⚠️ Position {self.position['pair']} {direction} not found on exchange - closed by stop or manually")
             
-            # Update capital from exchange
+            pos = self.position
+            
+            # Get trade data from exchange history
+            history = self.mexc.get_history_positions(mexc_symbol)
+            
+            # Find the most recent closed position for this symbol
+            exchange_trade = None
+            for h in history:
+                if h.get('symbol') == mexc_symbol and h.get('positionType') == position_type:
+                    exchange_trade = h
+                    break  # Most recent first
+            
+            if exchange_trade:
+                # Use REAL data from exchange
+                pnl_dollar = float(exchange_trade.get('realised', 0))
+                entry_price = float(exchange_trade.get('openAvgPrice', pos['entry_price']))
+                exit_price = float(exchange_trade.get('closeAvgPrice', pos.get('stop_loss', entry_price)))
+                position_value = float(exchange_trade.get('positionValue', pos.get('position_value', 1)))
+                pnl_pct = (pnl_dollar / position_value) * 100 if position_value else 0
+                
+                logger.info(f"📊 Exchange data: Entry={entry_price}, Exit={exit_price}, PnL=${pnl_dollar:.2f}")
+            else:
+                # Fallback: calculate from capital change
+                real_balance = self.mexc.get_account_assets()
+                old_capital = self.capital
+                if real_balance > 0:
+                    self.capital = real_balance
+                pnl_dollar = self.capital - old_capital
+                entry_price = pos['entry_price']
+                exit_price = pos.get('stop_loss', entry_price)
+                position_value = pos.get('position_value', 1)
+                pnl_pct = (pnl_dollar / position_value) * 100 if position_value else 0
+                logger.warning(f"⚠️ No exchange history, using capital change: PnL=${pnl_dollar:.2f}")
+            
+            # Update capital from exchange (always sync!)
             real_balance = self.mexc.get_account_assets()
             if real_balance > 0:
                 old_capital = self.capital
                 self.capital = real_balance
-                pnl = self.capital - old_capital
-                logger.info(f"💰 Capital updated: ${old_capital:.2f} → ${self.capital:.2f} (PnL: ${pnl:+.2f})")
+                logger.info(f"💰 Capital synced: ${old_capital:.2f} → ${self.capital:.2f}")
+            
+            # Determine reason based on PnL
+            if pnl_dollar < 0:
+                reason = 'stop_loss'
+            elif pnl_pct < 0.5:
+                reason = 'breakeven_stop'
+            else:
+                reason = 'take_profit'
+            
+            # Add to history with REAL exchange data
+            trade_record = {
+                'pair': pos['pair'],
+                'direction': pos['direction'],
+                'entry_price': entry_price,
+                'exit_price': exit_price,
+                'entry_time': pos['entry_time'].isoformat() if hasattr(pos['entry_time'], 'isoformat') else str(pos['entry_time']),
+                'exit_time': datetime.now(timezone.utc).isoformat(),
+                'pnl_dollar': pnl_dollar,
+                'pnl_pct': pnl_pct,
+                'reason': reason,
+                'leverage': pos.get('leverage', 1),
+                'position_value': position_value
+            }
+            self.trades_history.append(trade_record)
+            
+            logger.info(f"� Trade closed: PnL ${pnl_dollar:+.2f} ({pnl_pct:+.1f}%), {reason}")
+            
+            # Determine emoji based on outcome
+            if reason == 'stop_loss':
+                emoji = "❌"
+                msg_title = f"❌ STOP LOSS {pos['pair']}"
+            else:
+                emoji = "🛡️" if reason == 'breakeven_stop' else "✅"
+                msg_title = f"{emoji} Closed {pos['pair']}"
+            
+            self.telegram.send(
+                msg_title,
+                f"Entry: {entry_price:.6f}\nExit: {exit_price:.6f}\nPnL: ${pnl_dollar:+.2f} ({pnl_pct:+.1f}%)\nReason: {reason}\nCapital: ${self.capital:.2f}"
+            )
             
             # Clear position
             self.position = None
             self.save_state()
             
-            self.telegram.send(
-                f"📭 Position closed externally",
-                f"Detected manual close. Capital: ${self.capital:.2f}"
-            )
             return False
         
         return True
@@ -954,17 +1068,30 @@ class PortfolioManager:
         position_value = min(risk_amount / stop_loss_pct, Config.MAX_POSITION_SIZE)
         leverage = min(position_value / self.capital, Config.MAX_LEVERAGE)
         
-        # SAFETY: Ensure we don't exceed available margin (with 2% buffer for fees)
-        max_margin_available = self.capital * 0.98  # Keep 2% buffer for fees only
-        required_margin = position_value / leverage
-        if required_margin > max_margin_available:
-            # Scale down position to fit available margin
-            position_value = max_margin_available * leverage
-            logger.warning(f"⚠️ Scaled down position to fit margin: ${position_value:.2f}")
+        # SAFETY: Start with 50% margin, but increase if position too small
+        min_position_value = 1.0  # Minimum $1 position
+        margin_pct = 0.50  # Start with 50%
         
-        # Minimum position check
-        if position_value < 1.0:
-            logger.error(f"❌ Position too small: ${position_value:.2f} (need at least $1)")
+        while margin_pct <= 1.0:  # Max 100%
+            max_margin_available = self.capital * margin_pct
+            required_margin = position_value / leverage
+            
+            if required_margin > max_margin_available:
+                # Scale down position to fit available margin
+                position_value = max_margin_available * leverage
+            
+            if position_value >= min_position_value:
+                break  # Position is large enough
+            
+            # Position too small, try more margin
+            margin_pct += 0.10
+        
+        if margin_pct > 0.50:
+            logger.info(f"⚠️ Using {margin_pct*100:.0f}% margin to meet min position size")
+        
+        # Final minimum position check
+        if position_value < min_position_value:
+            logger.error(f"❌ Position too small: ${position_value:.2f} (need at least ${min_position_value})")
             return False
         
         mexc_symbol = signal['pair'].replace('/USDT:USDT', '_USDT').replace('/', '_')
@@ -994,6 +1121,15 @@ class PortfolioManager:
         # WEB API: 4=close long (SL), 2=close short (SL)
         stop_side = 4 if signal['direction'] == 'LONG' else 2
         stop_order_id = self.mexc.place_stop_order(mexc_symbol, stop_side, volume, stop_loss, int(leverage))
+        
+        # CRITICAL: If stop order failed, close position immediately!
+        if not stop_order_id:
+            logger.error(f"❌ STOP ORDER FAILED! Closing position to protect capital...")
+            # Close the position we just opened
+            close_side = 4 if signal['direction'] == 'LONG' else 2  # 4=close long, 2=close short
+            self.mexc.place_order(mexc_symbol, close_side, volume, int(leverage))
+            self.telegram.send("⚠️ EMERGENCY CLOSE", f"Stop order failed for {signal['pair']}\nPosition closed immediately!")
+            return False
         
         self.position = {
             'pair': signal['pair'], 'direction': signal['direction'],
@@ -1032,6 +1168,16 @@ class PortfolioManager:
                 # Update stop on exchange for breakeven
                 if pos.get('stop_order_id'):
                     self.mexc.update_stop_order(pos['stop_order_id'], pos['stop_loss'])
+                else:
+                    # No stop order exists - try to place one now
+                    stop_side = 4 if pos['direction'] == 'LONG' else 2
+                    new_stop_id = self.mexc.place_stop_order(
+                        pos['mexc_symbol'], stop_side, pos['volume'], 
+                        pos['stop_loss'], int(pos.get('leverage', 10))
+                    )
+                    if new_stop_id:
+                        pos['stop_order_id'] = int(new_stop_id)
+                        logger.info(f"✅ Created new stop order: {new_stop_id}")
                 logger.info(f"✅ Breakeven SL set to {pos['stop_loss']:.4f}")
             
             if pos['breakeven_active']:
@@ -1046,6 +1192,14 @@ class PortfolioManager:
                     if pos.get('stop_order_id'):
                         if self.mexc.update_stop_order(pos['stop_order_id'], new_sl):
                             logger.info(f"🔄 Trailing SL: {old_sl:.4f} → {new_sl:.4f}")
+                    else:
+                        # No stop order - create one
+                        new_stop_id = self.mexc.place_stop_order(
+                            pos['mexc_symbol'], 4, pos['volume'], new_sl, int(pos.get('leverage', 10))
+                        )
+                        if new_stop_id:
+                            pos['stop_order_id'] = int(new_stop_id)
+                            logger.info(f"✅ Created trailing stop: {new_sl:.4f}")
         else:
             if not pos['breakeven_active'] and candle_low <= pos['entry_price'] - be_trigger_dist:
                 pos['breakeven_active'] = True
@@ -1053,7 +1207,16 @@ class PortfolioManager:
                 # Update stop on exchange for breakeven
                 if pos.get('stop_order_id'):
                     self.mexc.update_stop_order(pos['stop_order_id'], pos['stop_loss'])
-                    logger.info(f"✅ Breakeven SL set to {pos['stop_loss']:.4f}")
+                else:
+                    # No stop order exists - try to place one now
+                    new_stop_id = self.mexc.place_stop_order(
+                        pos['mexc_symbol'], 2, pos['volume'], 
+                        pos['stop_loss'], int(pos.get('leverage', 10))
+                    )
+                    if new_stop_id:
+                        pos['stop_order_id'] = int(new_stop_id)
+                        logger.info(f"✅ Created new stop order: {new_stop_id}")
+                logger.info(f"✅ Breakeven SL set to {pos['stop_loss']:.4f}")
             
             if pos['breakeven_active']:
                 r_mult = (pos['entry_price'] - candle_low) / pos['stop_distance']
@@ -1067,6 +1230,14 @@ class PortfolioManager:
                     if pos.get('stop_order_id'):
                         if self.mexc.update_stop_order(pos['stop_order_id'], new_sl):
                             logger.info(f"🔄 Trailing SL: {old_sl:.4f} → {new_sl:.4f}")
+                    else:
+                        # No stop order - create one
+                        new_stop_id = self.mexc.place_stop_order(
+                            pos['mexc_symbol'], 2, pos['volume'], new_sl, int(pos.get('leverage', 10))
+                        )
+                        if new_stop_id:
+                            pos['stop_order_id'] = int(new_stop_id)
+                            logger.info(f"✅ Created trailing stop: {new_sl:.4f}")
         
         self.save_state()
     
@@ -1331,8 +1502,11 @@ def startup_data_sync(csv_manager: CSVDataManager, pairs: list, mtf_fe: MTFFeatu
                 failed_pairs.append(pair)
                 continue
             
+            if missing_features:
+                logger.info(f"  ℹ️ Missing features ({len(missing_features)}): {sorted(missing_features)}")
+            
             if len(missing_features) > MAX_MISSING_FEATURES_WARNING:
-                logger.warning(f"  ⚠️ {len(missing_features)} missing features (will use 0.0)")
+                logger.warning(f"  ⚠️ {len(missing_features)} missing features (will use 0.0): {missing_features}")
             
             # Step 4: Test prediction on last closed candle
             # Use -1 if only 1 row, -2 for second-to-last (last closed candle)
@@ -1377,6 +1551,168 @@ def startup_data_sync(csv_manager: CSVDataManager, pairs: list, mtf_fe: MTFFeatu
     logger.info("=" * 70)
     
     return ready_pairs
+
+
+def validate_data_quality(ready_pairs: Dict[str, pd.DataFrame], models: Dict, 
+                          csv_manager: CSVDataManager) -> bool:
+    """
+    Full data quality validation before trading starts.
+    
+    Checks:
+    1. All required features present (100%)
+    2. No NaN in critical features
+    3. OHLCV data integrity (low <= open/close <= high)
+    4. Sufficient data for each pair
+    5. Feature value ranges are reasonable
+    
+    Returns:
+        True if all checks pass, False if critical issues found
+    """
+    logger.info("\n" + "=" * 70)
+    logger.info("DATA QUALITY VALIDATION")
+    logger.info("=" * 70)
+    
+    model_features = set(models['features'])
+    issues = []
+    warnings_list = []
+    
+    for pair, features in ready_pairs.items():
+        pair_issues = []
+        pair_warnings = []
+        
+        # 1. Check feature completeness
+        available = set(features.columns)
+        missing = model_features - available
+        match_pct = (len(model_features) - len(missing)) / len(model_features) * 100
+        
+        if match_pct < 100:
+            pair_issues.append(f"Features: {match_pct:.1f}% (missing: {missing})")
+        
+        # 2. Check for NaN in last row (what we'll use for prediction)
+        last_row = features.iloc[-1]
+        nan_features = []
+        for f in models['features']:
+            if f in features.columns and pd.isna(last_row[f]):
+                nan_features.append(f)
+        
+        if nan_features:
+            pair_warnings.append(f"NaN in last row: {nan_features}")
+        
+        # 3. Check OHLCV integrity in CSV data
+        for tf in ['5m']:  # Check main timeframe
+            df_tf = csv_manager.load_csv(pair, tf)
+            
+            if df_tf is not None and len(df_tf) > 0:
+                df = df_tf.tail(100)  # Check last 100 candles
+                
+                # Price logic: low <= open <= high AND low <= close <= high
+                invalid_prices = ((df['low'] > df['open']) | (df['low'] > df['close']) |
+                                 (df['high'] < df['open']) | (df['high'] < df['close']))
+                if invalid_prices.any():
+                    pair_issues.append(f"Invalid OHLCV logic: {invalid_prices.sum()} candles")
+                
+                # Check for zero/negative prices
+                zero_prices = (df[['open', 'high', 'low', 'close']] <= 0).any(axis=1)
+                if zero_prices.any():
+                    pair_issues.append(f"Zero/negative prices: {zero_prices.sum()} candles")
+                
+                # Check for zero volume
+                zero_volume = df['volume'] <= 0
+                if zero_volume.any():
+                    pair_warnings.append(f"Zero volume: {zero_volume.sum()} candles")
+        
+        # 4. Check feature value ranges
+        for f in ['m5_rsi_7', 'm5_rsi_14', 'm15_rsi']:
+            if f in features.columns:
+                val = last_row.get(f, np.nan)
+                if not pd.isna(val) and (val < 0 or val > 100):
+                    pair_issues.append(f"{f}={val:.1f} out of range [0,100]")
+        
+        for f in ['m5_close_position', 'm5_bb_position']:
+            if f in features.columns:
+                val = last_row.get(f, np.nan)
+                if not pd.isna(val) and (val < -1 or val > 2):
+                    pair_warnings.append(f"{f}={val:.2f} unusual range")
+        
+        # Log results for this pair
+        if pair_issues:
+            issues.append((pair, pair_issues))
+            logger.error(f"❌ {pair}: {pair_issues}")
+        elif pair_warnings:
+            warnings_list.append((pair, pair_warnings))
+            logger.warning(f"⚠️ {pair}: {pair_warnings}")
+        else:
+            logger.info(f"✅ {pair}: All checks passed")
+    
+    # Summary
+    logger.info("\n" + "-" * 50)
+    logger.info("VALIDATION SUMMARY")
+    logger.info("-" * 50)
+    logger.info(f"Total pairs: {len(ready_pairs)}")
+    logger.info(f"✅ Passed: {len(ready_pairs) - len(issues) - len(warnings_list)}")
+    logger.info(f"⚠️ Warnings: {len(warnings_list)}")
+    logger.info(f"❌ Critical issues: {len(issues)}")
+    
+    if issues:
+        logger.error("\nCRITICAL ISSUES FOUND:")
+        for pair, pair_issues in issues:
+            logger.error(f"  {pair}: {pair_issues}")
+        logger.error("\n⛔ Fix issues before trading!")
+        return False
+    
+    # Show feature values for first pair (BTC) as sample
+    logger.info("\n" + "-" * 50)
+    logger.info("SAMPLE FEATURE VALUES (BTC/USDT:USDT)")
+    logger.info("-" * 50)
+    
+    sample_pair = 'BTC/USDT:USDT'
+    if sample_pair in ready_pairs:
+        features = ready_pairs[sample_pair]
+        last_row = features.iloc[-1]
+        
+        # Group features by category
+        feature_groups = {
+            'ATR (volatility)': ['m5_atr_14_pct', 'm5_atr_ratio', 'm15_atr_pct', 'm5_atr_vs_avg'],
+            'Returns %': ['m5_return_1', 'm5_return_5', 'm5_return_10', 'm5_return_20'],
+            'RSI (0-100)': ['m5_rsi_7', 'm5_rsi_14', 'm15_rsi'],
+            'Position (0-1)': ['m5_close_position', 'm5_bb_position', 'm5_bb_width'],
+            'Volume ratios': ['m5_volume_ratio_5', 'm5_volume_ratio_20', 'vol_ratio', 'vol_zscore'],
+            'Structure (0/1)': ['m5_higher_high', 'm5_lower_low', 'm5_higher_low', 'm5_lower_high'],
+            'S/R (0/1)': ['m5_at_support', 'm5_at_resistance', 'm5_breakout_up', 'm5_breakout_down'],
+            'Scores': ['m5_structure_score', 'm15_trend', 'm15_momentum', 'm5_ema_9_dist'],
+        }
+        
+        for group_name, feature_list in feature_groups.items():
+            values = []
+            for f in feature_list:
+                if f in features.columns:
+                    val = last_row.get(f, np.nan)
+                    if pd.isna(val):
+                        values.append(f"{f}=NaN")
+                    elif isinstance(val, (int, float)):
+                        values.append(f"{f}={val:.3f}")
+                    else:
+                        values.append(f"{f}={val}")
+            if values:
+                logger.info(f"  {group_name}: {', '.join(values)}")
+        
+        # Show raw vs scaled comparison
+        if models.get('scaler') is not None:
+            logger.info("\n  📊 Scaler applied: StandardScaler")
+            X_raw = last_row[models['features']].values.astype(np.float64).reshape(1, -1)
+            X_raw = np.nan_to_num(X_raw, nan=0.0, posinf=0.0, neginf=0.0)
+            X_scaled = models['scaler'].transform(X_raw)
+            
+            # Show a few examples
+            examples = ['m5_atr_14_pct', 'm5_rsi_14', 'm5_return_5', 'vol_ratio']
+            for f in examples:
+                if f in models['features']:
+                    idx = list(models['features']).index(f)
+                    logger.info(f"    {f}: raw={X_raw[0][idx]:.4f} → scaled={X_scaled[0][idx]:.4f}")
+    
+    logger.info("\n✅ ALL DATA QUALITY CHECKS PASSED")
+    logger.info("=" * 70)
+    return True
 
 
 def process_pair_for_signal(
@@ -1583,6 +1919,14 @@ def main():
         logger.error("❌ No pairs ready for trading! Check your CSV files in data/candles/")
         return
     
+    # ========================================
+    # VALIDATION PHASE: Full data quality check
+    # ========================================
+    if not validate_data_quality(ready_pairs, models, csv_manager):
+        logger.error("❌ Data quality validation failed! Fix issues before trading.")
+        telegram.send("⛔ <b>V10 Startup Failed</b>", "Data quality validation failed!")
+        return
+    
     # Update pairs list to only include ready pairs
     active_pairs = list(ready_pairs.keys())
     logger.info(f"🎯 Trading {len(active_pairs)} pairs: {active_pairs}")
@@ -1667,12 +2011,14 @@ def main():
                 
                 logger.info(f"⏱️ Scan completed in {scan_time:.1f}s for {len(active_pairs)} pairs")
                 
-                # Process first signal found
+                # Process BEST signal (sorted by conf * strength)
                 if signals_found:
-                    signal_result = signals_found[0]  # Take first signal
+                    # Sort by quality score: confidence * strength
+                    signals_found.sort(key=lambda x: x['conf'] * x['strength'], reverse=True)
+                    signal_result = signals_found[0]  # Best signal
                     pair = signal_result['pair']
                     
-                    logger.info(f"  🎯 Opening position on {pair}...")
+                    logger.info(f"  🎯 Opening BEST signal: {pair} (Conf={signal_result['conf']:.2f} * Str={signal_result['strength']:.1f} = {signal_result['conf'] * signal_result['strength']:.2f})")
                     
                     try:
                         ticker = binance.fetch_ticker(pair)

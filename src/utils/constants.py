@@ -214,9 +214,9 @@ ABSOLUTE_PRICE_FEATURES = [
     'ema_9_slope', 'ema_21_slope', 'ema_50_slope', 'ema_200_slope',
     'm5_ema_9_slope', 'm5_ema_21_slope', 'm5_ema_50_slope', 'm5_ema_200_slope',
     
-    # Structure score can vary based on swing detection timing
-    'structure_score',  # From market_structure.py
-    'm5_structure_score',  # MTF variant
+    # NOTE: structure_score and m5_structure_score were moved OUT of this list
+    # because our new implementation uses rolling sum (stable, not swing-detection based)
+    # See CORE_20_FEATURES where m5_structure_score is included
     
     # Market structure trend features that depend on swing detection or absolute values
     'trend_strength',  # ADX-like, derived from ATR (absolute)
