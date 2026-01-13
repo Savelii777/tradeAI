@@ -647,13 +647,17 @@ class MEXCClient:
                     return float(asset.get('availableBalance', 0))
         return 0.0
     
-    def get_open_positions(self, symbol: str = None) -> list:
-        """Get open positions."""
+    def get_open_positions(self, symbol: str = None) -> tuple:
+        """
+        Get open positions.
+        Returns (positions_list, success_flag).
+        If API fails, returns ([], False) so caller knows not to trust result.
+        """
         obj = {'symbol': symbol} if symbol else {}
         result = self._request('GET', '/api/v1/private/position/open_positions', obj)
         if result and result.get('success'):
-            return result.get('data', [])
-        return []
+            return result.get('data', []), True
+        return [], False
     
     def change_leverage(self, symbol: str, leverage: int, position_type: int = 1) -> bool:
         """Change leverage (position_type: 1=long, 2=short)."""
@@ -735,8 +739,8 @@ class MEXCClient:
             leverage: Leverage (not used for position-based SL, but kept for interface compatibility)
         """
         # Get position ID first
-        positions = self.get_open_positions(symbol)
-        if not positions:
+        positions, api_success = self.get_open_positions(symbol)
+        if not api_success or not positions:
             logger.warning(f"No position found for {symbol}, cannot place stop order")
             return None
         
@@ -863,7 +867,8 @@ class PortfolioManager:
         """
         Check if local position still exists on exchange.
         If position was closed manually, clear local state.
-        Returns True if position still exists, False if cleared.
+        Returns True if position still exists or API failed (don't trust error).
+        Returns False only if API confirmed position is closed.
         """
         if not self.position:
             return False
@@ -872,7 +877,12 @@ class PortfolioManager:
         direction = self.position.get('direction')
         
         # Get real positions from exchange
-        positions = self.mexc.get_open_positions(mexc_symbol)
+        positions, api_success = self.mexc.get_open_positions(mexc_symbol)
+        
+        # If API failed, don't assume position is closed!
+        if not api_success:
+            logger.warning(f"⚠️ API failed to check position - keeping local state (assuming position still open)")
+            return True  # Keep position, don't clear on API error!
         
         # Check if our position still exists
         position_type = 1 if direction == 'LONG' else 2  # 1=long, 2=short
@@ -1598,14 +1608,19 @@ def main():
                 pos = portfolio.position
                 logger.info(f"📍 Monitoring {pos['pair']} {pos['direction']} | Entry: {pos['entry_price']:.4f} | SL: {pos['stop_loss']:.4f}")
                 ticker = binance.fetch_ticker(pos['pair'])
-                candles = binance.fetch_ohlcv(pos['pair'], '5m', limit=2)
+                candles = binance.fetch_ohlcv(pos['pair'], '5m', limit=3)
                 if len(candles) >= 2:
                     current_price = ticker['last']
                     pnl_pct = ((current_price - pos['entry_price']) / pos['entry_price']) * 100
                     if pos['direction'] == 'SHORT':
                         pnl_pct = -pnl_pct
                     logger.info(f"📈 Price: {current_price:.4f} | PnL: {pnl_pct:+.2f}%")
-                    portfolio.update_position(current_price, candles[-2][2], candles[-2][3])
+                    # Use LAST candle (current, still forming) for trailing - matches backtest!
+                    # candles[-1] = current (forming), candles[-2] = last closed
+                    # For trailing we need the current candle's high/low to track extremes
+                    current_candle_high = candles[-1][2]  # high of current candle
+                    current_candle_low = candles[-1][3]   # low of current candle
+                    portfolio.update_position(current_price, current_candle_high, current_candle_low)
             
             # Scan for signals using PARALLEL processing
             if not portfolio.position:

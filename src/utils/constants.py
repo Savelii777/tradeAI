@@ -276,9 +276,20 @@ CORE_20_FEATURES = [
     'm5_volume_ratio_20',      # Volume vs 20-period MA
     'vol_ratio',               # Current volume ratio
     
-    # === STRUCTURE (2) - Binary, universal ===
+    # === STRUCTURE (4) - Binary, universal ===
     'm5_higher_high',          # Made higher high (0/1)
     'm5_lower_low',            # Made lower low (0/1)
+    'm5_higher_low',           # Made higher low (0/1) - bullish structure
+    'm5_lower_high',           # Made lower high (0/1) - bearish structure
+    
+    # === SUPPORT/RESISTANCE (4) - Binary/relative ===
+    'm5_at_support',           # At support level (0/1)
+    'm5_at_resistance',        # At resistance level (0/1)
+    'm5_breakout_up',          # Breakout above resistance (0/1)
+    'm5_breakout_down',        # Breakout below support (0/1)
+    
+    # === STRUCTURE SCORE (1) - Composite ===
+    'm5_structure_score',      # HH+HL-LH-LL score (rolling 10 bars)
     
     # === M15 CONTEXT (2) - Trend/momentum ===
     'm15_trend',               # M15 trend direction
@@ -289,7 +300,7 @@ CORE_20_FEATURES = [
     'm5_ema_9_dist',           # Distance to EMA9 as % (relative)
     'm5_atr_vs_avg',           # ATR vs 50-period average (more stable than MACD)
 ]
-# Total: 23 features - core set with 3 extra proven stable
+# Total: 30 features - core set with structure, S/R and breakouts
 
 # ============================================================
 # ULTRA MINIMAL FEATURES (V14) - Only TOP 40 by importance
