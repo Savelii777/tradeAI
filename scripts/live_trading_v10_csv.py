@@ -117,10 +117,10 @@ class Config:
     # Timeframes
     TIMEFRAMES = ['1m', '5m', '15m']
     
-    # V17 Signal Thresholds
-    MIN_CONF = 0.50
-    MIN_TIMING = 1.5
-    MIN_STRENGTH = 1.8
+    # Signal Thresholds (same as train_v3_dynamic.py)
+    MIN_CONF = 0.58
+    MIN_TIMING = 1.8
+    MIN_STRENGTH = 2.5
     
     # Risk Management
     RISK_PCT = 0.05
@@ -860,198 +860,199 @@ class TelegramNotifier:
 
 
 # ============================================================
-# PORTFOLIO MANAGER (same as V9)
+# PORTFOLIO MANAGER - Exchange-First (No local JSON state)
 # ============================================================
 class PortfolioManager:
+    """
+    Portfolio manager that works directly with exchange.
+    NO LOCAL JSON STATE - exchange is the source of truth.
+    
+    On startup: reads open positions from exchange
+    During trading: syncs with exchange every iteration
+    """
+    
     def __init__(self, mexc: MEXCClient, telegram: TelegramNotifier):
         self.mexc = mexc
         self.telegram = telegram
-        self.position = None
+        self.position = None  # Local cache, synced from exchange
         self.trades_history = []
         
-        if self.load_state():
-            logger.info(f"📂 State loaded. Capital from file: ${self.capital:.2f}")
-        else:
+        # Get capital from exchange
+        self.capital = self.mexc.get_account_assets()
+        if self.capital <= 0:
+            logger.error("❌ Could not get balance from MEXC!")
             self.capital = 0
         
-        # ALWAYS sync capital with exchange on startup!
-        real_balance = self.mexc.get_account_assets()
-        if real_balance and real_balance > 0:
-            if abs(self.capital - real_balance) > 0.01:
-                logger.info(f"💰 Syncing capital: ${self.capital:.2f} → ${real_balance:.2f}")
-            self.capital = real_balance
-        elif self.capital <= 0:
-            self.capital = 20.0  # Fallback if API fails and no saved state
-            
-        logger.info(f"💰 Capital: ${self.capital:.2f}")
-        self.save_state()
+        logger.info(f"💰 Capital from exchange: ${self.capital:.2f}")
+        
+        # Sync position from exchange on startup
+        self._sync_position_from_exchange()
     
-    def load_state(self) -> bool:
-        if Config.TRADES_FILE.exists():
-            try:
-                with open(Config.TRADES_FILE, 'r') as f:
-                    data = json.load(f)
-                    self.capital = data.get('capital')
-                    self.position = data.get('position')
-                    if self.position and isinstance(self.position.get('entry_time'), str):
-                        self.position['entry_time'] = datetime.fromisoformat(self.position['entry_time'])
-                    return self.capital is not None
-            except:
-                return False
-        return False
-    
-    def save_state(self):
-        pos = None
-        if self.position:
-            pos = self.position.copy()
-            if isinstance(pos.get('entry_time'), datetime):
-                pos['entry_time'] = pos['entry_time'].isoformat()
-        with open(Config.TRADES_FILE, 'w') as f:
-            json.dump({'capital': self.capital, 'position': pos, 'history': self.trades_history}, f, indent=2)
-    
-    def sync_position_with_exchange(self) -> bool:
+    def _sync_position_from_exchange(self) -> bool:
         """
-        Check if local position still exists on exchange.
-        If position was closed manually, clear local state.
-        Returns True if position still exists or API failed (don't trust error).
-        Returns False only if API confirmed position is closed.
+        Sync local position state from exchange.
+        Exchange is the source of truth - no JSON files.
+        
+        Returns True if we have an open position.
         """
-        if not self.position:
-            return False
+        positions, api_success = self.mexc.get_open_positions()
         
-        mexc_symbol = self.position.get('mexc_symbol')
-        direction = self.position.get('direction')
-        
-        # Get real positions from exchange
-        positions, api_success = self.mexc.get_open_positions(mexc_symbol)
-        
-        # If API failed, don't assume position is closed!
         if not api_success:
-            logger.warning(f"⚠️ API failed to check position - keeping local state (assuming position still open)")
-            return True  # Keep position, don't clear on API error!
+            logger.warning("⚠️ Could not get positions from exchange")
+            return self.position is not None
         
-        # Check if our position still exists
-        position_type = 1 if direction == 'LONG' else 2  # 1=long, 2=short
-        position_exists = False
-        
-        for pos in positions:
-            if pos.get('symbol') == mexc_symbol and pos.get('positionType') == position_type:
-                # Position still open
-                position_exists = True
-                break
-        
-        if not position_exists:
-            logger.warning(f"⚠️ Position {self.position['pair']} {direction} not found on exchange - closed by stop or manually")
-            
-            pos = self.position
-            
-            # Get trade data from exchange history
-            history = self.mexc.get_history_positions(mexc_symbol)
-            
-            # Find the most recent closed position for this symbol
-            exchange_trade = None
-            for h in history:
-                if h.get('symbol') == mexc_symbol and h.get('positionType') == position_type:
-                    exchange_trade = h
-                    break  # Most recent first
-            
-            if exchange_trade:
-                # Use REAL data from exchange
-                pnl_dollar = float(exchange_trade.get('realised', 0))
-                entry_price = float(exchange_trade.get('openAvgPrice', pos['entry_price']))
-                exit_price = float(exchange_trade.get('closeAvgPrice', pos.get('stop_loss', entry_price)))
-                position_value = float(exchange_trade.get('positionValue', pos.get('position_value', 1)))
-                pnl_pct = (pnl_dollar / position_value) * 100 if position_value else 0
-                
-                logger.info(f"📊 Exchange data: Entry={entry_price}, Exit={exit_price}, PnL=${pnl_dollar:.2f}")
-            else:
-                # Fallback: calculate from capital change
-                real_balance = self.mexc.get_account_assets()
-                old_capital = self.capital
-                if real_balance > 0:
-                    self.capital = real_balance
-                pnl_dollar = self.capital - old_capital
-                entry_price = pos['entry_price']
-                exit_price = pos.get('stop_loss', entry_price)
-                position_value = pos.get('position_value', 1)
-                pnl_pct = (pnl_dollar / position_value) * 100 if position_value else 0
-                logger.warning(f"⚠️ No exchange history, using capital change: PnL=${pnl_dollar:.2f}")
-            
-            # Update capital from exchange (always sync!)
-            real_balance = self.mexc.get_account_assets()
-            if real_balance > 0:
-                old_capital = self.capital
-                self.capital = real_balance
-                logger.info(f"💰 Capital synced: ${old_capital:.2f} → ${self.capital:.2f}")
-            
-            # Determine reason based on PnL
-            if pnl_dollar < 0:
-                reason = 'stop_loss'
-            elif pnl_pct < 0.5:
-                reason = 'breakeven_stop'
-            else:
-                reason = 'take_profit'
-            
-            # Add to history with REAL exchange data
-            trade_record = {
-                'pair': pos['pair'],
-                'direction': pos['direction'],
-                'entry_price': entry_price,
-                'exit_price': exit_price,
-                'entry_time': pos['entry_time'].isoformat() if hasattr(pos['entry_time'], 'isoformat') else str(pos['entry_time']),
-                'exit_time': datetime.now(timezone.utc).isoformat(),
-                'pnl_dollar': pnl_dollar,
-                'pnl_pct': pnl_pct,
-                'reason': reason,
-                'leverage': pos.get('leverage', 1),
-                'position_value': position_value
-            }
-            self.trades_history.append(trade_record)
-            
-            logger.info(f"� Trade closed: PnL ${pnl_dollar:+.2f} ({pnl_pct:+.1f}%), {reason}")
-            
-            # Determine emoji based on outcome
-            if reason == 'stop_loss':
-                emoji = "❌"
-                msg_title = f"❌ STOP LOSS {pos['pair']}"
-            else:
-                emoji = "🛡️" if reason == 'breakeven_stop' else "✅"
-                msg_title = f"{emoji} Closed {pos['pair']}"
-            
-            self.telegram.send(
-                msg_title,
-                f"Entry: {entry_price:.6f}\nExit: {exit_price:.6f}\nPnL: ${pnl_dollar:+.2f} ({pnl_pct:+.1f}%)\nReason: {reason}\nCapital: ${self.capital:.2f}"
-            )
-            
-            # Clear position
+        if not positions:
+            if self.position:
+                logger.info(f"📊 Position {self.position.get('pair')} closed on exchange")
+                self._handle_closed_position()
             self.position = None
-            self.save_state()
-            
             return False
+        
+        # We have an open position on exchange
+        exchange_pos = positions[0]  # Take first position
+        symbol = exchange_pos.get('symbol', '')
+        pos_type = exchange_pos.get('positionType', 1)  # 1=long, 2=short
+        
+        # Convert MEXC symbol to Binance format
+        pair = symbol.replace('_USDT', '/USDT:USDT')
+        direction = 'LONG' if pos_type == 1 else 'SHORT'
+        
+        # If we don't have local position or it's different, create from exchange
+        if not self.position or self.position.get('mexc_symbol') != symbol:
+            entry_price = float(exchange_pos.get('openAvgPrice', 0))
+            volume = int(float(exchange_pos.get('holdVol', 0)))
+            leverage = int(float(exchange_pos.get('leverage', 10)))
+            position_value = float(exchange_pos.get('positionValue', 0))
+            
+            # Get stop order info
+            stop_order_id = None
+            # Note: We don't have stop order ID from position API, will be set when we place one
+            
+            self.position = {
+                'pair': pair,
+                'direction': direction,
+                'entry_price': entry_price,
+                'entry_time': datetime.now(timezone.utc),  # Approximate
+                'stop_loss': entry_price * (0.98 if direction == 'LONG' else 1.02),  # Default 2%
+                'stop_distance': entry_price * 0.02,  # Will be recalculated
+                'position_value': position_value,
+                'leverage': leverage,
+                'mexc_symbol': symbol,
+                'volume': volume,
+                'contract_size': self.mexc.get_contract_size(symbol),
+                'stop_order_id': stop_order_id,
+                'pred_strength': 2.0,  # Default
+                'breakeven_active': False,
+                'be_trigger_mult': 2.2  # Default
+            }
+            
+            logger.info(f"📊 Synced position from exchange: {pair} {direction}")
+            logger.info(f"   Entry: {entry_price:.6f} | Vol: {volume} | Lev: {leverage}x")
         
         return True
     
-    def open_position(self, signal: Dict) -> bool:
-        if self.position:
-            return False
+    def _handle_closed_position(self):
+        """Handle position that was closed on exchange (by stop or manually)."""
+        if not self.position:
+            return
         
-        # Get REAL balance from exchange before opening position
+        pos = self.position
+        mexc_symbol = pos.get('mexc_symbol')
+        direction = pos.get('direction')
+        position_type = 1 if direction == 'LONG' else 2
+        
+        # Get trade data from exchange history
+        history = self.mexc.get_history_positions(mexc_symbol)
+        
+        # Find the most recent closed position
+        exchange_trade = None
+        for h in history:
+            if h.get('symbol') == mexc_symbol and h.get('positionType') == position_type:
+                exchange_trade = h
+                break
+        
+        if exchange_trade:
+            pnl_dollar = float(exchange_trade.get('realised', 0))
+            entry_price = float(exchange_trade.get('openAvgPrice', pos.get('entry_price', 0)))
+            exit_price = float(exchange_trade.get('closeAvgPrice', entry_price))
+            position_value = float(exchange_trade.get('positionValue', pos.get('position_value', 1)))
+            pnl_pct = (pnl_dollar / position_value) * 100 if position_value else 0
+        else:
+            # Fallback
+            entry_price = pos.get('entry_price', 0)
+            exit_price = entry_price
+            pnl_dollar = 0
+            pnl_pct = 0
+            position_value = pos.get('position_value', 1)
+        
+        # Update capital from exchange
         real_balance = self.mexc.get_account_assets()
-        if real_balance <= 0:
-            logger.error("❌ Could not get balance from MEXC or balance is 0")
+        if real_balance > 0:
+            old_capital = self.capital
+            self.capital = real_balance
+            if abs(old_capital - real_balance) > 0.01:
+                logger.info(f"💰 Capital synced: ${old_capital:.2f} → ${self.capital:.2f}")
+        
+        # Determine reason
+        if pnl_dollar < 0:
+            reason = 'stop_loss'
+            emoji = "❌"
+        elif pnl_pct < 0.5:
+            reason = 'breakeven_stop'
+            emoji = "🛡️"
+        else:
+            reason = 'take_profit'
+            emoji = "✅"
+        
+        logger.info(f"{emoji} Trade closed: {pos['pair']} {direction}")
+        logger.info(f"   Entry: {entry_price:.6f} | Exit: {exit_price:.6f}")
+        logger.info(f"   PnL: ${pnl_dollar:+.2f} ({pnl_pct:+.1f}%) | Reason: {reason}")
+        
+        self.telegram.send(
+            f"{emoji} Closed {pos['pair']}",
+            f"Entry: {entry_price:.6f}\nExit: {exit_price:.6f}\nPnL: ${pnl_dollar:+.2f} ({pnl_pct:+.1f}%)\nReason: {reason}\nCapital: ${self.capital:.2f}"
+        )
+        
+        # Add to history
+        self.trades_history.append({
+            'pair': pos['pair'],
+            'direction': direction,
+            'entry_price': entry_price,
+            'exit_price': exit_price,
+            'pnl_dollar': pnl_dollar,
+            'pnl_pct': pnl_pct,
+            'reason': reason,
+            'exit_time': datetime.now(timezone.utc).isoformat()
+        })
+    
+    def has_position(self) -> bool:
+        """Check if we have an open position (syncs with exchange first)."""
+        return self._sync_position_from_exchange()
+    
+    def sync_capital(self):
+        """Sync capital from exchange."""
+        real_balance = self.mexc.get_account_assets()
+        if real_balance > 0:
+            self.capital = real_balance
+    
+    def open_position(self, signal: Dict) -> bool:
+        """Open a new position."""
+        # First sync with exchange
+        if self.has_position():
+            logger.warning("⚠️ Already have an open position on exchange")
             return False
         
-        # Update local capital to match exchange
-        if abs(self.capital - real_balance) > 0.01:
-            logger.info(f"💰 Syncing capital: ${self.capital:.2f} → ${real_balance:.2f}")
-            self.capital = real_balance
-            self.save_state()
+        # Get fresh balance
+        self.sync_capital()
+        if self.capital <= 0:
+            logger.error("❌ No balance available")
+            return False
         
         entry_price = signal['price']
         atr = signal['atr']
         pred_strength = signal.get('pred_strength', 2.0)
         
-        # Adaptive SL
+        # === ATR-BASED STOP LOSS (дальше, стабильнее) ===
         if pred_strength >= 3.0:
             sl_mult = 1.6
         elif pred_strength >= 2.0:
@@ -1062,88 +1063,94 @@ class PortfolioManager:
         stop_distance = atr * sl_mult
         stop_loss = entry_price - stop_distance if signal['direction'] == 'LONG' else entry_price + stop_distance
         
-        # Position sizing
-        stop_loss_pct = stop_distance / entry_price
-        risk_amount = self.capital * Config.RISK_PCT
-        position_value = min(risk_amount / stop_loss_pct, Config.MAX_POSITION_SIZE)
-        leverage = min(position_value / self.capital, Config.MAX_LEVERAGE)
+        # === RISK-BASED POSITION SIZING ===
+        # Размер позиции рассчитан так, чтобы при стопе терять ровно 5% от депозита
+        RISK_PCT = 0.05  # 5% риска от депозита
+        risk_amount = self.capital * RISK_PCT
+        sl_pct = stop_distance / entry_price
         
-        # SAFETY: Start with 50% margin, but increase if position too small
-        min_position_value = 1.0  # Minimum $1 position
-        margin_pct = 0.50  # Start with 50%
+        # position_size = risk_amount / sl_pct
+        position_value = risk_amount / sl_pct
         
-        while margin_pct <= 1.0:  # Max 100%
-            max_margin_available = self.capital * margin_pct
-            required_margin = position_value / leverage
+        # Ограничения
+        max_position_by_leverage = self.capital * Config.MAX_LEVERAGE
+        original_position = position_value
+        position_value = min(position_value, max_position_by_leverage, Config.MAX_POSITION_SIZE)
+        
+        # CRITICAL: Если position урезан, нужно уменьшить стоп чтобы сохранить 5% риск!
+        if position_value < original_position:
+            # Пересчитываем стоп для сохранения риска
+            new_sl_pct = risk_amount / position_value
+            new_stop_distance = new_sl_pct * entry_price
             
-            if required_margin > max_margin_available:
-                # Scale down position to fit available margin
-                position_value = max_margin_available * leverage
-            
-            if position_value >= min_position_value:
-                break  # Position is large enough
-            
-            # Position too small, try more margin
-            margin_pct += 0.10
+            # Обновляем стоп
+            if signal['direction'] == 'LONG':
+                stop_loss = entry_price - new_stop_distance
+            else:
+                stop_loss = entry_price + new_stop_distance
+            stop_distance = new_stop_distance
+            sl_pct = new_sl_pct
+            logger.warning(f"⚠️ Position capped! Adjusted stop to {sl_pct*100:.2f}% for 5% risk")
         
-        if margin_pct > 0.50:
-            logger.info(f"⚠️ Using {margin_pct*100:.0f}% margin to meet min position size")
+        # Рассчитываем итоговое плечо
+        leverage = position_value / self.capital
+        leverage = min(leverage, int(Config.MAX_LEVERAGE))
         
-        # Final minimum position check
+        logger.info(f"📊 ATR: {atr:.6f} | SL dist: {stop_distance:.6f} ({sl_pct*100:.2f}%) | Leverage: {leverage:.1f}x")
+        
+        # Минимальная проверка
+        min_position_value = 1.0
         if position_value < min_position_value:
-            logger.error(f"❌ Position too small: ${position_value:.2f} (need at least ${min_position_value})")
+            logger.error(f"❌ Position too small: ${position_value:.2f}")
             return False
         
         mexc_symbol = signal['pair'].replace('/USDT:USDT', '_USDT').replace('/', '_')
         
-        # Get contract size (e.g., LINK = 0.1, BTC = 0.0001)
+        # Get contract size
         contract_size = self.mexc.get_contract_size(mexc_symbol)
-        # Calculate volume: position_value / (price * contract_size)
-        # Example: $14.84 / ($13.20 * 0.1) = 11.2 -> 11 contracts
         contract_value = entry_price * contract_size
         volume = max(1, int(position_value / contract_value))
         
-        # Recalculate actual position value after rounding
         actual_position_value = volume * contract_value
-        actual_margin = actual_position_value / leverage
         
-        # WEB API: 1=open long, 3=open short
+        # Place order
         mexc_side = 1 if signal['direction'] == 'LONG' else 3
         
-        logger.info(f"📊 Position: ${actual_position_value:.2f} | Margin: ${actual_margin:.2f} | Lev: {leverage:.0f}x | Vol: {volume} | ContractSize: {contract_size}")
+        logger.info(f"📊 Opening: ${actual_position_value:.2f} | Lev: {leverage:.0f}x | Vol: {volume}")
         
         order_id = self.mexc.place_order(mexc_symbol, mexc_side, volume, int(leverage))
         if not order_id:
             return False
-        if not order_id:
-            return False
         
-        # WEB API: 4=close long (SL), 2=close short (SL)
+        # Place stop order
         stop_side = 4 if signal['direction'] == 'LONG' else 2
         stop_order_id = self.mexc.place_stop_order(mexc_symbol, stop_side, volume, stop_loss, int(leverage))
         
-        # CRITICAL: If stop order failed, close position immediately!
         if not stop_order_id:
-            logger.error(f"❌ STOP ORDER FAILED! Closing position to protect capital...")
-            # Close the position we just opened
-            close_side = 4 if signal['direction'] == 'LONG' else 2  # 4=close long, 2=close short
+            logger.error("❌ STOP ORDER FAILED! Closing position...")
+            close_side = 4 if signal['direction'] == 'LONG' else 2
             self.mexc.place_order(mexc_symbol, close_side, volume, int(leverage))
-            self.telegram.send("⚠️ EMERGENCY CLOSE", f"Stop order failed for {signal['pair']}\nPosition closed immediately!")
+            self.telegram.send("⚠️ EMERGENCY CLOSE", f"Stop order failed for {signal['pair']}")
             return False
         
+        # Cache position locally (exchange is still source of truth)
         self.position = {
-            'pair': signal['pair'], 'direction': signal['direction'],
-            'entry_price': entry_price, 'entry_time': datetime.now(timezone.utc),
-            'stop_loss': stop_loss, 'stop_distance': stop_distance,
-            'position_value': actual_position_value, 'leverage': leverage,
-            'mexc_symbol': mexc_symbol, 'volume': volume,
+            'pair': signal['pair'],
+            'direction': signal['direction'],
+            'entry_price': entry_price,
+            'entry_time': datetime.now(timezone.utc),
+            'stop_loss': stop_loss,
+            'stop_distance': stop_distance,
+            'position_value': actual_position_value,
+            'leverage': leverage,
+            'mexc_symbol': mexc_symbol,
+            'volume': volume,
             'contract_size': contract_size,
-            'stop_order_id': int(stop_order_id) if stop_order_id else None,
-            'pred_strength': pred_strength, 'breakeven_active': False,
-            # V14: Balanced BE trigger - not too early (small profits), not too late (more SL hits)
+            'stop_order_id': int(stop_order_id),
+            'pred_strength': pred_strength,
+            'breakeven_active': False,
             'be_trigger_mult': 2.5 if pred_strength >= 3.0 else (2.2 if pred_strength >= 2.0 else 1.8)
         }
-        self.save_state()
         
         self.telegram.send(
             f"🟢 <b>{signal['direction']}</b> {signal['pair']}",
@@ -1152,118 +1159,128 @@ class PortfolioManager:
         return True
     
     def update_position(self, current_price: float, candle_high: float, candle_low: float):
-        if not self.position:
+        """Update position (breakeven, trailing stop) - ATR-BASED."""
+        # First sync with exchange
+        if not self.has_position():
             return
         
         pos = self.position
         pred_strength = pos.get('pred_strength', 2.0)
+        
+        # Get ATR from stop_distance
         sl_mult = 1.6 if pred_strength >= 3.0 else (1.5 if pred_strength >= 2.0 else 1.2)
         atr = pos['stop_distance'] / sl_mult
-        be_trigger_dist = atr * pos['be_trigger_mult']
+        
+        # === ATR-BASED BREAKEVEN TRIGGER ===
+        be_trigger_mult = 2.5 if pred_strength >= 3.0 else (2.2 if pred_strength >= 2.0 else 1.8)
+        be_trigger_dist = atr * be_trigger_mult
+        be_margin_dist = atr * 1.0  # Lock 1.0 ATR profit
         
         if pos['direction'] == 'LONG':
-            if not pos['breakeven_active'] and candle_high >= pos['entry_price'] + be_trigger_dist:
+            # Breakeven trigger - ATR-based
+            if not pos.get('breakeven_active') and candle_high >= pos['entry_price'] + be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] + atr * 1.0  # V14: Lock meaningful profit when BE triggers
-                # Update stop on exchange for breakeven
+                pos['stop_loss'] = pos['entry_price'] + be_margin_dist  # Lock 1.0 ATR
+                
                 if pos.get('stop_order_id'):
                     self.mexc.update_stop_order(pos['stop_order_id'], pos['stop_loss'])
                 else:
-                    # No stop order exists - try to place one now
-                    stop_side = 4 if pos['direction'] == 'LONG' else 2
                     new_stop_id = self.mexc.place_stop_order(
-                        pos['mexc_symbol'], stop_side, pos['volume'], 
+                        pos['mexc_symbol'], 4, pos['volume'],
                         pos['stop_loss'], int(pos.get('leverage', 10))
                     )
                     if new_stop_id:
                         pos['stop_order_id'] = int(new_stop_id)
-                        logger.info(f"✅ Created new stop order: {new_stop_id}")
-                logger.info(f"✅ Breakeven SL set to {pos['stop_loss']:.4f}")
+                
+                logger.info(f"✅ Breakeven SL set to {pos['stop_loss']:.4f} (1.0 ATR locked)")
             
-            if pos['breakeven_active']:
+            # Trailing - R-based multipliers
+            if pos.get('breakeven_active'):
                 r_mult = (candle_high - pos['entry_price']) / pos['stop_distance']
-                # V14: Balanced trailing - tighter at high R, looser early
-                trail = 0.6 if r_mult > 5 else (1.2 if r_mult > 3 else (1.8 if r_mult > 2 else 2.5))
-                new_sl = candle_high - atr * trail
+                if r_mult > 5:
+                    trail_mult = 0.6
+                elif r_mult > 3:
+                    trail_mult = 1.2
+                elif r_mult > 2:
+                    trail_mult = 1.8
+                else:
+                    trail_mult = 2.5
+                
+                new_sl = candle_high - atr * trail_mult
+                
                 if new_sl > pos['stop_loss']:
                     old_sl = pos['stop_loss']
                     pos['stop_loss'] = new_sl
-                    # Update stop on exchange
+                    
                     if pos.get('stop_order_id'):
                         if self.mexc.update_stop_order(pos['stop_order_id'], new_sl):
                             logger.info(f"🔄 Trailing SL: {old_sl:.4f} → {new_sl:.4f}")
                     else:
-                        # No stop order - create one
                         new_stop_id = self.mexc.place_stop_order(
                             pos['mexc_symbol'], 4, pos['volume'], new_sl, int(pos.get('leverage', 10))
                         )
                         if new_stop_id:
                             pos['stop_order_id'] = int(new_stop_id)
-                            logger.info(f"✅ Created trailing stop: {new_sl:.4f}")
-        else:
-            if not pos['breakeven_active'] and candle_low <= pos['entry_price'] - be_trigger_dist:
+        
+        else:  # SHORT
+            if not pos.get('breakeven_active') and candle_low <= pos['entry_price'] - be_trigger_dist:
                 pos['breakeven_active'] = True
-                pos['stop_loss'] = pos['entry_price'] - atr * 1.0  # V14: Lock meaningful profit when BE triggers
-                # Update stop on exchange for breakeven
+                pos['stop_loss'] = pos['entry_price'] - be_margin_dist  # Lock 1.0 ATR
+                
                 if pos.get('stop_order_id'):
                     self.mexc.update_stop_order(pos['stop_order_id'], pos['stop_loss'])
                 else:
-                    # No stop order exists - try to place one now
                     new_stop_id = self.mexc.place_stop_order(
-                        pos['mexc_symbol'], 2, pos['volume'], 
+                        pos['mexc_symbol'], 2, pos['volume'],
                         pos['stop_loss'], int(pos.get('leverage', 10))
                     )
                     if new_stop_id:
                         pos['stop_order_id'] = int(new_stop_id)
-                        logger.info(f"✅ Created new stop order: {new_stop_id}")
-                logger.info(f"✅ Breakeven SL set to {pos['stop_loss']:.4f}")
+                
+                logger.info(f"✅ Breakeven SL set to {pos['stop_loss']:.4f} (1.0 ATR locked)")
             
-            if pos['breakeven_active']:
+            if pos.get('breakeven_active'):
                 r_mult = (pos['entry_price'] - candle_low) / pos['stop_distance']
-                # V14: Balanced trailing - tighter at high R, looser early
-                trail = 0.6 if r_mult > 5 else (1.2 if r_mult > 3 else (1.8 if r_mult > 2 else 2.5))
-                new_sl = candle_low + atr * trail
+                if r_mult > 5:
+                    trail_mult = 0.6
+                elif r_mult > 3:
+                    trail_mult = 1.2
+                elif r_mult > 2:
+                    trail_mult = 1.8
+                else:
+                    trail_mult = 2.5
+                
+                new_sl = candle_low + atr * trail_mult
+                
                 if new_sl < pos['stop_loss']:
                     old_sl = pos['stop_loss']
                     pos['stop_loss'] = new_sl
-                    # Update stop on exchange
+                    
                     if pos.get('stop_order_id'):
                         if self.mexc.update_stop_order(pos['stop_order_id'], new_sl):
                             logger.info(f"🔄 Trailing SL: {old_sl:.4f} → {new_sl:.4f}")
                     else:
-                        # No stop order - create one
                         new_stop_id = self.mexc.place_stop_order(
                             pos['mexc_symbol'], 2, pos['volume'], new_sl, int(pos.get('leverage', 10))
                         )
                         if new_stop_id:
                             pos['stop_order_id'] = int(new_stop_id)
-                            logger.info(f"✅ Created trailing stop: {new_sl:.4f}")
-        
-        self.save_state()
     
     def close_position(self, price: float, reason: str):
+        """Manually close position."""
         if not self.position:
             return
         
         pos = self.position
         self.mexc.cancel_stop_orders(pos['mexc_symbol'])
-        # WEB API: 4=close long, 2=close short
-        self.mexc.place_order(pos['mexc_symbol'], 4 if pos['direction'] == 'LONG' else 2, 
-                             pos['volume'], int(pos['leverage']))
         
-        if pos['direction'] == 'LONG':
-            pnl_pct = (price * (1 - Config.SLIPPAGE_PCT) - pos['entry_price'] * (1 + Config.SLIPPAGE_PCT)) / pos['entry_price']
-        else:
-            pnl_pct = (pos['entry_price'] * (1 - Config.SLIPPAGE_PCT) - price * (1 + Config.SLIPPAGE_PCT)) / pos['entry_price']
-        
-        net = pos['position_value'] * pnl_pct - pos['position_value'] * Config.EXIT_FEE
-        self.capital += net
-        
-        emoji = "✅" if net > 0 else "❌"
-        self.telegram.send(f"{emoji} CLOSE {pos['pair']}", f"PnL: ${net:.2f}\nReason: {reason}")
+        close_side = 4 if pos['direction'] == 'LONG' else 2
+        self.mexc.place_order(pos['mexc_symbol'], close_side, pos['volume'], int(pos['leverage']))
         
         self.position = None
-        self.save_state()
+        self.sync_capital()
+        
+        self.telegram.send(f"📊 CLOSE {pos['pair']}", f"Reason: {reason}\nCapital: ${self.capital:.2f}")
 
 
 # ============================================================
@@ -1941,14 +1958,11 @@ def main():
         try:
             wait_until_candle_close(5)
             
-            # Sync position with exchange (detect manual closes)
-            if portfolio.position:
-                if not portfolio.sync_position_with_exchange():
-                    # Position was closed externally, skip to scanning
-                    logger.info("🔄 Position cleared, resuming scan mode...")
+            # Sync position with exchange (detect external closes)
+            has_pos = portfolio.has_position()
             
             # Update position if exists
-            if portfolio.position:
+            if has_pos and portfolio.position:
                 pos = portfolio.position
                 logger.info(f"📍 Monitoring {pos['pair']} {pos['direction']} | Entry: {pos['entry_price']:.4f} | SL: {pos['stop_loss']:.4f}")
                 ticker = binance.fetch_ticker(pos['pair'])
@@ -1966,8 +1980,8 @@ def main():
                     current_candle_low = candles[-1][3]   # low of current candle
                     portfolio.update_position(current_price, current_candle_high, current_candle_low)
             
-            # Scan for signals using PARALLEL processing
-            if not portfolio.position:
+            # Scan for signals using PARALLEL processing (only if no position)
+            if not has_pos:
                 logger.info("=" * 70)
                 logger.info(f"🔍 PARALLEL SCAN: Processing {len(active_pairs)} pairs with {Config.MAX_WORKERS} workers...")
                 scan_start = time.time()

@@ -1,0 +1,426 @@
+{
+  "BTC_USDT": {
+    "contract_size": 0.0001,
+    "price": 97017.2,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 50000,
+        "max_usdt": 485086.0,
+        "max_leverage": 500,
+        "mmr": 0.001,
+        "imr": 0.002
+      },
+      {
+        "level": 2,
+        "max_contracts": 120000,
+        "max_usdt": 1164206.4,
+        "max_leverage": 200,
+        "mmr": 0.004,
+        "imr": 0.005
+      },
+      {
+        "level": 3,
+        "max_contracts": 250000,
+        "max_usdt": 2425430.0,
+        "max_leverage": 100,
+        "mmr": 0.005,
+        "imr": 0.01
+      },
+      {
+        "level": 4,
+        "max_contracts": 2000000,
+        "max_usdt": 19403440.0,
+        "max_leverage": 50,
+        "mmr": 0.01,
+        "imr": 0.02
+      },
+      {
+        "level": 5,
+        "max_contracts": 8500000,
+        "max_usdt": 82464620.0,
+        "max_leverage": 20,
+        "mmr": 0.02,
+        "imr": 0.05
+      },
+      {
+        "level": 6,
+        "max_contracts": 11500000,
+        "max_usdt": 111569780.0,
+        "max_leverage": 10,
+        "mmr": 0.05,
+        "imr": 0.1
+      }
+    ]
+  },
+  "ETH_USDT": {
+    "contract_size": 0.01,
+    "price": 3347.71,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 19000,
+        "max_usdt": 636064.9,
+        "max_leverage": 500,
+        "mmr": 0.001,
+        "imr": 0.002
+      },
+      {
+        "level": 2,
+        "max_contracts": 45000,
+        "max_usdt": 1506469.5,
+        "max_leverage": 200,
+        "mmr": 0.004,
+        "imr": 0.005
+      },
+      {
+        "level": 3,
+        "max_contracts": 90000,
+        "max_usdt": 3012939.0,
+        "max_leverage": 100,
+        "mmr": 0.005,
+        "imr": 0.01
+      },
+      {
+        "level": 4,
+        "max_contracts": 600000,
+        "max_usdt": 20086260.0,
+        "max_leverage": 50,
+        "mmr": 0.01,
+        "imr": 0.02
+      },
+      {
+        "level": 5,
+        "max_contracts": 2500000,
+        "max_usdt": 83692750.0,
+        "max_leverage": 20,
+        "mmr": 0.02,
+        "imr": 0.05
+      },
+      {
+        "level": 6,
+        "max_contracts": 3500000,
+        "max_usdt": 117169850.0,
+        "max_leverage": 10,
+        "mmr": 0.05,
+        "imr": 0.1
+      }
+    ]
+  },
+  "SOL_USDT": {
+    "contract_size": 0.1,
+    "price": 146.53,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 31000,
+        "max_usdt": 454243.0,
+        "max_leverage": 300,
+        "mmr": 0.0023,
+        "imr": 0.00333333
+      },
+      {
+        "level": 2,
+        "max_contracts": 860000,
+        "max_usdt": 12601580.0,
+        "max_leverage": 200,
+        "mmr": 0.004,
+        "imr": 0.005
+      }
+    ]
+  },
+  "XRP_USDT": {
+    "contract_size": 1.0,
+    "price": 2.1452,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 160000,
+        "max_usdt": 343232.0,
+        "max_leverage": 300,
+        "mmr": 0.0023,
+        "imr": 0.00333333
+      },
+      {
+        "level": 2,
+        "max_contracts": 1200000,
+        "max_usdt": 2574240.0,
+        "max_leverage": 200,
+        "mmr": 0.004,
+        "imr": 0.005
+      },
+      {
+        "level": 3,
+        "max_contracts": 1700000,
+        "max_usdt": 3646840.0,
+        "max_leverage": 25,
+        "mmr": 0.02,
+        "imr": 0.04
+      }
+    ]
+  },
+  "DOGE_USDT": {
+    "contract_size": 100.0,
+    "price": 0.14846,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 23000,
+        "max_usdt": 341458.0,
+        "max_leverage": 300,
+        "mmr": 0.0023,
+        "imr": 0.00333333
+      },
+      {
+        "level": 2,
+        "max_contracts": 340000,
+        "max_usdt": 5047640.0,
+        "max_leverage": 200,
+        "mmr": 0.004,
+        "imr": 0.005
+      }
+    ]
+  },
+  "BNB_USDT": {
+    "contract_size": 0.01,
+    "price": 943.9,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 360000,
+        "max_usdt": 3398040.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "ADA_USDT": {
+    "contract_size": 1.0,
+    "price": 0.4169,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 550000,
+        "max_usdt": 229295.0,
+        "max_leverage": 300,
+        "mmr": 0.0023,
+        "imr": 0.00333333
+      },
+      {
+        "level": 2,
+        "max_contracts": 5300000,
+        "max_usdt": 2209570.0,
+        "max_leverage": 200,
+        "mmr": 0.004,
+        "imr": 0.005
+      }
+    ]
+  },
+  "AVAX_USDT": {
+    "contract_size": 0.1,
+    "price": 14.639,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 1400000,
+        "max_usdt": 2049460.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "LINK_USDT": {
+    "contract_size": 0.1,
+    "price": 14.218,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 125000,
+        "max_usdt": 177725.0,
+        "max_leverage": 300,
+        "mmr": 0.0023,
+        "imr": 0.00333333
+      },
+      {
+        "level": 2,
+        "max_contracts": 650000,
+        "max_usdt": 924170.0,
+        "max_leverage": 200,
+        "mmr": 0.004,
+        "imr": 0.005
+      }
+    ]
+  },
+  "SUI_USDT": {
+    "contract_size": 1.0,
+    "price": 1.8512,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 60000,
+        "max_usdt": 111072.0,
+        "max_leverage": 300,
+        "mmr": 0.0023,
+        "imr": 0.00333333
+      },
+      {
+        "level": 2,
+        "max_contracts": 1100000,
+        "max_usdt": 2036320.0,
+        "max_leverage": 200,
+        "mmr": 0.004,
+        "imr": 0.005
+      }
+    ]
+  },
+  "TRX_USDT": {
+    "contract_size": 10.0,
+    "price": 0.3029,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 290000,
+        "max_usdt": 878410.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "DOT_USDT": {
+    "contract_size": 0.1,
+    "price": 2.242,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 500000,
+        "max_usdt": 112100.0,
+        "max_leverage": 300,
+        "mmr": 0.0023,
+        "imr": 0.00333333
+      },
+      {
+        "level": 2,
+        "max_contracts": 4800000,
+        "max_usdt": 1076160.0,
+        "max_leverage": 200,
+        "mmr": 0.004,
+        "imr": 0.005
+      }
+    ]
+  },
+  "LTC_USDT": {
+    "contract_size": 0.01,
+    "price": 78.38,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 2425000,
+        "max_usdt": 1900715.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "BCH_USDT": {
+    "contract_size": 0.01,
+    "price": 602.38,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 350000,
+        "max_usdt": 2108330.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "UNI_USDT": {
+    "contract_size": 0.1,
+    "price": 5.747,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 2100000,
+        "max_usdt": 1206870.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "APT_USDT": {
+    "contract_size": 0.1,
+    "price": 1.9346,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 5800000,
+        "max_usdt": 1122068.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "ATOM_USDT": {
+    "contract_size": 0.1,
+    "price": 2.596,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 2380000,
+        "max_usdt": 617848.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "NEAR_USDT": {
+    "contract_size": 1.0,
+    "price": 1.821,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 700000,
+        "max_usdt": 1274700.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "AAVE_USDT": {
+    "contract_size": 0.01,
+    "price": 177.66,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 1000000,
+        "max_usdt": 1776600.0,
+        "max_leverage": 200,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  },
+  "ZEC_USDT": {
+    "contract_size": 0.01,
+    "price": 441.07,
+    "tiers": [
+      {
+        "level": 1,
+        "max_contracts": 440000,
+        "max_usdt": 1940708.0,
+        "max_leverage": 100,
+        "mmr": 0.01,
+        "imr": 0.02
+      }
+    ]
+  }
+}

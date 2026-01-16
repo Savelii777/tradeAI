@@ -1,0 +1,5840 @@
+{
+  "BTC_USDT": {
+    "max_position_usdt": 3875240.0,
+    "max_vol": 400000,
+    "contract_size": 0.0001,
+    "max_leverage": 500,
+    "last_price": 96881.0
+  },
+  "ETH_USDT": {
+    "max_position_usdt": 2339442.0,
+    "max_vol": 70000,
+    "contract_size": 0.01,
+    "max_leverage": 500,
+    "last_price": 3342.06
+  },
+  "SOL_USDT": {
+    "max_position_usdt": 1755120.0,
+    "max_vol": 120000,
+    "contract_size": 0.1,
+    "max_leverage": 300,
+    "last_price": 146.26
+  },
+  "DASH_USDT": {
+    "max_position_usdt": 61056.0,
+    "max_vol": 72000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 84.8
+  },
+  "XAUT_USDT": {
+    "max_position_usdt": 850815.0,
+    "max_vol": 185000,
+    "contract_size": 0.001,
+    "max_leverage": 100,
+    "last_price": 4599.0
+  },
+  "BTC_USD": {
+    "max_position_usdt": 27121108000.0,
+    "max_vol": 2800,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 96861.1
+  },
+  "SILVER_USDT": {
+    "max_position_usdt": 108444.0,
+    "max_vol": 120000,
+    "contract_size": 0.01,
+    "max_leverage": 100,
+    "last_price": 90.37
+  },
+  "ETH_USD": {
+    "max_position_usdt": 2005200000.0,
+    "max_vol": 60000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 3342.0
+  },
+  "AAPLSTOCK_USDT": {
+    "max_position_usdt": 9240.12,
+    "max_vol": 3600,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 256.67
+  },
+  "LTC_USD": {
+    "max_position_usdt": 3929500.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 78.59
+  },
+  "XRP_USD": {
+    "max_position_usdt": 107224.99999999999,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 2.1445
+  },
+  "ADA_USD": {
+    "max_position_usdt": 20865.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.4173
+  },
+  "LINK_USD": {
+    "max_position_usdt": 708250.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 14.165
+  },
+  "AVAX_USD": {
+    "max_position_usdt": 732000.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 14.64
+  },
+  "SOL_USD": {
+    "max_position_usdt": 58476000.0,
+    "max_vol": 40000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 146.19
+  },
+  "DOGE_USD": {
+    "max_position_usdt": 7403.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.14806
+  },
+  "SUI_USD": {
+    "max_position_usdt": 92335.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 1.8467
+  },
+  "RIVER_USDT": {
+    "max_position_usdt": 1178.094,
+    "max_vol": 410,
+    "contract_size": 0.1,
+    "max_leverage": 20,
+    "last_price": 28.734
+  },
+  "XRP_USDT": {
+    "max_position_usdt": 1800708.0,
+    "max_vol": 840000,
+    "contract_size": 1,
+    "max_leverage": 300,
+    "last_price": 2.1437
+  },
+  "SUI_USDT": {
+    "max_position_usdt": 1108200.0,
+    "max_vol": 600000,
+    "contract_size": 1,
+    "max_leverage": 300,
+    "last_price": 1.847
+  },
+  "ZEC_USDT": {
+    "max_position_usdt": 1903968.0000000002,
+    "max_vol": 440000,
+    "contract_size": 0.01,
+    "max_leverage": 100,
+    "last_price": 432.72
+  },
+  "BERA_USDT": {
+    "max_position_usdt": 6521.2,
+    "max_vol": 85000,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 0.7672
+  },
+  "LINK_USDT": {
+    "max_position_usdt": 1204875.0,
+    "max_vol": 850000,
+    "contract_size": 0.1,
+    "max_leverage": 300,
+    "last_price": 14.175
+  },
+  "DN_USDT": {
+    "max_position_usdt": 31.8,
+    "max_vol": 150,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.212
+  },
+  "XMR_USDT": {
+    "max_position_usdt": 535795.2,
+    "max_vol": 72000,
+    "contract_size": 0.01,
+    "max_leverage": 100,
+    "last_price": 744.16
+  },
+  "PEPE_USDT": {
+    "max_position_usdt": 1534080.0,
+    "max_vol": 24000,
+    "contract_size": 10000000,
+    "max_leverage": 300,
+    "last_price": 6.392e-06
+  },
+  "BIANRENSHENG_USDT": {
+    "max_position_usdt": 13870.999999999998,
+    "max_vol": 5500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.2522
+  },
+  "TAO_USDT": {
+    "max_position_usdt": 761800.0,
+    "max_vol": 260000,
+    "contract_size": 0.01,
+    "max_leverage": 300,
+    "last_price": 293.0
+  },
+  "DOGE_USDT": {
+    "max_position_usdt": 3702500.0000000005,
+    "max_vol": 250000,
+    "contract_size": 100,
+    "max_leverage": 300,
+    "last_price": 0.1481
+  },
+  "IP_USDT": {
+    "max_position_usdt": 24430.0,
+    "max_vol": 7000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 3.49
+  },
+  "GUN_USDT": {
+    "max_position_usdt": 7027.375000000001,
+    "max_vol": 21250,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03307
+  },
+  "ARCSOL_USDT": {
+    "max_position_usdt": 3403.68,
+    "max_vol": 5600,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.06078
+  },
+  "BNB_USDT": {
+    "max_position_usdt": 3391200.0,
+    "max_vol": 360000,
+    "contract_size": 0.01,
+    "max_leverage": 200,
+    "last_price": 942.0
+  },
+  "ASTER_USDT": {
+    "max_position_usdt": 974090.0,
+    "max_vol": 1300000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.7493
+  },
+  "LTC_USDT": {
+    "max_position_usdt": 1906049.9999999998,
+    "max_vol": 2425000,
+    "contract_size": 0.01,
+    "max_leverage": 200,
+    "last_price": 78.6
+  },
+  "BEAT_USDT": {
+    "max_position_usdt": 29505.000000000004,
+    "max_vol": 75000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.3934
+  },
+  "ADA_USDT": {
+    "max_position_usdt": 1168440.0,
+    "max_vol": 2800000,
+    "contract_size": 1,
+    "max_leverage": 300,
+    "last_price": 0.4173
+  },
+  "BCH_USDT": {
+    "max_position_usdt": 2113755.0,
+    "max_vol": 350000,
+    "contract_size": 0.01,
+    "max_leverage": 200,
+    "last_price": 603.93
+  },
+  "PIPPIN_USDT": {
+    "max_position_usdt": 31755.92,
+    "max_vol": 9800,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.32404
+  },
+  "ENA_USDT": {
+    "max_position_usdt": 1768060.0,
+    "max_vol": 730000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.2422
+  },
+  "SIGHT_USDT": {
+    "max_position_usdt": 30.037,
+    "max_vol": 700,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.004291
+  },
+  "HYPE_USDT": {
+    "max_position_usdt": 2438367.0,
+    "max_vol": 930000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 26.219
+  },
+  "FARTCOIN_USDT": {
+    "max_position_usdt": 237552.0,
+    "max_vol": 56000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.4242
+  },
+  "AXS_USDT": {
+    "max_position_usdt": 55890.0,
+    "max_vol": 45000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 1.242
+  },
+  "114514_USDT": {
+    "max_position_usdt": 167.99999999999997,
+    "max_vol": 750,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.00224
+  },
+  "ZEN_USDT": {
+    "max_position_usdt": 74250.0,
+    "max_vol": 60000,
+    "contract_size": 0.1,
+    "max_leverage": 200,
+    "last_price": 12.375
+  },
+  "1000RATS_USDT": {
+    "max_position_usdt": 329.88,
+    "max_vol": 60,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 0.05498
+  },
+  "WHITEWHALE_USDT": {
+    "max_position_usdt": 1913.8,
+    "max_vol": 2000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.09569
+  },
+  "REPPO_USDT": {
+    "max_position_usdt": 61.199999999999996,
+    "max_vol": 120,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.051
+  },
+  "PUMPFUN_USDT": {
+    "max_position_usdt": 1019502.0,
+    "max_vol": 3420000,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.002981
+  },
+  "ICP_USDT": {
+    "max_position_usdt": 1087320.0,
+    "max_vol": 25500000,
+    "contract_size": 0.01,
+    "max_leverage": 200,
+    "last_price": 4.264
+  },
+  "AVAX_USDT": {
+    "max_position_usdt": 2051140.0,
+    "max_vol": 1400000,
+    "contract_size": 0.1,
+    "max_leverage": 200,
+    "last_price": 14.651
+  },
+  "PLAY_USDT": {
+    "max_position_usdt": 2935.71,
+    "max_vol": 4150,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.07074
+  },
+  "SATS_USDT": {
+    "max_position_usdt": 2172.5,
+    "max_vol": 11000,
+    "contract_size": 10000000,
+    "max_leverage": 100,
+    "last_price": 1.975e-08
+  },
+  "WIF_USDT": {
+    "max_position_usdt": 366696.0,
+    "max_vol": 88000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.4167
+  },
+  "PENGU_USDT": {
+    "max_position_usdt": 327950.0,
+    "max_vol": 2500000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.013118
+  },
+  "EPH_USDT": {
+    "max_position_usdt": 77.47500000000001,
+    "max_vol": 75,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.1033
+  },
+  "NEAR_USDT": {
+    "max_position_usdt": 1269100.0,
+    "max_vol": 700000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 1.813
+  },
+  "DOLO_USDT": {
+    "max_position_usdt": 4297.865,
+    "max_vol": 7150,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.06011
+  },
+  "KGEN_USDT": {
+    "max_position_usdt": 2850.75,
+    "max_vol": 10500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.2715
+  },
+  "OP_USDT": {
+    "max_position_usdt": 425880.0,
+    "max_vol": 1200000,
+    "contract_size": 1,
+    "max_leverage": 300,
+    "last_price": 0.3549
+  },
+  "WOTAMALAILE_USDT": {
+    "max_position_usdt": 187.785,
+    "max_vol": 135,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.01391
+  },
+  "DOT_USDT": {
+    "max_position_usdt": 447600.0,
+    "max_vol": 2000000,
+    "contract_size": 0.1,
+    "max_leverage": 300,
+    "last_price": 2.238
+  },
+  "PSYOPANIME_USDT": {
+    "max_position_usdt": 38.92,
+    "max_vol": 40,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.00973
+  },
+  "ICNT_USDT": {
+    "max_position_usdt": 2939.75,
+    "max_vol": 5500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.5345
+  },
+  "ZEREBRO_USDT": {
+    "max_position_usdt": 1340.0,
+    "max_vol": 8000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.01675
+  },
+  "WOO_USDT": {
+    "max_position_usdt": 6332.0,
+    "max_vol": 200000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.03166
+  },
+  "TRADOOR_USDT": {
+    "max_position_usdt": 2653.35,
+    "max_vol": 2450,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 1.083
+  },
+  "RENDER_USDT": {
+    "max_position_usdt": 343070.0,
+    "max_vol": 145000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 2.366
+  },
+  "FET_USDT": {
+    "max_position_usdt": 52704.0,
+    "max_vol": 18000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.2928
+  },
+  "UNI_USDT": {
+    "max_position_usdt": 1207080.0,
+    "max_vol": 2100000,
+    "contract_size": 0.1,
+    "max_leverage": 200,
+    "last_price": 5.748
+  },
+  "ORDI_USDT": {
+    "max_position_usdt": 6069.599999999999,
+    "max_vol": 12000,
+    "contract_size": 0.1,
+    "max_leverage": 200,
+    "last_price": 5.058
+  },
+  "NOT_USDT": {
+    "max_position_usdt": 5540.355,
+    "max_vol": 7950,
+    "contract_size": 1000,
+    "max_leverage": 200,
+    "last_price": 0.0006969
+  },
+  "XLM_USDT": {
+    "max_position_usdt": 737676.0,
+    "max_vol": 310000,
+    "contract_size": 10,
+    "max_leverage": 300,
+    "last_price": 0.23796
+  },
+  "ONDO_USDT": {
+    "max_position_usdt": 611250.0,
+    "max_vol": 150000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.4075
+  },
+  "AAVE_USDT": {
+    "max_position_usdt": 1776300.0,
+    "max_vol": 1000000,
+    "contract_size": 0.01,
+    "max_leverage": 200,
+    "last_price": 177.63
+  },
+  "WLD_USDT": {
+    "max_position_usdt": 364920.0,
+    "max_vol": 600000,
+    "contract_size": 1,
+    "max_leverage": 300,
+    "last_price": 0.6082
+  },
+  "BLUR_USDT": {
+    "max_position_usdt": 5294.8,
+    "max_vol": 14000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.03782
+  },
+  "LIT_USDT": {
+    "max_position_usdt": 32444.999999999996,
+    "max_vol": 150000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 2.163
+  },
+  "HBAR_USDT": {
+    "max_position_usdt": 1747060.0,
+    "max_vol": 14000000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.12479
+  },
+  "JELLYJELLY_USDT": {
+    "max_position_usdt": 1202.335,
+    "max_vol": 1550,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.07757
+  },
+  "UAI_USDT": {
+    "max_position_usdt": 2872.5,
+    "max_vol": 15000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.1915
+  },
+  "TIA_USDT": {
+    "max_position_usdt": 327140.0,
+    "max_vol": 550000,
+    "contract_size": 1,
+    "max_leverage": 300,
+    "last_price": 0.5948
+  },
+  "SHIB_USDT": {
+    "max_position_usdt": 1323900.0,
+    "max_vol": 150000000,
+    "contract_size": 1000,
+    "max_leverage": 300,
+    "last_price": 8.826e-06
+  },
+  "ARB_USDT": {
+    "max_position_usdt": 1101000.0,
+    "max_vol": 5000000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.2202
+  },
+  "APT_USDT": {
+    "max_position_usdt": 1119980.0,
+    "max_vol": 5800000,
+    "contract_size": 0.1,
+    "max_leverage": 200,
+    "last_price": 1.931
+  },
+  "LISA_USDT": {
+    "max_position_usdt": 43.519999999999996,
+    "max_vol": 160,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.0272
+  },
+  "VIRTUAL_USDT": {
+    "max_position_usdt": 239308.80000000002,
+    "max_vol": 22800,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 1.0496
+  },
+  "XPL_USDT": {
+    "max_position_usdt": 310060.0,
+    "max_vol": 1850000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1676
+  },
+  "1000BONK_USDT": {
+    "max_position_usdt": 2184240.0,
+    "max_vol": 19000,
+    "contract_size": 10000,
+    "max_leverage": 125,
+    "last_price": 0.011496
+  },
+  "CLO_USDT": {
+    "max_position_usdt": 1993.6799999999998,
+    "max_vol": 270,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.7384
+  },
+  "TRX_USDT": {
+    "max_position_usdt": 878439.0,
+    "max_vol": 290000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.30291
+  },
+  "HEIMA_USDT": {
+    "max_position_usdt": 76.888,
+    "max_vol": 14000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.005492
+  },
+  "U_USDT": {
+    "max_position_usdt": 121.64,
+    "max_vol": 400,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.003041
+  },
+  "WLFI_USDT": {
+    "max_position_usdt": 210910.0,
+    "max_vol": 1150000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1834
+  },
+  "GIGGLE_USDT": {
+    "max_position_usdt": 5594.7,
+    "max_vol": 850,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 65.82
+  },
+  "TONCOIN_USDT": {
+    "max_position_usdt": 879500.0,
+    "max_vol": 500000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 1.759
+  },
+  "BTC_USDC": {
+    "max_position_usdt": 2325813.5999999996,
+    "max_vol": 240000,
+    "contract_size": 0.0001,
+    "max_leverage": 125,
+    "last_price": 96908.9
+  },
+  "POL_USDT": {
+    "max_position_usdt": 218067.6,
+    "max_vol": 138000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.15802
+  },
+  "FHE_USDT": {
+    "max_position_usdt": 3088.565,
+    "max_vol": 5570,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.05545
+  },
+  "TRUMPOFFICIAL_USDT": {
+    "max_position_usdt": 619080.0,
+    "max_vol": 1100000,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 5.628
+  },
+  "AEVO_USDT": {
+    "max_position_usdt": 2261.88,
+    "max_vol": 51500,
+    "contract_size": 1,
+    "max_leverage": 75,
+    "last_price": 0.04392
+  },
+  "SEI_USDT": {
+    "max_position_usdt": 568800.0,
+    "max_vol": 450000,
+    "contract_size": 10,
+    "max_leverage": 300,
+    "last_price": 0.1264
+  },
+  "HAJIMI_USDT": {
+    "max_position_usdt": 106.30000000000001,
+    "max_vol": 250,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.04252
+  },
+  "FILECOIN_USDT": {
+    "max_position_usdt": 1111600.0,
+    "max_vol": 70000000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 1.588
+  },
+  "CHZ_USDT": {
+    "max_position_usdt": 61495.130000000005,
+    "max_vol": 1118500,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.05498
+  },
+  "FOGO_USDT": {
+    "max_position_usdt": 545.2,
+    "max_vol": 1000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.05452
+  },
+  "4_USDT": {
+    "max_position_usdt": 2228.4,
+    "max_vol": 9000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02476
+  },
+  "INJ_USDT": {
+    "max_position_usdt": 358016.0,
+    "max_vol": 64000,
+    "contract_size": 1,
+    "max_leverage": 300,
+    "last_price": 5.594
+  },
+  "CAI_USDT": {
+    "max_position_usdt": 36.65,
+    "max_vol": 500,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.0733
+  },
+  "EDEN_USDT": {
+    "max_position_usdt": 4530.96,
+    "max_vol": 63000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.07192
+  },
+  "H_USDT": {
+    "max_position_usdt": 36564.0,
+    "max_vol": 200000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.18282
+  },
+  "ALCH_USDT": {
+    "max_position_usdt": 18619.2,
+    "max_vol": 12000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.15516
+  },
+  "HANA_USDT": {
+    "max_position_usdt": 593.6,
+    "max_vol": 5300,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.0112
+  },
+  "DGRAM_USDT": {
+    "max_position_usdt": 570.0,
+    "max_vol": 10000,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.00057
+  },
+  "PIEVERSE_USDT": {
+    "max_position_usdt": 4966.0,
+    "max_vol": 1000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.4966
+  },
+  "LDO_USDT": {
+    "max_position_usdt": 233352.0,
+    "max_vol": 360000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.6482
+  },
+  "STRK_USDT": {
+    "max_position_usdt": 108480.0,
+    "max_vol": 1200000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.0904
+  },
+  "LAOZI_USDT": {
+    "max_position_usdt": 135.45,
+    "max_vol": 300,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.004515
+  },
+  "ROSE_USDT": {
+    "max_position_usdt": 5430.0,
+    "max_vol": 37500,
+    "contract_size": 10,
+    "max_leverage": 75,
+    "last_price": 0.01448
+  },
+  "FLOKI_USDT": {
+    "max_position_usdt": 300921.0,
+    "max_vol": 55500,
+    "contract_size": 100000,
+    "max_leverage": 200,
+    "last_price": 5.422e-05
+  },
+  "KAITO_USDT": {
+    "max_position_usdt": 4038.6000000000004,
+    "max_vol": 6000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.6731
+  },
+  "BULLA_USDT": {
+    "max_position_usdt": 2368.8,
+    "max_vol": 7000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03384
+  },
+  "POWER_USDT": {
+    "max_position_usdt": 5860.44,
+    "max_vol": 36000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.16279
+  },
+  "ATOM_USDT": {
+    "max_position_usdt": 616896.0,
+    "max_vol": 2380000,
+    "contract_size": 0.1,
+    "max_leverage": 200,
+    "last_price": 2.592
+  },
+  "VVV_USDT": {
+    "max_position_usdt": 3390.12,
+    "max_vol": 10800,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 3.139
+  },
+  "NIGHT_USDT": {
+    "max_position_usdt": 31445.050000000003,
+    "max_vol": 4550,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.06911
+  },
+  "LIGHT_USDT": {
+    "max_position_usdt": 4548.6900000000005,
+    "max_vol": 7650,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.5946
+  },
+  "ORE_USDT": {
+    "max_position_usdt": 45.449999999999996,
+    "max_vol": 30,
+    "contract_size": 0.01,
+    "max_leverage": 20,
+    "last_price": 151.5
+  },
+  "MELANIA_USDT": {
+    "max_position_usdt": 1887.8999999999999,
+    "max_vol": 105000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 0.1798
+  },
+  "XVG_USDT": {
+    "max_position_usdt": 5682.3,
+    "max_vol": 780,
+    "contract_size": 1000,
+    "max_leverage": 200,
+    "last_price": 0.007285
+  },
+  "YEE_USDT": {
+    "max_position_usdt": 129.3,
+    "max_vol": 5000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.02586
+  },
+  "JASMY_USDT": {
+    "max_position_usdt": 239058.00000000003,
+    "max_vol": 2700000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.008854
+  },
+  "MAMO_USDT": {
+    "max_position_usdt": 48.06,
+    "max_vol": 180,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.0267
+  },
+  "KAS_USDT": {
+    "max_position_usdt": 143820.0,
+    "max_vol": 3000,
+    "contract_size": 1000,
+    "max_leverage": 200,
+    "last_price": 0.04794
+  },
+  "PARTI_USDT": {
+    "max_position_usdt": 4298.28,
+    "max_vol": 4200,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.10234
+  },
+  "APE_USDT": {
+    "max_position_usdt": 45180.0,
+    "max_vol": 200000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.2259
+  },
+  "MYX_USDT": {
+    "max_position_usdt": 2653.2,
+    "max_vol": 45,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 5.896
+  },
+  "SPX_USDT": {
+    "max_position_usdt": 100368.0,
+    "max_vol": 160000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.6273
+  },
+  "DUSK_USDT": {
+    "max_position_usdt": 4209.415,
+    "max_vol": 6350,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.06629
+  },
+  "ZKP_USDT": {
+    "max_position_usdt": 9829.4,
+    "max_vol": 7000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.14042
+  },
+  "PAXG_USDT": {
+    "max_position_usdt": 313876.44,
+    "max_vol": 68000,
+    "contract_size": 0.001,
+    "max_leverage": 75,
+    "last_price": 4615.83
+  },
+  "ACH_USDT": {
+    "max_position_usdt": 5941.275,
+    "max_vol": 555000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.010705
+  },
+  "BRETT_USDT": {
+    "max_position_usdt": 27318.0,
+    "max_vol": 14500,
+    "contract_size": 100,
+    "max_leverage": 200,
+    "last_price": 0.01884
+  },
+  "PI_USDT": {
+    "max_position_usdt": 31290.0,
+    "max_vol": 150000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.2086
+  },
+  "DEEP_USDT": {
+    "max_position_usdt": 27507.25,
+    "max_vol": 4750,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.05791
+  },
+  "TA_USDT": {
+    "max_position_usdt": 506.38,
+    "max_vol": 1400,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.03617
+  },
+  "ETHFI_USDT": {
+    "max_position_usdt": 115173.5,
+    "max_vol": 145000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.7943
+  },
+  "QTUM_USDT": {
+    "max_position_usdt": 24521.0,
+    "max_vol": 155000,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 1.582
+  },
+  "CYS_USDT": {
+    "max_position_usdt": 30452.5,
+    "max_vol": 6500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.4685
+  },
+  "LYN_USDT": {
+    "max_position_usdt": 12762.75,
+    "max_vol": 162500,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.07854
+  },
+  "COAI_USDT": {
+    "max_position_usdt": 11703.51,
+    "max_vol": 27300,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.4287
+  },
+  "JUP_USDT": {
+    "max_position_usdt": 130350.0,
+    "max_vol": 55000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.237
+  },
+  "EIGEN_USDT": {
+    "max_position_usdt": 132930.0,
+    "max_vol": 300000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.4431
+  },
+  "AKT_USDT": {
+    "max_position_usdt": 33988.5,
+    "max_vol": 65000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.5229
+  },
+  "APPSTOCK_USDT": {
+    "max_position_usdt": 901.9499999999999,
+    "max_vol": 150,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 601.3
+  },
+  "B_USDT": {
+    "max_position_usdt": 30935.999999999996,
+    "max_vol": 12000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.2578
+  },
+  "BYTE_USDT": {
+    "max_position_usdt": 41.571,
+    "max_vol": 900,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.004619
+  },
+  "POPCAT_USDT": {
+    "max_position_usdt": 5038.12,
+    "max_vol": 4780,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.1054
+  },
+  "FRANKLIN_USDT": {
+    "max_position_usdt": 40.14,
+    "max_vol": 900,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.000446
+  },
+  "TRUTH_USDT": {
+    "max_position_usdt": 5361.299999999999,
+    "max_vol": 4500,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.011914
+  },
+  "BDXN_USDT": {
+    "max_position_usdt": 743.16,
+    "max_vol": 33000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.02252
+  },
+  "MANA_USDT": {
+    "max_position_usdt": 57300.0,
+    "max_vol": 375000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.1528
+  },
+  "ETC_USDT": {
+    "max_position_usdt": 741328.0,
+    "max_vol": 560000,
+    "contract_size": 0.1,
+    "max_leverage": 200,
+    "last_price": 13.238
+  },
+  "FLOW_USDT": {
+    "max_position_usdt": 48600.0,
+    "max_vol": 5000000,
+    "contract_size": 0.1,
+    "max_leverage": 20,
+    "last_price": 0.0972
+  },
+  "BROCCOLI_USDT": {
+    "max_position_usdt": 498.75,
+    "max_vol": 2100,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.02375
+  },
+  "CLANKER_USDT": {
+    "max_position_usdt": 2033.6399999999999,
+    "max_vol": 5400,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 37.66
+  },
+  "CRV_USDT": {
+    "max_position_usdt": 608612.0,
+    "max_vol": 14200000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 0.4286
+  },
+  "RAY_USDT": {
+    "max_position_usdt": 13709.3,
+    "max_vol": 110000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 1.2463
+  },
+  "COLLECT_USDT": {
+    "max_position_usdt": 6545.28,
+    "max_vol": 6400,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.10227
+  },
+  "ZKSYNC_USDT": {
+    "max_position_usdt": 221820.00000000003,
+    "max_vol": 600000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.03697
+  },
+  "OOOO_USDT": {
+    "max_position_usdt": 77.28,
+    "max_vol": 2100,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.00368
+  },
+  "GALA_USDT": {
+    "max_position_usdt": 67770.0,
+    "max_vol": 900000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.00753
+  },
+  "RTX_USDT": {
+    "max_position_usdt": 195.09,
+    "max_vol": 70,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 2.787
+  },
+  "ZAMA_USDT": {
+    "max_position_usdt": 445.0,
+    "max_vol": 500,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.089
+  },
+  "CC_USDT": {
+    "max_position_usdt": 9912.0,
+    "max_vol": 7000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.1416
+  },
+  "ALGO_USDT": {
+    "max_position_usdt": 116450.00000000001,
+    "max_vol": 850000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.137
+  },
+  "TRB_USDT": {
+    "max_position_usdt": 5667.5,
+    "max_vol": 2500,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 22.67
+  },
+  "USELESS_USDT": {
+    "max_position_usdt": 5447.715,
+    "max_vol": 455,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.11973
+  },
+  "SENT_USDT": {
+    "max_position_usdt": 475.5,
+    "max_vol": 1000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.04755
+  },
+  "CAKE_USDT": {
+    "max_position_usdt": 84013.1,
+    "max_vol": 41000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 2.0491
+  },
+  "TURBO_USDT": {
+    "max_position_usdt": 12455.1,
+    "max_vol": 630,
+    "contract_size": 10000,
+    "max_leverage": 125,
+    "last_price": 0.001977
+  },
+  "RACA_USDT": {
+    "max_position_usdt": 100.2,
+    "max_vol": 4000,
+    "contract_size": 1000,
+    "max_leverage": 100,
+    "last_price": 2.505e-05
+  },
+  "BREV_USDT": {
+    "max_position_usdt": 4797.0,
+    "max_vol": 1500,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.3198
+  },
+  "ES_USDT": {
+    "max_position_usdt": 3147.75,
+    "max_vol": 22500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.1399
+  },
+  "MONAD_USDT": {
+    "max_position_usdt": 48080.0,
+    "max_vol": 200000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.02404
+  },
+  "PENDLE_USDT": {
+    "max_position_usdt": 113820.00000000001,
+    "max_vol": 50000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 2.2764
+  },
+  "GRASS_USDT": {
+    "max_position_usdt": 5301.0,
+    "max_vol": 15000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.3534
+  },
+  "RON_USDT": {
+    "max_position_usdt": 3116.0,
+    "max_vol": 20000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.1558
+  },
+  "MANYU_USDT": {
+    "max_position_usdt": 328.40000000000003,
+    "max_vol": 2000,
+    "contract_size": 10000000,
+    "max_leverage": 50,
+    "last_price": 1.642e-08
+  },
+  "GLM_USDT": {
+    "max_position_usdt": 43342.0,
+    "max_vol": 13000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.3334
+  },
+  "MSTRSTOCK_USDT": {
+    "max_position_usdt": 10818.6,
+    "max_vol": 6000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 180.31
+  },
+  "MNT_USDT": {
+    "max_position_usdt": 39856.0,
+    "max_vol": 4000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.9964
+  },
+  "SAFE_USDT": {
+    "max_position_usdt": 5265.625,
+    "max_vol": 31250,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.1685
+  },
+  "MUBARAK_USDT": {
+    "max_position_usdt": 1235.92,
+    "max_vol": 560,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.02207
+  },
+  "PROM_USDT": {
+    "max_position_usdt": 8085.65,
+    "max_vol": 1150,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 7.031
+  },
+  "MOODENG_USDT": {
+    "max_position_usdt": 2283.93,
+    "max_vol": 2700,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.08459
+  },
+  "FOLKS_USDT": {
+    "max_position_usdt": 23445.5,
+    "max_vol": 6500,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 3.607
+  },
+  "DOG_USDT": {
+    "max_position_usdt": 7540.799999999999,
+    "max_vol": 4800,
+    "contract_size": 1000,
+    "max_leverage": 100,
+    "last_price": 0.001571
+  },
+  "AVNT_USDT": {
+    "max_position_usdt": 13216.000000000002,
+    "max_vol": 40000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.3304
+  },
+  "PNUT_USDT": {
+    "max_position_usdt": 5162.0,
+    "max_vol": 5800,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.089
+  },
+  "ETH_USDC": {
+    "max_position_usdt": 2206406.4,
+    "max_vol": 66000,
+    "contract_size": 0.01,
+    "max_leverage": 125,
+    "last_price": 3343.04
+  },
+  "RVV_USDT": {
+    "max_position_usdt": 266.77000000000004,
+    "max_vol": 700,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.003811
+  },
+  "SAND_USDT": {
+    "max_position_usdt": 95647.5,
+    "max_vol": 750000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.12753
+  },
+  "RUNE_USDT": {
+    "max_position_usdt": 45104.4,
+    "max_vol": 68000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.6633
+  },
+  "BOME_USDT": {
+    "max_position_usdt": 2583.36,
+    "max_vol": 3600,
+    "contract_size": 1000,
+    "max_leverage": 200,
+    "last_price": 0.0007176
+  },
+  "SQD_USDT": {
+    "max_position_usdt": 11119.5,
+    "max_vol": 15000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.07413
+  },
+  "SCRT_USDT": {
+    "max_position_usdt": 2678.0,
+    "max_vol": 20000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.1339
+  },
+  "ARKM_USDT": {
+    "max_position_usdt": 5064.6,
+    "max_vol": 2300,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.2202
+  },
+  "LAB_USDT": {
+    "max_position_usdt": 2022.9999999999998,
+    "max_vol": 1400,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.1445
+  },
+  "BB_USDT": {
+    "max_position_usdt": 6101.1,
+    "max_vol": 9000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.06779
+  },
+  "MASK_USDT": {
+    "max_position_usdt": 5276.25,
+    "max_vol": 75000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 0.7035
+  },
+  "IRYS_USDT": {
+    "max_position_usdt": 4775.475,
+    "max_vol": 1025,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.04659
+  },
+  "LUNC_USDT": {
+    "max_position_usdt": 163687.5,
+    "max_vol": 375000,
+    "contract_size": 10000,
+    "max_leverage": 200,
+    "last_price": 4.365e-05
+  },
+  "SOL_USDC": {
+    "max_position_usdt": 950365.0,
+    "max_vol": 65000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 146.21
+  },
+  "QNT_USDT": {
+    "max_position_usdt": 49684.8,
+    "max_vol": 66000,
+    "contract_size": 0.01,
+    "max_leverage": 200,
+    "last_price": 75.28
+  },
+  "STX_USDT": {
+    "max_position_usdt": 111663.0,
+    "max_vol": 28500,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.3918
+  },
+  "BIGTIME_USDT": {
+    "max_position_usdt": 5487.8,
+    "max_vol": 2300,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 0.02386
+  },
+  "ZRO_USDT": {
+    "max_position_usdt": 58345.0,
+    "max_vol": 35000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 1.667
+  },
+  "KO_USDT": {
+    "max_position_usdt": 162.0,
+    "max_vol": 40,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.0405
+  },
+  "CRO_USDT": {
+    "max_position_usdt": 41476.0,
+    "max_vol": 40000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.10369
+  },
+  "GAIB_USDT": {
+    "max_position_usdt": 109.329,
+    "max_vol": 3300,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.03313
+  },
+  "REZ_USDT": {
+    "max_position_usdt": 5051.55,
+    "max_vol": 85000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.005943
+  },
+  "LSK_USDT": {
+    "max_position_usdt": 4992.0,
+    "max_vol": 24000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.208
+  },
+  "DYM_USDT": {
+    "max_position_usdt": 4522.200000000001,
+    "max_vol": 60000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.07537
+  },
+  "COOKIE_USDT": {
+    "max_position_usdt": 2221.2200000000003,
+    "max_vol": 47000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.04726
+  },
+  "VET_USDT": {
+    "max_position_usdt": 490000.0,
+    "max_vol": 40000000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.01225
+  },
+  "ACT_USDT": {
+    "max_position_usdt": 2098.65,
+    "max_vol": 8500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02469
+  },
+  "XDC_USDT": {
+    "max_position_usdt": 7074.2,
+    "max_vol": 1550,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.04564
+  },
+  "AIXBT_USDT": {
+    "max_position_usdt": 1734.915,
+    "max_vol": 4550,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03813
+  },
+  "EPIC_USDT": {
+    "max_position_usdt": 1260.3999999999999,
+    "max_vol": 2000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.6302
+  },
+  "STBL_USDT": {
+    "max_position_usdt": 1776.8999999999999,
+    "max_vol": 3000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.05923
+  },
+  "ME_USDT": {
+    "max_position_usdt": 4594.0,
+    "max_vol": 200000,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 0.2297
+  },
+  "ZIG_USDT": {
+    "max_position_usdt": 603.4399999999999,
+    "max_vol": 95,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.06352
+  },
+  "TNSR_USDT": {
+    "max_position_usdt": 2209.2,
+    "max_vol": 30000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.07364
+  },
+  "JTO_USDT": {
+    "max_position_usdt": 55404.0,
+    "max_vol": 120000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.4617
+  },
+  "FORM_USDT": {
+    "max_position_usdt": 21769.0,
+    "max_vol": 55000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.3958
+  },
+  "DAM_USDT": {
+    "max_position_usdt": 1729.8799999999999,
+    "max_vol": 5900,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02932
+  },
+  "PROMPT_USDT": {
+    "max_position_usdt": 2271.36,
+    "max_vol": 32000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.07098
+  },
+  "HYPER_USDT": {
+    "max_position_usdt": 5191.1,
+    "max_vol": 3700,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.1403
+  },
+  "IR_USDT": {
+    "max_position_usdt": 3384.18,
+    "max_vol": 40500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.08356
+  },
+  "PEOPLE_USDT": {
+    "max_position_usdt": 3289.25,
+    "max_vol": 29500,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.01115
+  },
+  "AERO_USDT": {
+    "max_position_usdt": 27967.500000000004,
+    "max_vol": 4500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.6215
+  },
+  "COW_USDT": {
+    "max_position_usdt": 6968.0,
+    "max_vol": 2600,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.268
+  },
+  "LUNANEW_USDT": {
+    "max_position_usdt": 3663.6000000000004,
+    "max_vol": 40000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.09159
+  },
+  "PIXEL_USDT": {
+    "max_position_usdt": 4587.2,
+    "max_vol": 47000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.00976
+  },
+  "SNX_USDT": {
+    "max_position_usdt": 48443.0,
+    "max_vol": 965000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 0.502
+  },
+  "EVAA_USDT": {
+    "max_position_usdt": 1488.155,
+    "max_vol": 15500,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 0.9601
+  },
+  "XCN_USDT": {
+    "max_position_usdt": 2950.2,
+    "max_vol": 330,
+    "contract_size": 1000,
+    "max_leverage": 20,
+    "last_price": 0.00894
+  },
+  "TTD_USDT": {
+    "max_position_usdt": 46.004,
+    "max_vol": 1400,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.003286
+  },
+  "S_USDT": {
+    "max_position_usdt": 100356.7,
+    "max_vol": 1135000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.08842
+  },
+  "DOGS_USDT": {
+    "max_position_usdt": 1883.7,
+    "max_vol": 390000,
+    "contract_size": 100,
+    "max_leverage": 200,
+    "last_price": 4.83e-05
+  },
+  "ID_USDT": {
+    "max_position_usdt": 4933.684,
+    "max_vol": 6580,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.07498
+  },
+  "PTB_USDT": {
+    "max_position_usdt": 1615.8,
+    "max_vol": 60000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.002693
+  },
+  "MEGA_USDT": {
+    "max_position_usdt": 200.09,
+    "max_vol": 850,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.2354
+  },
+  "ESIM_USDT": {
+    "max_position_usdt": 101.6,
+    "max_vol": 400,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.0254
+  },
+  "GRT_USDT": {
+    "max_position_usdt": 55665.99999999999,
+    "max_vol": 1300000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.04282
+  },
+  "DRIFT_USDT": {
+    "max_position_usdt": 6144.6,
+    "max_vol": 3300,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.1862
+  },
+  "MOVE_USDT": {
+    "max_position_usdt": 22968.0,
+    "max_vol": 600000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.03828
+  },
+  "SAGA_USDT": {
+    "max_position_usdt": 4692.0,
+    "max_vol": 75000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.06256
+  },
+  "RUSSELL_USDT": {
+    "max_position_usdt": 81.34100000000001,
+    "max_vol": 1300,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.006257
+  },
+  "YB_USDT": {
+    "max_position_usdt": 4183.0,
+    "max_vol": 10000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.4183
+  },
+  "AXL_USDT": {
+    "max_position_usdt": 3280.0,
+    "max_vol": 40000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.082
+  },
+  "NOBODY_USDT": {
+    "max_position_usdt": 443.45000000000005,
+    "max_vol": 350,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.01267
+  },
+  "EGLD_USDT": {
+    "max_position_usdt": 56466.0,
+    "max_vol": 90000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 6.274
+  },
+  "GMT_USDT": {
+    "max_position_usdt": 5700.0,
+    "max_vol": 30000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.019
+  },
+  "XION_USDT": {
+    "max_position_usdt": 1892.6999999999998,
+    "max_vol": 9000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.2103
+  },
+  "NEO_USDT": {
+    "max_position_usdt": 60285.0,
+    "max_vol": 150000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 4.019
+  },
+  "IMX_USDT": {
+    "max_position_usdt": 132975.0,
+    "max_vol": 450000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.2955
+  },
+  "TOKEN_USDT": {
+    "max_position_usdt": 369.03999999999996,
+    "max_vol": 700,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.005272
+  },
+  "LINEA_USDT": {
+    "max_position_usdt": 46241.0,
+    "max_vol": 650000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.007114
+  },
+  "EDU_USDT": {
+    "max_position_usdt": 5053.125,
+    "max_vol": 31250,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.1617
+  },
+  "ELIZAOS_USDT": {
+    "max_position_usdt": 122.53500000000001,
+    "max_vol": 350,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.003501
+  },
+  "QUBIC_USDT": {
+    "max_position_usdt": 2956.0,
+    "max_vol": 4000,
+    "contract_size": 1000000,
+    "max_leverage": 20,
+    "last_price": 7.39e-07
+  },
+  "AR_USDT": {
+    "max_position_usdt": 61005.0,
+    "max_vol": 150000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 4.067
+  },
+  "SYRUP_USDT": {
+    "max_position_usdt": 34302.4,
+    "max_vol": 8800,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.3898
+  },
+  "W_USDT": {
+    "max_position_usdt": 234240.0,
+    "max_vol": 6000000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.03904
+  },
+  "TAI_USDT": {
+    "max_position_usdt": 2888.9999999999995,
+    "max_vol": 9000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.0321
+  },
+  "RECALL_USDT": {
+    "max_position_usdt": 2120.0,
+    "max_vol": 20000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.106
+  },
+  "KAVA_USDT": {
+    "max_position_usdt": 4411.2,
+    "max_vol": 480000,
+    "contract_size": 0.1,
+    "max_leverage": 20,
+    "last_price": 0.0919
+  },
+  "DYDX_USDT": {
+    "max_position_usdt": 50880.0,
+    "max_vol": 240000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.212
+  },
+  "BAT_USDT": {
+    "max_position_usdt": 28672.0,
+    "max_vol": 140000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.2048
+  },
+  "CKB_USDT": {
+    "max_position_usdt": 19325.25,
+    "max_vol": 6750,
+    "contract_size": 1000,
+    "max_leverage": 125,
+    "last_price": 0.002863
+  },
+  "API3_USDT": {
+    "max_position_usdt": 1819.3500000000001,
+    "max_vol": 3900,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.4665
+  },
+  "TESLA_USDT": {
+    "max_position_usdt": 8701.2,
+    "max_vol": 2000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 435.06
+  },
+  "PYTH_USDT": {
+    "max_position_usdt": 91663.0,
+    "max_vol": 130000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.07051
+  },
+  "IO_USDT": {
+    "max_position_usdt": 4617.2,
+    "max_vol": 28000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.1649
+  },
+  "FWOG_USDT": {
+    "max_position_usdt": 870.1,
+    "max_vol": 55000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.01582
+  },
+  "RAVE_USDT": {
+    "max_position_usdt": 5548.95,
+    "max_vol": 1650,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.3363
+  },
+  "PONKE_USDT": {
+    "max_position_usdt": 1044.18,
+    "max_vol": 1800,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.05801
+  },
+  "KSM_USDT": {
+    "max_position_usdt": 19200.0,
+    "max_vol": 240000,
+    "contract_size": 0.01,
+    "max_leverage": 100,
+    "last_price": 8.0
+  },
+  "CFX_USDT": {
+    "max_position_usdt": 94896.0,
+    "max_vol": 1200000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.07908
+  },
+  "CHILLGUY_USDT": {
+    "max_position_usdt": 1513.26,
+    "max_vol": 6300,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02402
+  },
+  "LISTA_USDT": {
+    "max_position_usdt": 5534.099999999999,
+    "max_vol": 3300,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.1677
+  },
+  "CAT_USDT": {
+    "max_position_usdt": 1903.8,
+    "max_vol": 6000,
+    "contract_size": 100000,
+    "max_leverage": 100,
+    "last_price": 3.173e-06
+  },
+  "XRP_USDC": {
+    "max_position_usdt": 55746.6,
+    "max_vol": 26000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 2.1441
+  },
+  "1INCH_USDT": {
+    "max_position_usdt": 53261.99999999999,
+    "max_vol": 330000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.1614
+  },
+  "RPL_USDT": {
+    "max_position_usdt": 4398.0,
+    "max_vol": 20000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 2.199
+  },
+  "MINA_USDT": {
+    "max_position_usdt": 6052.2,
+    "max_vol": 66000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.0917
+  },
+  "ELX_USDT": {
+    "max_position_usdt": 43.277,
+    "max_vol": 13000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.003329
+  },
+  "ZORA_USDT": {
+    "max_position_usdt": 33732.0,
+    "max_vol": 90000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03748
+  },
+  "ARIA_USDT": {
+    "max_position_usdt": 3022.1899999999996,
+    "max_vol": 3100,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.09749
+  },
+  "OM_USDT": {
+    "max_position_usdt": 5325.83,
+    "max_vol": 6700,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.07949
+  },
+  "1000000BABYDOGE_USDT": {
+    "max_position_usdt": 5306.400000000001,
+    "max_vol": 7200,
+    "contract_size": 1000,
+    "max_leverage": 50,
+    "last_price": 0.000737
+  },
+  "TAG_USDT": {
+    "max_position_usdt": 4893.900000000001,
+    "max_vol": 1100,
+    "contract_size": 10000,
+    "max_leverage": 100,
+    "last_price": 0.0004449
+  },
+  "MERL_USDT": {
+    "max_position_usdt": 42622.2,
+    "max_vol": 180000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.23679
+  },
+  "XTZ_USDT": {
+    "max_position_usdt": 105444.0,
+    "max_vol": 1800000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 0.5858
+  },
+  "M_USDT": {
+    "max_position_usdt": 5544.0,
+    "max_vol": 3500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 1.584
+  },
+  "1000000MOG_USDT": {
+    "max_position_usdt": 5875.200000000001,
+    "max_vol": 17000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.3456
+  },
+  "MANTA_USDT": {
+    "max_position_usdt": 5155.8,
+    "max_vol": 60000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.08593
+  },
+  "HIPPO_USDT": {
+    "max_position_usdt": 608.5,
+    "max_vol": 5000,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.001217
+  },
+  "CHEEMS_USDT": {
+    "max_position_usdt": 2352.2400000000002,
+    "max_vol": 220,
+    "contract_size": 10000000,
+    "max_leverage": 50,
+    "last_price": 1.0692e-06
+  },
+  "BLESS_USDT": {
+    "max_position_usdt": 5332.5,
+    "max_vol": 45000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.01185
+  },
+  "ALEO_USDT": {
+    "max_position_usdt": 1902.0,
+    "max_vol": 15000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1268
+  },
+  "PLUME_USDT": {
+    "max_position_usdt": 4584.9,
+    "max_vol": 25500,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.01798
+  },
+  "SLP_USDT": {
+    "max_position_usdt": 1002.8852499999999,
+    "max_vol": 1145500,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.0008755
+  },
+  "CORE_USDT": {
+    "max_position_usdt": 6988.799999999999,
+    "max_vol": 52000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1344
+  },
+  "NS_USDT": {
+    "max_position_usdt": 786.8,
+    "max_vol": 20000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.03934
+  },
+  "ZBT_USDT": {
+    "max_position_usdt": 5655.0,
+    "max_vol": 50000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1131
+  },
+  "STORJ_USDT": {
+    "max_position_usdt": 5012.0,
+    "max_vol": 35000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.1432
+  },
+  "SUPRA_USDT": {
+    "max_position_usdt": 429.0,
+    "max_vol": 500000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.000858
+  },
+  "BIO_USDT": {
+    "max_position_usdt": 1110.48,
+    "max_vol": 24000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.04627
+  },
+  "ONT_USDT": {
+    "max_position_usdt": 4886.5,
+    "max_vol": 72500,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.0674
+  },
+  "HUMA_USDT": {
+    "max_position_usdt": 6123.700000000001,
+    "max_vol": 19000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03223
+  },
+  "NEIROCTO_USDT": {
+    "max_position_usdt": 3937.8149999999996,
+    "max_vol": 2835,
+    "contract_size": 10000,
+    "max_leverage": 200,
+    "last_price": 0.0001389
+  },
+  "RSR_USDT": {
+    "max_position_usdt": 20181.0,
+    "max_vol": 7000000,
+    "contract_size": 1,
+    "max_leverage": 75,
+    "last_price": 0.002883
+  },
+  "GMX_USDT": {
+    "max_position_usdt": 4673.68,
+    "max_vol": 5650,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 8.272
+  },
+  "ATH_USDT": {
+    "max_position_usdt": 45517.5,
+    "max_vol": 425000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.01071
+  },
+  "SWARMS_USDT": {
+    "max_position_usdt": 536.04,
+    "max_vol": 3600,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.01489
+  },
+  "ERA_USDT": {
+    "max_position_usdt": 4844.400000000001,
+    "max_vol": 22000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.2202
+  },
+  "ENS_USDT": {
+    "max_position_usdt": 113291.09999999999,
+    "max_vol": 103500,
+    "contract_size": 0.1,
+    "max_leverage": 75,
+    "last_price": 10.946
+  },
+  "MAGMA_USDT": {
+    "max_position_usdt": 4745.0,
+    "max_vol": 3650,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.13
+  },
+  "CELO_USDT": {
+    "max_position_usdt": 5908.5,
+    "max_vol": 45000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.1313
+  },
+  "IOTA_USDT": {
+    "max_position_usdt": 934.57,
+    "max_vol": 9100,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.1027
+  },
+  "BANANA_USDT": {
+    "max_position_usdt": 4834.05,
+    "max_vol": 6500,
+    "contract_size": 0.1,
+    "max_leverage": 20,
+    "last_price": 7.437
+  },
+  "MAGIC_USDT": {
+    "max_position_usdt": 2270.4,
+    "max_vol": 2200,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.1032
+  },
+  "THE_USDT": {
+    "max_position_usdt": 7425.0,
+    "max_vol": 30000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.2475
+  },
+  "MAVIA_USDT": {
+    "max_position_usdt": 1079.1599999999999,
+    "max_vol": 17000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.06348
+  },
+  "ZTC_USDT": {
+    "max_position_usdt": 38.522,
+    "max_vol": 170,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.002266
+  },
+  "THETA_USDT": {
+    "max_position_usdt": 53839.0,
+    "max_vol": 170000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.3167
+  },
+  "OG_USDT": {
+    "max_position_usdt": 4640.900000000001,
+    "max_vol": 11000,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 4.219
+  },
+  "LMWR_USDT": {
+    "max_position_usdt": 609.9,
+    "max_vol": 1500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.04066
+  },
+  "AVICI_USDT": {
+    "max_position_usdt": 72.018,
+    "max_vol": 180,
+    "contract_size": 0.1,
+    "max_leverage": 20,
+    "last_price": 4.001
+  },
+  "COOK_USDT": {
+    "max_position_usdt": 472.67999999999995,
+    "max_vol": 1200,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.003939
+  },
+  "SOONNETWORK_USDT": {
+    "max_position_usdt": 5638.5,
+    "max_vol": 15000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.3759
+  },
+  "RESOLV_USDT": {
+    "max_position_usdt": 5589.5,
+    "max_vol": 7000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.07985
+  },
+  "TAKE_USDT": {
+    "max_position_usdt": 2055.0,
+    "max_vol": 3000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.0685
+  },
+  "AIOT_USDT": {
+    "max_position_usdt": 1505.6000000000001,
+    "max_vol": 1600,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.0941
+  },
+  "GOAT_USDT": {
+    "max_position_usdt": 1892.4,
+    "max_vol": 4750,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.03984
+  },
+  "MORPHO_USDT": {
+    "max_position_usdt": 55792.0,
+    "max_vol": 40000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 1.3948
+  },
+  "TOSHI_USDT": {
+    "max_position_usdt": 2817.6,
+    "max_vol": 800,
+    "contract_size": 10000,
+    "max_leverage": 50,
+    "last_price": 0.0003522
+  },
+  "MILK_USDT": {
+    "max_position_usdt": 157.32,
+    "max_vol": 4000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.003933
+  },
+  "FARTCOIN_USDC": {
+    "max_position_usdt": 6790.4,
+    "max_vol": 16000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.4244
+  },
+  "PYBOBO_USDT": {
+    "max_position_usdt": 68.57000000000001,
+    "max_vol": 10,
+    "contract_size": 10000,
+    "max_leverage": 20,
+    "last_price": 0.0006857
+  },
+  "METIS_USDT": {
+    "max_position_usdt": 4232.25,
+    "max_vol": 7500,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 5.643
+  },
+  "AVAAI_USDT": {
+    "max_position_usdt": 601.7,
+    "max_vol": 5500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.01094
+  },
+  "COTI_USDT": {
+    "max_position_usdt": 4335.099999999999,
+    "max_vol": 192500,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.02252
+  },
+  "BLUAI_USDT": {
+    "max_position_usdt": 1986.1200000000001,
+    "max_vol": 3600,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.005517
+  },
+  "GRIFFAIN_USDT": {
+    "max_position_usdt": 1145.8799999999999,
+    "max_vol": 5400,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02122
+  },
+  "DSYNC_USDT": {
+    "max_position_usdt": 653.7,
+    "max_vol": 1500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.04358
+  },
+  "ACE_USDT": {
+    "max_position_usdt": 2056.87,
+    "max_vol": 71000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 0.2897
+  },
+  "YALA_USDT": {
+    "max_position_usdt": 112.53,
+    "max_vol": 550,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.02046
+  },
+  "VANRY_USDT": {
+    "max_position_usdt": 1145.04,
+    "max_vol": 13000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.008808
+  },
+  "AIOZ_USDT": {
+    "max_position_usdt": 5224.5,
+    "max_vol": 4500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.1161
+  },
+  "MTL_USDT": {
+    "max_position_usdt": 2314.2000000000003,
+    "max_vol": 5700,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.406
+  },
+  "JST_USDT": {
+    "max_position_usdt": 30172.5,
+    "max_vol": 7500,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.04023
+  },
+  "SKY_USDT": {
+    "max_position_usdt": 45341.55,
+    "max_vol": 76500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.05927
+  },
+  "SOMI_USDT": {
+    "max_position_usdt": 4784.200000000001,
+    "max_vol": 19000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.2518
+  },
+  "COMP_USDT": {
+    "max_position_usdt": 41205.0,
+    "max_vol": 150000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 27.47
+  },
+  "ZIL_USDT": {
+    "max_position_usdt": 5148.0,
+    "max_vol": 90000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.00572
+  },
+  "DEGEN_USDT": {
+    "max_position_usdt": 2304.0,
+    "max_vol": 16000,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 0.00144
+  },
+  "ASP_USDT": {
+    "max_position_usdt": 1109.9,
+    "max_vol": 2200,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.05045
+  },
+  "BAS_USDT": {
+    "max_position_usdt": 939.96,
+    "max_vol": 1800,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.005222
+  },
+  "HNT_USDT": {
+    "max_position_usdt": 13338.0,
+    "max_vol": 95000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 1.404
+  },
+  "NMR_USDT": {
+    "max_position_usdt": 2625.25,
+    "max_vol": 2500,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 10.501
+  },
+  "LRC_USDT": {
+    "max_position_usdt": 5932.44,
+    "max_vol": 108000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.05493
+  },
+  "LPT_USDT": {
+    "max_position_usdt": 1116.72,
+    "max_vol": 3300,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 3.384
+  },
+  "XPIN_USDT": {
+    "max_position_usdt": 1227.84,
+    "max_vol": 480,
+    "contract_size": 1000,
+    "max_leverage": 100,
+    "last_price": 0.002558
+  },
+  "AIAV_USDT": {
+    "max_position_usdt": 76.44,
+    "max_vol": 210,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.0364
+  },
+  "XAI_USDT": {
+    "max_position_usdt": 2102.1000000000004,
+    "max_vol": 12250,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.01716
+  },
+  "AIO_USDT": {
+    "max_position_usdt": 3294.98,
+    "max_vol": 2300,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.14326
+  },
+  "NVIDIA_USDT": {
+    "max_position_usdt": 10197.6,
+    "max_vol": 5600,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 182.1
+  },
+  "HMSTR_USDT": {
+    "max_position_usdt": 1755.6000000000001,
+    "max_vol": 70000,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.0002508
+  },
+  "BANANAS31_USDT": {
+    "max_position_usdt": 2061.03,
+    "max_vol": 515,
+    "contract_size": 1000,
+    "max_leverage": 100,
+    "last_price": 0.004002
+  },
+  "LAVA_USDT": {
+    "max_position_usdt": 103.19999999999999,
+    "max_vol": 120,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.086
+  },
+  "DOGE_USDC": {
+    "max_position_usdt": 5184.55,
+    "max_vol": 3500,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.14813
+  },
+  "SAPIEN_USDT": {
+    "max_position_usdt": 5078.5,
+    "max_vol": 3500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.1451
+  },
+  "TWT_USDT": {
+    "max_position_usdt": 55128.0,
+    "max_vol": 60000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.9188
+  },
+  "BNB_USDC": {
+    "max_position_usdt": 113086.8,
+    "max_vol": 120000,
+    "contract_size": 0.001,
+    "max_leverage": 125,
+    "last_price": 942.39
+  },
+  "ZEUS_USDT": {
+    "max_position_usdt": 1772.1,
+    "max_vol": 9000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.01969
+  },
+  "OKB_USDT": {
+    "max_position_usdt": 12756.7,
+    "max_vol": 1100,
+    "contract_size": 0.1,
+    "max_leverage": 25,
+    "last_price": 115.97
+  },
+  "ANIME_USDT": {
+    "max_position_usdt": 1845.6,
+    "max_vol": 240000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.00769
+  },
+  "POLYX_USDT": {
+    "max_position_usdt": 4967.66,
+    "max_vol": 7450,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.06668
+  },
+  "LUMIA_USDT": {
+    "max_position_usdt": 1725.1000000000001,
+    "max_vol": 13000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1327
+  },
+  "ILV_USDT": {
+    "max_position_usdt": 4492.8,
+    "max_vol": 720000,
+    "contract_size": 0.001,
+    "max_leverage": 75,
+    "last_price": 6.24
+  },
+  "ALT_USDT": {
+    "max_position_usdt": 5036.25,
+    "max_vol": 37500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.01343
+  },
+  "SUPER_USDT": {
+    "max_position_usdt": 11455.6,
+    "max_vol": 5200,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.2203
+  },
+  "ULTIMA_USDT": {
+    "max_position_usdt": 956.9000000000001,
+    "max_vol": 1400,
+    "contract_size": 0.0001,
+    "max_leverage": 50,
+    "last_price": 6835.0
+  },
+  "SAROS_USDT": {
+    "max_position_usdt": 767.87,
+    "max_vol": 31000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.002477
+  },
+  "STABLE_USDT": {
+    "max_position_usdt": 9809.805,
+    "max_vol": 64500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.015209
+  },
+  "HOT_USDT": {
+    "max_position_usdt": 5201.715,
+    "max_vol": 9615000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.000541
+  },
+  "HEMI_USDT": {
+    "max_position_usdt": 974.7,
+    "max_vol": 570,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.0171
+  },
+  "AT_USDT": {
+    "max_position_usdt": 6059.86,
+    "max_vol": 38000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.15947
+  },
+  "PUFFER_USDT": {
+    "max_position_usdt": 1810.5,
+    "max_vol": 3000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.06035
+  },
+  "APEX_USDT": {
+    "max_position_usdt": 4459.4,
+    "max_vol": 11000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.4054
+  },
+  "VANA_USDT": {
+    "max_position_usdt": 45000.0,
+    "max_vol": 180000,
+    "contract_size": 0.1,
+    "max_leverage": 20,
+    "last_price": 2.5
+  },
+  "SUI_USDC": {
+    "max_position_usdt": 6648.12,
+    "max_vol": 3600,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 1.8467
+  },
+  "SXT_USDT": {
+    "max_position_usdt": 4952.1,
+    "max_vol": 170000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.02913
+  },
+  "UMA_USDT": {
+    "max_position_usdt": 4637.295,
+    "max_vol": 58500,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 0.7927
+  },
+  "RVN_USDT": {
+    "max_position_usdt": 43395.0,
+    "max_vol": 550000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.00789
+  },
+  "VELO_USDT": {
+    "max_position_usdt": 5501.25,
+    "max_vol": 815,
+    "contract_size": 1000,
+    "max_leverage": 100,
+    "last_price": 0.00675
+  },
+  "PORTAL_USDT": {
+    "max_position_usdt": 1073.5,
+    "max_vol": 50000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.02147
+  },
+  "BAR_USDT": {
+    "max_position_usdt": 440.25,
+    "max_vol": 750,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.587
+  },
+  "GPS_USDT": {
+    "max_position_usdt": 3271.6800000000003,
+    "max_vol": 56800,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.00576
+  },
+  "WCT_USDT": {
+    "max_position_usdt": 2439.2999999999997,
+    "max_vol": 3000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.08131
+  },
+  "SUSHI_USDT": {
+    "max_position_usdt": 5226.0,
+    "max_vol": 150000,
+    "contract_size": 0.1,
+    "max_leverage": 75,
+    "last_price": 0.3484
+  },
+  "FTT_USDT": {
+    "max_position_usdt": 48.447,
+    "max_vol": 900,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 0.5383
+  },
+  "BAN_USDT": {
+    "max_position_usdt": 6576.045,
+    "max_vol": 8050,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.08169
+  },
+  "YGG_USDT": {
+    "max_position_usdt": 4970.0,
+    "max_vol": 70000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.071
+  },
+  "FIDA_USDT": {
+    "max_position_usdt": 2040.7590000000002,
+    "max_vol": 5585,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03654
+  },
+  "WAL_USDT": {
+    "max_position_usdt": 35046.0,
+    "max_vol": 22000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.1593
+  },
+  "EUR_USDT": {
+    "max_position_usdt": 151385.0,
+    "max_vol": 130000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 1.1645
+  },
+  "FF_USDT": {
+    "max_position_usdt": 32685.8,
+    "max_vol": 370000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.08834
+  },
+  "LQTY_USDT": {
+    "max_position_usdt": 2164.03,
+    "max_vol": 5150,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.4202
+  },
+  "MEME_USDT": {
+    "max_position_usdt": 5087.25,
+    "max_vol": 42500,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 0.001197
+  },
+  "ZBCN_USDT": {
+    "max_position_usdt": 5855.0,
+    "max_vol": 2000,
+    "contract_size": 1000,
+    "max_leverage": 50,
+    "last_price": 0.0029275
+  },
+  "SYS_USDT": {
+    "max_position_usdt": 644.4,
+    "max_vol": 3000,
+    "contract_size": 10,
+    "max_leverage": 75,
+    "last_price": 0.02148
+  },
+  "VINE_USDT": {
+    "max_position_usdt": 531.93,
+    "max_vol": 1700,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03129
+  },
+  "HARRY_USDT": {
+    "max_position_usdt": 2375.5,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.04751
+  },
+  "GOOGLSTOCK_USDT": {
+    "max_position_usdt": 10720.64,
+    "max_vol": 3200,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 335.02
+  },
+  "YFI_USDT": {
+    "max_position_usdt": 23328.5,
+    "max_vol": 65000,
+    "contract_size": 0.0001,
+    "max_leverage": 75,
+    "last_price": 3589.0
+  },
+  "BABY_USDT": {
+    "max_position_usdt": 4819.44,
+    "max_vol": 25800,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.01868
+  },
+  "HOME_USDT": {
+    "max_position_usdt": 6329.25,
+    "max_vol": 22500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02813
+  },
+  "TYCOON_USDT": {
+    "max_position_usdt": 64.03200000000001,
+    "max_vol": 800,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.008004
+  },
+  "AUCTION_USDT": {
+    "max_position_usdt": 5061.599999999999,
+    "max_vol": 900,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 5.624
+  },
+  "LAYER_USDT": {
+    "max_position_usdt": 4350.3,
+    "max_vol": 25500,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.1706
+  },
+  "BARD_USDT": {
+    "max_position_usdt": 31440.0,
+    "max_vol": 40000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.786
+  },
+  "WET_USDT": {
+    "max_position_usdt": 2362.42,
+    "max_vol": 1675,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.14104
+  },
+  "CGPT_USDT": {
+    "max_position_usdt": 1715.9999999999998,
+    "max_vol": 4800,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03575
+  },
+  "MMT_USDT": {
+    "max_position_usdt": 5871.8,
+    "max_vol": 22000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.2669
+  },
+  "BACSTOCK_USDT": {
+    "max_position_usdt": 9503.465,
+    "max_vol": 18350,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 51.79
+  },
+  "USUAL_USDT": {
+    "max_position_usdt": 5822.0,
+    "max_vol": 200000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.02911
+  },
+  "PLANCK_USDT": {
+    "max_position_usdt": 70.92,
+    "max_vol": 600,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.01182
+  },
+  "ZRX_USDT": {
+    "max_position_usdt": 32399.999999999996,
+    "max_vol": 225000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.144
+  },
+  "0G_USDT": {
+    "max_position_usdt": 186543.0,
+    "max_vol": 210000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.8883
+  },
+  "CVX_USDT": {
+    "max_position_usdt": 48254.0,
+    "max_vol": 23000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 2.098
+  },
+  "KMNO_USDT": {
+    "max_position_usdt": 24380.4,
+    "max_vol": 4400,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 0.05541
+  },
+  "IOST_USDT": {
+    "max_position_usdt": 4765.599999999999,
+    "max_vol": 28000,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.001702
+  },
+  "GIGA_USDT": {
+    "max_position_usdt": 2866.8,
+    "max_vol": 60000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.004778
+  },
+  "NAORIS_USDT": {
+    "max_position_usdt": 1966.765,
+    "max_vol": 5650,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03481
+  },
+  "EPT_USDT": {
+    "max_position_usdt": 1335.8400000000001,
+    "max_vol": 66000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.002024
+  },
+  "QQQSTOCK_USDT": {
+    "max_position_usdt": 9885.76,
+    "max_vol": 1600,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 617.86
+  },
+  "BANK_USDT": {
+    "max_position_usdt": 3977.1499999999996,
+    "max_vol": 850,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.04679
+  },
+  "Q_USDT": {
+    "max_position_usdt": 965.3005,
+    "max_vol": 535,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.018043
+  },
+  "AKE_USDT": {
+    "max_position_usdt": 2022.79,
+    "max_vol": 3850,
+    "contract_size": 1000,
+    "max_leverage": 20,
+    "last_price": 0.0005254
+  },
+  "CATI_USDT": {
+    "max_position_usdt": 4864.0,
+    "max_vol": 8000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.0608
+  },
+  "ALLO_USDT": {
+    "max_position_usdt": 4810.5,
+    "max_vol": 45000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1069
+  },
+  "HOOK_USDT": {
+    "max_position_usdt": 1075.68,
+    "max_vol": 27000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.03984
+  },
+  "TUT_USDT": {
+    "max_position_usdt": 580.47,
+    "max_vol": 330,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.01759
+  },
+  "C_USDT": {
+    "max_position_usdt": 5628.0,
+    "max_vol": 7000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.0804
+  },
+  "OL_USDT": {
+    "max_position_usdt": 2099.0,
+    "max_vol": 10000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02099
+  },
+  "KNC_USDT": {
+    "max_position_usdt": 4874.0,
+    "max_vol": 200000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 0.2437
+  },
+  "RARE_USDT": {
+    "max_position_usdt": 1696.8000000000002,
+    "max_vol": 7000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02424
+  },
+  "PEAQ_USDT": {
+    "max_position_usdt": 1889.25,
+    "max_vol": 5500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.03435
+  },
+  "MET_USDT": {
+    "max_position_usdt": 4368.0,
+    "max_vol": 16000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.273
+  },
+  "BSV_USDT": {
+    "max_position_usdt": 50199.99999999999,
+    "max_vol": 250000,
+    "contract_size": 0.01,
+    "max_leverage": 125,
+    "last_price": 20.08
+  },
+  "USTC_USDT": {
+    "max_position_usdt": 3323.6699999999996,
+    "max_vol": 4655,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.00714
+  },
+  "XOMSTOCK_USDT": {
+    "max_position_usdt": 10253.41,
+    "max_vol": 7900,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 129.79
+  },
+  "ALICE_USDT": {
+    "max_position_usdt": 1159.4,
+    "max_vol": 62000,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 0.187
+  },
+  "F_USDT": {
+    "max_position_usdt": 5139.0,
+    "max_vol": 75000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.006852
+  },
+  "FLOCK_USDT": {
+    "max_position_usdt": 2155.1,
+    "max_vol": 23000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.0937
+  },
+  "SPK_USDT": {
+    "max_position_usdt": 6242.5,
+    "max_vol": 25000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02497
+  },
+  "CYPR_USDT": {
+    "max_position_usdt": 47.449999999999996,
+    "max_vol": 130,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.0365
+  },
+  "ATA_USDT": {
+    "max_position_usdt": 1119.0,
+    "max_vol": 60000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.01865
+  },
+  "WMTX_USDT": {
+    "max_position_usdt": 149.2,
+    "max_vol": 200,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.0746
+  },
+  "XNY_USDT": {
+    "max_position_usdt": 888.75,
+    "max_vol": 2500,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.003555
+  },
+  "ZEC_USDC": {
+    "max_position_usdt": 47582.7,
+    "max_vol": 11000,
+    "contract_size": 0.01,
+    "max_leverage": 75,
+    "last_price": 432.57
+  },
+  "RLS_USDT": {
+    "max_position_usdt": 4645.0,
+    "max_vol": 50000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.00929
+  },
+  "SHELL_USDT": {
+    "max_position_usdt": 4046.85,
+    "max_vol": 85000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.04761
+  },
+  "JCT_USDT": {
+    "max_position_usdt": 2146.0,
+    "max_vol": 10000,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.002146
+  },
+  "NPC_USDT": {
+    "max_position_usdt": 101.332,
+    "max_vol": 77,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.01316
+  },
+  "CHR_USDT": {
+    "max_position_usdt": 2324.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.04648
+  },
+  "PHB_USDT": {
+    "max_position_usdt": 1171.6,
+    "max_vol": 4000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.2929
+  },
+  "MBOX_USDT": {
+    "max_position_usdt": 1152.2600000000002,
+    "max_vol": 34000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.03389
+  },
+  "MOVR_USDT": {
+    "max_position_usdt": 2245.16,
+    "max_vol": 820,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 2.738
+  },
+  "US_USDT": {
+    "max_position_usdt": 3115.2000000000003,
+    "max_vol": 48000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.00649
+  },
+  "CETUS_USDT": {
+    "max_position_usdt": 1921.56,
+    "max_vol": 6700,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02868
+  },
+  "OBOL_USDT": {
+    "max_position_usdt": 95.3589,
+    "max_vol": 3185,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.02994
+  },
+  "MITO_USDT": {
+    "max_position_usdt": 4296.0,
+    "max_vol": 6000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.0716
+  },
+  "TLM_USDT": {
+    "max_position_usdt": 1747.9,
+    "max_vol": 700000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.002497
+  },
+  "XCH_USDT": {
+    "max_position_usdt": 2666.0,
+    "max_vol": 50000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 5.332
+  },
+  "SAHARA_USDT": {
+    "max_position_usdt": 5626.0,
+    "max_vol": 20000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.02813
+  },
+  "VELVET_USDT": {
+    "max_position_usdt": 1534.0500000000002,
+    "max_vol": 1050,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.1461
+  },
+  "SD_USDT": {
+    "max_position_usdt": 2132.0,
+    "max_vol": 800,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.2665
+  },
+  "NIL_USDT": {
+    "max_position_usdt": 5450.25,
+    "max_vol": 75000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.07267
+  },
+  "ESPORTS_USDT": {
+    "max_position_usdt": 5472.25,
+    "max_vol": 1250,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.43778
+  },
+  "SXP_USDT": {
+    "max_position_usdt": 3373.19,
+    "max_vol": 47000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.07177
+  },
+  "ENJ_USDT": {
+    "max_position_usdt": 5025.98,
+    "max_vol": 158000,
+    "contract_size": 1,
+    "max_leverage": 75,
+    "last_price": 0.03181
+  },
+  "ETHW_USDT": {
+    "max_position_usdt": 5161.719999999999,
+    "max_vol": 86000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 0.6002
+  },
+  "ASTR_USDT": {
+    "max_position_usdt": 4606.4,
+    "max_vol": 40000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.011516
+  },
+  "STG_USDT": {
+    "max_position_usdt": 12772.055999999999,
+    "max_vol": 8888,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.1437
+  },
+  "FLR_USDT": {
+    "max_position_usdt": 4596.0,
+    "max_vol": 4000,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.01149
+  },
+  "USDC_USDT": {
+    "max_position_usdt": 199874.0,
+    "max_vol": 20000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.99937
+  },
+  "KAIA_USDT": {
+    "max_position_usdt": 45324.00000000001,
+    "max_vol": 72000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.06295
+  },
+  "BROCCOLIF3B_USDT": {
+    "max_position_usdt": 563.0400000000001,
+    "max_vol": 9000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.006256
+  },
+  "CRMSTOCK_USDT": {
+    "max_position_usdt": 9912.275,
+    "max_vol": 4150,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 238.85
+  },
+  "PHA_USDT": {
+    "max_position_usdt": 2595.84,
+    "max_vol": 6400,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.04056
+  },
+  "OGN_USDT": {
+    "max_position_usdt": 3370.0,
+    "max_vol": 100000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.0337
+  },
+  "G_USDT": {
+    "max_position_usdt": 5305.3,
+    "max_vol": 11000,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.004823
+  },
+  "RBNT_USDT": {
+    "max_position_usdt": 197.10000000000002,
+    "max_vol": 3000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.00657
+  },
+  "TST_USDT": {
+    "max_position_usdt": 556.48,
+    "max_vol": 3200,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.01739
+  },
+  "HAEDAL_USDT": {
+    "max_position_usdt": 4703.0,
+    "max_vol": 10000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.04703
+  },
+  "SKATE_USDT": {
+    "max_position_usdt": 76.86,
+    "max_vol": 1400,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.00549
+  },
+  "TOWNS_USDT": {
+    "max_position_usdt": 4424.6475,
+    "max_vol": 68250,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.006483
+  },
+  "HOLO_USDT": {
+    "max_position_usdt": 4824.22,
+    "max_vol": 62000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.07781
+  },
+  "SCR_USDT": {
+    "max_position_usdt": 4538.05,
+    "max_vol": 55000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.08251
+  },
+  "KOMA_USDT": {
+    "max_position_usdt": 549.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.01098
+  },
+  "FLUX_USDT": {
+    "max_position_usdt": 5053.5,
+    "max_vol": 45000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1123
+  },
+  "MEW_USDT": {
+    "max_position_usdt": 5052.5,
+    "max_vol": 4700,
+    "contract_size": 1000,
+    "max_leverage": 125,
+    "last_price": 0.001075
+  },
+  "X_USDT": {
+    "max_position_usdt": 216.26000000000002,
+    "max_vol": 1100,
+    "contract_size": 10000,
+    "max_leverage": 20,
+    "last_price": 1.966e-05
+  },
+  "INIT_USDT": {
+    "max_position_usdt": 4595.0,
+    "max_vol": 50000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.0919
+  },
+  "DGB_USDT": {
+    "max_position_usdt": 2854.35,
+    "max_vol": 450000,
+    "contract_size": 1,
+    "max_leverage": 75,
+    "last_price": 0.006343
+  },
+  "HIGH_USDT": {
+    "max_position_usdt": 1649.2,
+    "max_vol": 7000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.2356
+  },
+  "ZRC_USDT": {
+    "max_position_usdt": 1684.32,
+    "max_vol": 48000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.003509
+  },
+  "ONE_USDT": {
+    "max_position_usdt": 5655.0,
+    "max_vol": 1300000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.00435
+  },
+  "C98_USDT": {
+    "max_position_usdt": 1745.7,
+    "max_vol": 69000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.0253
+  },
+  "SSV_USDT": {
+    "max_position_usdt": 5857.6,
+    "max_vol": 14000,
+    "contract_size": 0.1,
+    "max_leverage": 20,
+    "last_price": 4.184
+  },
+  "1000BTT_USDT": {
+    "max_position_usdt": 10170.6,
+    "max_vol": 2300,
+    "contract_size": 10000,
+    "max_leverage": 50,
+    "last_price": 0.0004422
+  },
+  "BEAMX_USDT": {
+    "max_position_usdt": 487.04999999999995,
+    "max_vol": 150,
+    "contract_size": 1000,
+    "max_leverage": 75,
+    "last_price": 0.003247
+  },
+  "ORCA_USDT": {
+    "max_position_usdt": 5860.8,
+    "max_vol": 4800,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 1.221
+  },
+  "ALU_USDT": {
+    "max_position_usdt": 454.75000000000006,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.009095
+  },
+  "B2_USDT": {
+    "max_position_usdt": 4761.25,
+    "max_vol": 6500,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.7325
+  },
+  "OPENLEDGER_USDT": {
+    "max_position_usdt": 3168.2000000000003,
+    "max_vol": 18250,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1736
+  },
+  "GUA_USDT": {
+    "max_position_usdt": 4874.4,
+    "max_vol": 4000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.12186
+  },
+  "ARPA_USDT": {
+    "max_position_usdt": 1719.9,
+    "max_vol": 130000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.01323
+  },
+  "CYBER_USDT": {
+    "max_position_usdt": 62.44799999999999,
+    "max_vol": 80,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.7806
+  },
+  "AI_USDT": {
+    "max_position_usdt": 2141.885,
+    "max_vol": 51500,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.04159
+  },
+  "PEPE_USDC": {
+    "max_position_usdt": 7027.900000000001,
+    "max_vol": 110,
+    "contract_size": 10000000,
+    "max_leverage": 125,
+    "last_price": 6.389e-06
+  },
+  "IKA_USDT": {
+    "max_position_usdt": 161.29999999999998,
+    "max_vol": 200,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.008065
+  },
+  "2Z_USDT": {
+    "max_position_usdt": 34371.0,
+    "max_vol": 270000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.1273
+  },
+  "SOLV_USDT": {
+    "max_position_usdt": 4227.2,
+    "max_vol": 32000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.01321
+  },
+  "ALPINE_USDT": {
+    "max_position_usdt": 962.72,
+    "max_vol": 1600,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.6017
+  },
+  "NFP_USDT": {
+    "max_position_usdt": 1721.79,
+    "max_vol": 63000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.02733
+  },
+  "TEL_USDT": {
+    "max_position_usdt": 161.6,
+    "max_vol": 40,
+    "contract_size": 1000,
+    "max_leverage": 20,
+    "last_price": 0.00404
+  },
+  "KITE_USDT": {
+    "max_position_usdt": 8852.25,
+    "max_vol": 9250,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.0957
+  },
+  "MAV_USDT": {
+    "max_position_usdt": 4390.4,
+    "max_vol": 16000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.02744
+  },
+  "VFY_USDT": {
+    "max_position_usdt": 1998.605,
+    "max_vol": 5950,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.03359
+  },
+  "APR_USDT": {
+    "max_position_usdt": 2042.08,
+    "max_vol": 16000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.12763
+  },
+  "ANKR_USDT": {
+    "max_position_usdt": 4739.8,
+    "max_vol": 650000,
+    "contract_size": 1,
+    "max_leverage": 75,
+    "last_price": 0.007292
+  },
+  "CSPR_USDT": {
+    "max_position_usdt": 507.49999999999994,
+    "max_vol": 100000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.005075
+  },
+  "FUN_USDT": {
+    "max_position_usdt": 872.1,
+    "max_vol": 450,
+    "contract_size": 1000,
+    "max_leverage": 100,
+    "last_price": 0.001938
+  },
+  "ADA_USDC": {
+    "max_position_usdt": 6259.5,
+    "max_vol": 15000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.4173
+  },
+  "LTC_USDC": {
+    "max_position_usdt": 4559.96,
+    "max_vol": 5800,
+    "contract_size": 0.01,
+    "max_leverage": 125,
+    "last_price": 78.62
+  },
+  "EUL_USDT": {
+    "max_position_usdt": 5210.0,
+    "max_vol": 20000,
+    "contract_size": 0.1,
+    "max_leverage": 75,
+    "last_price": 2.605
+  },
+  "VOOI_USDT": {
+    "max_position_usdt": 34.512,
+    "max_vol": 240,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.01438
+  },
+  "WAVES_USDT": {
+    "max_position_usdt": 4485.650000000001,
+    "max_vol": 65000,
+    "contract_size": 0.1,
+    "max_leverage": 20,
+    "last_price": 0.6901
+  },
+  "RLC_USDT": {
+    "max_position_usdt": 4677.075,
+    "max_vol": 6750,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.6929
+  },
+  "SYN_USDT": {
+    "max_position_usdt": 670.9,
+    "max_vol": 10000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.06709
+  },
+  "HFT_USDT": {
+    "max_position_usdt": 1720.32,
+    "max_vol": 5600,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.03072
+  },
+  "CELR_USDT": {
+    "max_position_usdt": 2377.212,
+    "max_vol": 542000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.004386
+  },
+  "JOE_USDT": {
+    "max_position_usdt": 2211.0,
+    "max_vol": 33000,
+    "contract_size": 1,
+    "max_leverage": 75,
+    "last_price": 0.067
+  },
+  "DOOD_USDT": {
+    "max_position_usdt": 1179.99,
+    "max_vol": 2100,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.005619
+  },
+  "LA_USDT": {
+    "max_position_usdt": 1962.0,
+    "max_vol": 6000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.327
+  },
+  "TURTLE_USDT": {
+    "max_position_usdt": 1934.3999999999999,
+    "max_vol": 31000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.0624
+  },
+  "BAND_USDT": {
+    "max_position_usdt": 4482.5,
+    "max_vol": 125000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 0.3586
+  },
+  "RDNT_USDT": {
+    "max_position_usdt": 1040.0,
+    "max_vol": 10000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.0104
+  },
+  "L3_USDT": {
+    "max_position_usdt": 592.65,
+    "max_vol": 450,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.01317
+  },
+  "FLUID_USDT": {
+    "max_position_usdt": 20826.0,
+    "max_vol": 65000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 3.204
+  },
+  "SONIC_USDT": {
+    "max_position_usdt": 1725.75,
+    "max_vol": 22500,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.0767
+  },
+  "ZKC_USDT": {
+    "max_position_usdt": 4800.0,
+    "max_vol": 40000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.12
+  },
+  "BASTOCK_USDT": {
+    "max_position_usdt": 9849.43,
+    "max_vol": 4100,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 240.23
+  },
+  "SC_USDT": {
+    "max_position_usdt": 4285.0,
+    "max_vol": 2500000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.001714
+  },
+  "TRU_USDT": {
+    "max_position_usdt": 532.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.01064
+  },
+  "STRAX_USDT": {
+    "max_position_usdt": 150.28199999999998,
+    "max_vol": 660,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.02277
+  },
+  "ORDER_USDT": {
+    "max_position_usdt": 1756.7549999999999,
+    "max_vol": 1755,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.1001
+  },
+  "AVA_USDT": {
+    "max_position_usdt": 1888.1499999999999,
+    "max_vol": 5500,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.3433
+  },
+  "LINK_USDC": {
+    "max_position_usdt": 4393.01,
+    "max_vol": 3100,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 14.171
+  },
+  "SKYAI_USDT": {
+    "max_position_usdt": 2166.0,
+    "max_vol": 5700,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.038
+  },
+  "METASTOCK_USDT": {
+    "max_position_usdt": 9296.699999999999,
+    "max_vol": 15000,
+    "contract_size": 0.001,
+    "max_leverage": 50,
+    "last_price": 619.78
+  },
+  "SENTIS_USDT": {
+    "max_position_usdt": 49.884,
+    "max_vol": 120,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.04157
+  },
+  "IOTX_USDT": {
+    "max_position_usdt": 5742.0,
+    "max_vol": 660000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.0087
+  },
+  "CTSI_USDT": {
+    "max_position_usdt": 2358.7200000000003,
+    "max_vol": 63000,
+    "contract_size": 1,
+    "max_leverage": 75,
+    "last_price": 0.03744
+  },
+  "FARM_USDT": {
+    "max_position_usdt": 427.84999999999997,
+    "max_vol": 2150,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 19.9
+  },
+  "CROSS_USDT": {
+    "max_position_usdt": 2387.875,
+    "max_vol": 1750,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.13645
+  },
+  "A2Z_USDT": {
+    "max_position_usdt": 544.8299999999999,
+    "max_vol": 3300,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.001651
+  },
+  "BEL_USDT": {
+    "max_position_usdt": 500.85,
+    "max_vol": 3500,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.1431
+  },
+  "SOPH_USDT": {
+    "max_position_usdt": 4423.98,
+    "max_vol": 33000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.013406
+  },
+  "MORI_USDT": {
+    "max_position_usdt": 40.448,
+    "max_vol": 320,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.01264
+  },
+  "AUDIO_USDT": {
+    "max_position_usdt": 181.59799999999998,
+    "max_vol": 5800,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.03131
+  },
+  "ELON_USDT": {
+    "max_position_usdt": 848.0,
+    "max_vol": 16000,
+    "contract_size": 1000000,
+    "max_leverage": 100,
+    "last_price": 5.3e-08
+  },
+  "ARK_USDT": {
+    "max_position_usdt": 5169.5,
+    "max_vol": 1750,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.2954
+  },
+  "ONG_USDT": {
+    "max_position_usdt": 4694.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.09388
+  },
+  "MOCA_USDT": {
+    "max_position_usdt": 5316.75,
+    "max_vol": 22500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.02363
+  },
+  "BTR_USDT": {
+    "max_position_usdt": 2939.25,
+    "max_vol": 7500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.03919
+  },
+  "ZKJ_USDT": {
+    "max_position_usdt": 1792.1399999999999,
+    "max_vol": 42000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.04267
+  },
+  "KERNEL_USDT": {
+    "max_position_usdt": 4837.7699999999995,
+    "max_vol": 63000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.07679
+  },
+  "PUMPBTC_USDT": {
+    "max_position_usdt": 1909.5,
+    "max_vol": 6700,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.0285
+  },
+  "CRCLSTOCK_USDT": {
+    "max_position_usdt": 9796.8,
+    "max_vol": 12000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 81.64
+  },
+  "CTK_USDT": {
+    "max_position_usdt": 3147.55,
+    "max_vol": 11500,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.2737
+  },
+  "RED_USDT": {
+    "max_position_usdt": 4644.5,
+    "max_vol": 17500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.2654
+  },
+  "SFP_USDT": {
+    "max_position_usdt": 21753.300000000003,
+    "max_vol": 59000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.3687
+  },
+  "VOXEL_USDT": {
+    "max_position_usdt": 87.08,
+    "max_vol": 700,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.01244
+  },
+  "TANSSI_USDT": {
+    "max_position_usdt": 986.25,
+    "max_vol": 7500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.01315
+  },
+  "MLN_USDT": {
+    "max_position_usdt": 503.8,
+    "max_vol": 1000,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 5.038
+  },
+  "XAN_USDT": {
+    "max_position_usdt": 4806.0,
+    "max_vol": 27000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.0178
+  },
+  "ENSO_USDT": {
+    "max_position_usdt": 4977.8099999999995,
+    "max_vol": 7100,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.7011
+  },
+  "SANTOS_USDT": {
+    "max_position_usdt": 5084.999999999999,
+    "max_vol": 25000,
+    "contract_size": 0.1,
+    "max_leverage": 100,
+    "last_price": 2.034
+  },
+  "ZETA_USDT": {
+    "max_position_usdt": 4739.76,
+    "max_vol": 5800,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.08172
+  },
+  "SIGN_USDT": {
+    "max_position_usdt": 5396.3,
+    "max_vol": 13000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.04151
+  },
+  "A_USDT": {
+    "max_position_usdt": 126420.00000000001,
+    "max_vol": 700000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1806
+  },
+  "BLOCK_USDT": {
+    "max_position_usdt": 88.88000000000001,
+    "max_vol": 550,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.01616
+  },
+  "HEI_USDT": {
+    "max_position_usdt": 559.86,
+    "max_vol": 4200,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1333
+  },
+  "SIREN_USDT": {
+    "max_position_usdt": 1670.7600000000002,
+    "max_vol": 2100,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.07956
+  },
+  "MIRA_USDT": {
+    "max_position_usdt": 4991.0,
+    "max_vol": 35000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1426
+  },
+  "LRCXSTOCK_USDT": {
+    "max_position_usdt": 9676.143,
+    "max_vol": 4665,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 207.42
+  },
+  "SKL_USDT": {
+    "max_position_usdt": 1098.0,
+    "max_vol": 100000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.01098
+  },
+  "DENT_USDT": {
+    "max_position_usdt": 1716.8,
+    "max_vol": 7400000,
+    "contract_size": 1,
+    "max_leverage": 75,
+    "last_price": 0.000232
+  },
+  "AGI_USDT": {
+    "max_position_usdt": 1803.06,
+    "max_vol": 945,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.01908
+  },
+  "ASR_USDT": {
+    "max_position_usdt": 1078.4399999999998,
+    "max_vol": 660,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 1.634
+  },
+  "DIA_USDT": {
+    "max_position_usdt": 4597.5,
+    "max_vol": 15000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.3065
+  },
+  "COINBASE_USDT": {
+    "max_position_usdt": 10262.8,
+    "max_vol": 4000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 256.57
+  },
+  "PROVE_USDT": {
+    "max_position_usdt": 5017.45,
+    "max_vol": 11500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.4363
+  },
+  "INTCSTOCK_USDT": {
+    "max_position_usdt": 12976.2,
+    "max_vol": 27000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 48.06
+  },
+  "SUN_USDT": {
+    "max_position_usdt": 29608.600000000002,
+    "max_vol": 1400,
+    "contract_size": 1000,
+    "max_leverage": 125,
+    "last_price": 0.021149
+  },
+  "SPELL_USDT": {
+    "max_position_usdt": 4995.0,
+    "max_vol": 180000,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.0002775
+  },
+  "OXT_USDT": {
+    "max_position_usdt": 1730.61,
+    "max_vol": 670,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 0.02583
+  },
+  "STO_USDT": {
+    "max_position_usdt": 3876.0000000000005,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.07752
+  },
+  "AMZNSTOCK_USDT": {
+    "max_position_usdt": 10349.085,
+    "max_vol": 4350,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 237.91
+  },
+  "YZY_USDT": {
+    "max_position_usdt": 2277.6,
+    "max_vol": 6500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.3504
+  },
+  "GAS_USDT": {
+    "max_position_usdt": 44546.5,
+    "max_vol": 20500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 2.173
+  },
+  "BCH_USDC": {
+    "max_position_usdt": 5738.285,
+    "max_vol": 950,
+    "contract_size": 0.01,
+    "max_leverage": 125,
+    "last_price": 604.03
+  },
+  "CUDIS_USDT": {
+    "max_position_usdt": 2132.65,
+    "max_vol": 6500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.03281
+  },
+  "BDX_USDT": {
+    "max_position_usdt": 590.2,
+    "max_vol": 650,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.0908
+  },
+  "NTRN_USDT": {
+    "max_position_usdt": 1621.3999999999999,
+    "max_vol": 5500,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.02948
+  },
+  "QKC_USDT": {
+    "max_position_usdt": 202.05,
+    "max_vol": 45,
+    "contract_size": 1000,
+    "max_leverage": 20,
+    "last_price": 0.00449
+  },
+  "JPY_USDT": {
+    "max_position_usdt": 82186.0,
+    "max_vol": 130000,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.006322
+  },
+  "PEPSTOCK_USDT": {
+    "max_position_usdt": 10019.8,
+    "max_vol": 6800,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 147.35
+  },
+  "AGLD_USDT": {
+    "max_position_usdt": 1747.54,
+    "max_vol": 58000,
+    "contract_size": 0.1,
+    "max_leverage": 200,
+    "last_price": 0.3013
+  },
+  "HIVE_USDT": {
+    "max_position_usdt": 5199.84,
+    "max_vol": 48000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.10833
+  },
+  "XVS_USDT": {
+    "max_position_usdt": 5198.0,
+    "max_vol": 1000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 5.198
+  },
+  "ORBS_USDT": {
+    "max_position_usdt": 1120.0,
+    "max_vol": 1000,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.0112
+  },
+  "B3_USDT": {
+    "max_position_usdt": 2483.9999999999995,
+    "max_vol": 24000,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 0.001035
+  },
+  "PIPE_USDT": {
+    "max_position_usdt": 35.62,
+    "max_vol": 130,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.0274
+  },
+  "VTHO_USDT": {
+    "max_position_usdt": 4655.34,
+    "max_vol": 5400,
+    "contract_size": 1000,
+    "max_leverage": 50,
+    "last_price": 0.0008621
+  },
+  "AMP_USDT": {
+    "max_position_usdt": 682.8,
+    "max_vol": 300,
+    "contract_size": 1000,
+    "max_leverage": 50,
+    "last_price": 0.002276
+  },
+  "BERA_USDC": {
+    "max_position_usdt": 6912.0,
+    "max_vol": 9000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.768
+  },
+  "BUILDONBOB_USDT": {
+    "max_position_usdt": 1587.6,
+    "max_vol": 1400,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.01134
+  },
+  "ARTX_USDT": {
+    "max_position_usdt": 157.29,
+    "max_vol": 30,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.5243
+  },
+  "CVC_USDT": {
+    "max_position_usdt": 3430.1189999999997,
+    "max_vol": 71850,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.04774
+  },
+  "CLOUD_USDT": {
+    "max_position_usdt": 1892.6299999999999,
+    "max_vol": 2650,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.07142
+  },
+  "ROAM_USDT": {
+    "max_position_usdt": 772.8000000000001,
+    "max_vol": 1600,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.0483
+  },
+  "AGT_USDT": {
+    "max_position_usdt": 1024.57,
+    "max_vol": 2900,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.003533
+  },
+  "TAO_USDC": {
+    "max_position_usdt": 5868.0,
+    "max_vol": 2000,
+    "contract_size": 0.01,
+    "max_leverage": 125,
+    "last_price": 293.4
+  },
+  "GTC_USDT": {
+    "max_position_usdt": 553.66,
+    "max_vol": 38000,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 0.1457
+  },
+  "RIF_USDT": {
+    "max_position_usdt": 5223.400000000001,
+    "max_vol": 14000,
+    "contract_size": 10,
+    "max_leverage": 200,
+    "last_price": 0.03731
+  },
+  "AERGO_USDT": {
+    "max_position_usdt": 1738.53,
+    "max_vol": 2700,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.06439
+  },
+  "CAMP_USDT": {
+    "max_position_usdt": 1855.0,
+    "max_vol": 25000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.00742
+  },
+  "XAUT_USDC": {
+    "max_position_usdt": 23001.0,
+    "max_vol": 5000,
+    "contract_size": 0.001,
+    "max_leverage": 100,
+    "last_price": 4600.2
+  },
+  "NKN_USDT": {
+    "max_position_usdt": 695.0,
+    "max_vol": 50000,
+    "contract_size": 1,
+    "max_leverage": 200,
+    "last_price": 0.0139
+  },
+  "GHST_USDT": {
+    "max_position_usdt": 556.2,
+    "max_vol": 3000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1854
+  },
+  "PYR_USDT": {
+    "max_position_usdt": 794.4240000000001,
+    "max_vol": 1580,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.5028
+  },
+  "TRUST_USDT": {
+    "max_position_usdt": 1731.0,
+    "max_vol": 15000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1154
+  },
+  "GODS_USDT": {
+    "max_position_usdt": 2408.0,
+    "max_vol": 40000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.0602
+  },
+  "DODO_USDT": {
+    "max_position_usdt": 1117.6599999999999,
+    "max_vol": 5800,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.01927
+  },
+  "XNO_USDT": {
+    "max_position_usdt": 1081.7,
+    "max_vol": 145,
+    "contract_size": 10,
+    "max_leverage": 75,
+    "last_price": 0.746
+  },
+  "BLAST_USDT": {
+    "max_position_usdt": 2540.4,
+    "max_vol": 30000,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.0008468
+  },
+  "FIO_USDT": {
+    "max_position_usdt": 496.44000000000005,
+    "max_vol": 420,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.01182
+  },
+  "TRY_USDT": {
+    "max_position_usdt": 9781.800000000001,
+    "max_vol": 4200,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.02329
+  },
+  "COMMON_USDT": {
+    "max_position_usdt": 1531.0349999999999,
+    "max_vol": 49500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.003093
+  },
+  "BTX_USDT": {
+    "max_position_usdt": 97.0,
+    "max_vol": 1000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.0097
+  },
+  "ICX_USDT": {
+    "max_position_usdt": 4597.5,
+    "max_vol": 75000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.0613
+  },
+  "XEC_USDT": {
+    "max_position_usdt": 11950.0,
+    "max_vol": 100000,
+    "contract_size": 10000,
+    "max_leverage": 125,
+    "last_price": 1.195e-05
+  },
+  "ACX_USDT": {
+    "max_position_usdt": 4946.400000000001,
+    "max_vol": 90000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.05496
+  },
+  "D_USDT": {
+    "max_position_usdt": 519.48,
+    "max_vol": 3900,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.01332
+  },
+  "AVL_USDT": {
+    "max_position_usdt": 576.1,
+    "max_vol": 7000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.0823
+  },
+  "AVAX_USDC": {
+    "max_position_usdt": 9520.55,
+    "max_vol": 6500,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 14.647
+  },
+  "IDOL_USDT": {
+    "max_position_usdt": 1957.07,
+    "max_vol": 635,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.03082
+  },
+  "TAC_USDT": {
+    "max_position_usdt": 2039.025,
+    "max_vol": 46500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.004385
+  },
+  "NOM_USDT": {
+    "max_position_usdt": 4183.5,
+    "max_vol": 50000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.008367
+  },
+  "THQ_USDT": {
+    "max_position_usdt": 108.35,
+    "max_vol": 250,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.04334
+  },
+  "BICO_USDT": {
+    "max_position_usdt": 3189.2000000000003,
+    "max_vol": 70000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.04556
+  },
+  "ACS_USDT": {
+    "max_position_usdt": 435.82,
+    "max_vol": 14000,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.0003113
+  },
+  "T_USDT": {
+    "max_position_usdt": 4423.95,
+    "max_vol": 4350,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.01017
+  },
+  "CARV_USDT": {
+    "max_position_usdt": 1608.6000000000001,
+    "max_vol": 1400,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.1149
+  },
+  "BMT_USDT": {
+    "max_position_usdt": 1654.4,
+    "max_vol": 6400,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02585
+  },
+  "AUD_USDT": {
+    "max_position_usdt": 93534.0,
+    "max_vol": 140000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.6681
+  },
+  "NXPC_USDT": {
+    "max_position_usdt": 4303.2,
+    "max_vol": 11000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.3912
+  },
+  "POP_USDT": {
+    "max_position_usdt": 49.275000000000006,
+    "max_vol": 750,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.000657
+  },
+  "UB_USDT": {
+    "max_position_usdt": 4370.0,
+    "max_vol": 1250,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.03496
+  },
+  "ON_USDT": {
+    "max_position_usdt": 1928.5000000000002,
+    "max_vol": 19000,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.1015
+  },
+  "BOBA_USDT": {
+    "max_position_usdt": 1979.9999999999998,
+    "max_vol": 45000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.044
+  },
+  "HBAR_USDC": {
+    "max_position_usdt": 5612.849999999999,
+    "max_vol": 45000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.12473
+  },
+  "HYPE_USDC": {
+    "max_position_usdt": 4717.08,
+    "max_vol": 1800,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 26.206
+  },
+  "NUMI_USDT": {
+    "max_position_usdt": 49.211999999999996,
+    "max_vol": 36,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.1367
+  },
+  "DEGO_USDT": {
+    "max_position_usdt": 550.41,
+    "max_vol": 1050,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.5242
+  },
+  "IN_USDT": {
+    "max_position_usdt": 2015.9999999999998,
+    "max_vol": 2800,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.072
+  },
+  "NFLXSTOCK_USDT": {
+    "max_position_usdt": 9308.88,
+    "max_vol": 10500,
+    "contract_size": 0.001,
+    "max_leverage": 50,
+    "last_price": 886.56
+  },
+  "COS_USDT": {
+    "max_position_usdt": 572.46,
+    "max_vol": 4200,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.001363
+  },
+  "VELODROME_USDT": {
+    "max_position_usdt": 4239.8,
+    "max_vol": 17000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.02494
+  },
+  "DOT_USDC": {
+    "max_position_usdt": 6729.0,
+    "max_vol": 3000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 2.243
+  },
+  "ROBINHOOD_USDT": {
+    "max_position_usdt": 9903.6,
+    "max_vol": 8400,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 117.9
+  },
+  "STEEM_USDT": {
+    "max_position_usdt": 2275.605,
+    "max_vol": 3050,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.07461
+  },
+  "VIC_USDT": {
+    "max_position_usdt": 1178.3999999999999,
+    "max_vol": 1200,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.0982
+  },
+  "DBR_USDT": {
+    "max_position_usdt": 1892.0,
+    "max_vol": 1000,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.01892
+  },
+  "AWE_USDT": {
+    "max_position_usdt": 5140.8,
+    "max_vol": 9000,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.05712
+  },
+  "NEWT_USDT": {
+    "max_position_usdt": 4716.0,
+    "max_vol": 45000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1048
+  },
+  "PENGU_USDC": {
+    "max_position_usdt": 7082.639999999999,
+    "max_vol": 54000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.013116
+  },
+  "IDEX_USDT": {
+    "max_position_usdt": 546.6999999999999,
+    "max_vol": 550,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.00994
+  },
+  "CITY_USDT": {
+    "max_position_usdt": 506.92,
+    "max_vol": 760,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.667
+  },
+  "BID_USDT": {
+    "max_position_usdt": 1692.44,
+    "max_vol": 5800,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.02918
+  },
+  "ENA_USDC": {
+    "max_position_usdt": 6055.0,
+    "max_vol": 2500,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.2422
+  },
+  "GBP_USDT": {
+    "max_position_usdt": 91351.2,
+    "max_vol": 68000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 1.3434
+  },
+  "CHESS_USDT": {
+    "max_position_usdt": 47.967999999999996,
+    "max_vol": 160,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.02998
+  },
+  "BNT_USDT": {
+    "max_position_usdt": 4909.299999999999,
+    "max_vol": 1100,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.4463
+  },
+  "IP_USDC": {
+    "max_position_usdt": 5230.5,
+    "max_vol": 15000,
+    "contract_size": 0.1,
+    "max_leverage": 50,
+    "last_price": 3.487
+  },
+  "AAVE_USDC": {
+    "max_position_usdt": 4793.04,
+    "max_vol": 2700,
+    "contract_size": 0.01,
+    "max_leverage": 125,
+    "last_price": 177.52
+  },
+  "42_USDT": {
+    "max_position_usdt": 2223.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.04446
+  },
+  "WAXP_USDT": {
+    "max_position_usdt": 2291.49,
+    "max_vol": 25875,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.008856
+  },
+  "GNO_USDT": {
+    "max_position_usdt": 5896.0,
+    "max_vol": 4000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 147.4
+  },
+  "AIN_USDT": {
+    "max_position_usdt": 1737.7749999999999,
+    "max_vol": 3250,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.05347
+  },
+  "AMDSTOCK_USDT": {
+    "max_position_usdt": 10410.5,
+    "max_vol": 4700,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 221.5
+  },
+  "FORTH_USDT": {
+    "max_position_usdt": 1785.0,
+    "max_vol": 1000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 1.785
+  },
+  "POWR_USDT": {
+    "max_position_usdt": 5272.849999999999,
+    "max_vol": 5500,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.09587
+  },
+  "UNI_USDC": {
+    "max_position_usdt": 4594.400000000001,
+    "max_vol": 8000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 5.743
+  },
+  "TREE_USDT": {
+    "max_position_usdt": 55.199999999999996,
+    "max_vol": 500,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.1104
+  },
+  "MSFTSTOCK_USDT": {
+    "max_position_usdt": 9504.619999999999,
+    "max_vol": 2050,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 463.64
+  },
+  "TAIKO_USDT": {
+    "max_position_usdt": 1842.0,
+    "max_vol": 10000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.1842
+  },
+  "POND_USDT": {
+    "max_position_usdt": 521.3,
+    "max_vol": 1300,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.00401
+  },
+  "DF_USDT": {
+    "max_position_usdt": 511.70000000000005,
+    "max_vol": 4300,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.0119
+  },
+  "TRUMP_USDC": {
+    "max_position_usdt": 5063.400000000001,
+    "max_vol": 9000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 5.626
+  },
+  "TRX_USDC": {
+    "max_position_usdt": 5452.74,
+    "max_vol": 1800,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.30293
+  },
+  "VIRTUAL_USDC": {
+    "max_position_usdt": 5229.5,
+    "max_vol": 5000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 1.0459
+  },
+  "PUMPFUN_USDC": {
+    "max_position_usdt": 7442.5,
+    "max_vol": 2500,
+    "contract_size": 1000,
+    "max_leverage": 125,
+    "last_price": 0.002977
+  },
+  "PLTRSTOCK_USDT": {
+    "max_position_usdt": 9630.5,
+    "max_vol": 5500,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 175.1
+  },
+  "BABASTOCK_USDT": {
+    "max_position_usdt": 11115.0,
+    "max_vol": 6500,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 171.0
+  },
+  "QCOMSTOCK_USDT": {
+    "max_position_usdt": 9098.099999999999,
+    "max_vol": 5500,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 165.42
+  },
+  "TRAC_USDT": {
+    "max_position_usdt": 107.725,
+    "max_vol": 250,
+    "contract_size": 1,
+    "max_leverage": 20,
+    "last_price": 0.4309
+  },
+  "WIN_USDT": {
+    "max_position_usdt": 409.36,
+    "max_vol": 140,
+    "contract_size": 100000,
+    "max_leverage": 20,
+    "last_price": 2.924e-05
+  },
+  "FORT_USDT": {
+    "max_position_usdt": 108.25,
+    "max_vol": 500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.02165
+  },
+  "DMC_USDT": {
+    "max_position_usdt": 1156.54,
+    "max_vol": 7700,
+    "contract_size": 100,
+    "max_leverage": 100,
+    "last_price": 0.001502
+  },
+  "FIGSTOCK_USDT": {
+    "max_position_usdt": 9116.800000000001,
+    "max_vol": 28000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 32.56
+  },
+  "ADBESTOCK_USDT": {
+    "max_position_usdt": 8876.609999999999,
+    "max_vol": 2900,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 306.09
+  },
+  "MUSTOCK_USDT": {
+    "max_position_usdt": 13896.96,
+    "max_vol": 4200,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 330.88
+  },
+  "BR_USDT": {
+    "max_position_usdt": 834.9,
+    "max_vol": 1500,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.05566
+  },
+  "1000BONK_USDC": {
+    "max_position_usdt": 6322.25,
+    "max_vol": 5500,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 0.011495
+  },
+  "WLFI_USDC": {
+    "max_position_usdt": 6595.2,
+    "max_vol": 3600,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.1832
+  },
+  "ORCLSTOCK_USDT": {
+    "max_position_usdt": 10066.16,
+    "max_vol": 5200,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 193.58
+  },
+  "PAXG_USDC": {
+    "max_position_usdt": 46160.299999999996,
+    "max_vol": 10000,
+    "contract_size": 0.001,
+    "max_leverage": 75,
+    "last_price": 4616.03
+  },
+  "WMTSTOCK_USDT": {
+    "max_position_usdt": 10680.864,
+    "max_vol": 8880,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 120.28
+  },
+  "SNT_USDT": {
+    "max_position_usdt": 5141.4,
+    "max_vol": 3300,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.01558
+  },
+  "IQ_USDT": {
+    "max_position_usdt": 607.25,
+    "max_vol": 350,
+    "contract_size": 1000,
+    "max_leverage": 100,
+    "last_price": 0.001735
+  },
+  "NEAR_USDC": {
+    "max_position_usdt": 5439.0,
+    "max_vol": 3000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 1.813
+  },
+  "XLM_USDC": {
+    "max_position_usdt": 4757.4,
+    "max_vol": 2000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.23787
+  },
+  "APT_USDC": {
+    "max_position_usdt": 5789.7,
+    "max_vol": 30000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 1.9299
+  },
+  "BEST_USDT": {
+    "max_position_usdt": 51.720000000000006,
+    "max_vol": 200,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.002586
+  },
+  "UBERSTOCK_USDT": {
+    "max_position_usdt": 10183.2,
+    "max_vol": 12000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 84.86
+  },
+  "PUNDIX_USDT": {
+    "max_position_usdt": 5471.400000000001,
+    "max_vol": 2200,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.2487
+  },
+  "ARB_USDC": {
+    "max_position_usdt": 5064.6,
+    "max_vol": 23000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.2202
+  },
+  "SHIB_USDC": {
+    "max_position_usdt": 4412.5,
+    "max_vol": 5000,
+    "contract_size": 100000,
+    "max_leverage": 125,
+    "last_price": 8.825e-06
+  },
+  "MAIGA_USDT": {
+    "max_position_usdt": 54.39,
+    "max_vol": 350,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.01554
+  },
+  "H_USDC": {
+    "max_position_usdt": 5711.875,
+    "max_vol": 3125,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.18278
+  },
+  "ARMSTOCK_USDT": {
+    "max_position_usdt": 8286.4,
+    "max_vol": 8000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 103.58
+  },
+  "JDSTOCK_USDT": {
+    "max_position_usdt": 10524.5,
+    "max_vol": 35000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 30.07
+  },
+  "WIF_USDC": {
+    "max_position_usdt": 5832.400000000001,
+    "max_vol": 1400,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.4166
+  },
+  "CHF_USDT": {
+    "max_position_usdt": 20759.96,
+    "max_vol": 16600,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 1.2506
+  },
+  "STRK_USDC": {
+    "max_position_usdt": 4072.5,
+    "max_vol": 4500,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.0905
+  },
+  "SEI_USDC": {
+    "max_position_usdt": 4613.6,
+    "max_vol": 3650,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.1264
+  },
+  "BSU_USDT": {
+    "max_position_usdt": 1059.8,
+    "max_vol": 700,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.1514
+  },
+  "CGN_USDT": {
+    "max_position_usdt": 131.107,
+    "max_vol": 430,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.003049
+  },
+  "EAT_USDT": {
+    "max_position_usdt": 51.642,
+    "max_vol": 180,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.02869
+  },
+  "GAIX_USDT": {
+    "max_position_usdt": 91.24,
+    "max_vol": 80,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.11405
+  },
+  "RDDTSTOCK_USDT": {
+    "max_position_usdt": 11341.8,
+    "max_vol": 4500,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 252.04
+  },
+  "LAZIO_USDT": {
+    "max_position_usdt": 558.5,
+    "max_vol": 500,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 1.117
+  },
+  "CTC_USDT": {
+    "max_position_usdt": 5108.599999999999,
+    "max_vol": 1780,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.287
+  },
+  "NOT_USDC": {
+    "max_position_usdt": 5532.405,
+    "max_vol": 7950,
+    "contract_size": 1000,
+    "max_leverage": 125,
+    "last_price": 0.0006959
+  },
+  "ALL_USDT": {
+    "max_position_usdt": 11685.800000000001,
+    "max_vol": 17000,
+    "contract_size": 1,
+    "max_leverage": 75,
+    "last_price": 0.6874
+  },
+  "AVGOSTOCK_USDT": {
+    "max_position_usdt": 9642.689999999999,
+    "max_vol": 2850,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 338.34
+  },
+  "ICNT_USDC": {
+    "max_position_usdt": 8376.2,
+    "max_vol": 1550,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.5404
+  },
+  "REQ_USDT": {
+    "max_position_usdt": 4816.35,
+    "max_vol": 450,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.10703
+  },
+  "ONDO_USDC": {
+    "max_position_usdt": 4079.0,
+    "max_vol": 10000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.4079
+  },
+  "ALGO_USDC": {
+    "max_position_usdt": 4524.3,
+    "max_vol": 3300,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.1371
+  },
+  "PING_USDT": {
+    "max_position_usdt": 37.782000000000004,
+    "max_vol": 900,
+    "contract_size": 10,
+    "max_leverage": 20,
+    "last_price": 0.004198
+  },
+  "OBT_USDT": {
+    "max_position_usdt": 816.9000000000001,
+    "max_vol": 3500,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.002334
+  },
+  "TIA_USDC": {
+    "max_position_usdt": 6543.9,
+    "max_vol": 11000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.5949
+  },
+  "BRL_USDT": {
+    "max_position_usdt": 22272.0,
+    "max_vol": 12000,
+    "contract_size": 10,
+    "max_leverage": 100,
+    "last_price": 0.1856
+  },
+  "CAD_USDT": {
+    "max_position_usdt": 86484.0,
+    "max_vol": 120000,
+    "contract_size": 1,
+    "max_leverage": 100,
+    "last_price": 0.7207
+  },
+  "POL_USDC": {
+    "max_position_usdt": 4737.0,
+    "max_vol": 3000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.1579
+  },
+  "AEVO_USDC": {
+    "max_position_usdt": 2256.215,
+    "max_vol": 5150,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.04381
+  },
+  "SPX_USDC": {
+    "max_position_usdt": 6883.8,
+    "max_vol": 11000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.6258
+  },
+  "MRVLSTOCK_USDT": {
+    "max_position_usdt": 9190.800000000001,
+    "max_vol": 11500,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 79.92
+  },
+  "COSTSTOCK_USDT": {
+    "max_position_usdt": 10841.855,
+    "max_vol": 11500,
+    "contract_size": 0.001,
+    "max_leverage": 50,
+    "last_price": 942.77
+  },
+  "ETHFI_USDC": {
+    "max_position_usdt": 5951.25,
+    "max_vol": 7500,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.7935
+  },
+  "CRV_USDC": {
+    "max_position_usdt": 5575.7,
+    "max_vol": 13000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.4289
+  },
+  "INJ_USDC": {
+    "max_position_usdt": 4742.15,
+    "max_vol": 8500,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 5.579
+  },
+  "RESOLV_USDC": {
+    "max_position_usdt": 4029.8999999999996,
+    "max_vol": 5050,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.0798
+  },
+  "FUTUSTOCK_USDT": {
+    "max_position_usdt": 10400.4,
+    "max_vol": 6000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 173.34
+  },
+  "JPMSTOCK_USDT": {
+    "max_position_usdt": 9502.275,
+    "max_vol": 3050,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 311.55
+  },
+  "WLD_USDC": {
+    "max_position_usdt": 5472.9,
+    "max_vol": 9000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.6081
+  },
+  "ORDI_USDC": {
+    "max_position_usdt": 5056.0,
+    "max_vol": 10000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 5.056
+  },
+  "KAITO_USDC": {
+    "max_position_usdt": 6733.0,
+    "max_vol": 10000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 0.6733
+  },
+  "PI_USDC": {
+    "max_position_usdt": 4800.1,
+    "max_vol": 23000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.2087
+  },
+  "MCDSTOCK_USDT": {
+    "max_position_usdt": 9644.72,
+    "max_vol": 3100,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 311.12
+  },
+  "LLYSTOCK_USDT": {
+    "max_position_usdt": 10107.050000000001,
+    "max_vol": 9500,
+    "contract_size": 0.001,
+    "max_leverage": 50,
+    "last_price": 1063.9
+  },
+  "CSCOSTOCK_USDT": {
+    "max_position_usdt": 9717.5,
+    "max_vol": 13000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 74.75
+  },
+  "NKESTOCK_USDT": {
+    "max_position_usdt": 11497.5,
+    "max_vol": 17500,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 65.7
+  },
+  "FIS_USDT": {
+    "max_position_usdt": 117.59,
+    "max_vol": 550,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.02138
+  },
+  "BOME_USDC": {
+    "max_position_usdt": 2583.0,
+    "max_vol": 3600,
+    "contract_size": 1000,
+    "max_leverage": 125,
+    "last_price": 0.0007175
+  },
+  "NEO_USDC": {
+    "max_position_usdt": 5024.999999999999,
+    "max_vol": 12500,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 4.02
+  },
+  "FIL_USDC": {
+    "max_position_usdt": 4767.0,
+    "max_vol": 3000,
+    "contract_size": 1,
+    "max_leverage": 50,
+    "last_price": 1.589
+  },
+  "OP_USDC": {
+    "max_position_usdt": 5326.5,
+    "max_vol": 15000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.3551
+  },
+  "MOODENG_USDC": {
+    "max_position_usdt": 6345.75,
+    "max_vol": 7500,
+    "contract_size": 10,
+    "max_leverage": 50,
+    "last_price": 0.08461
+  },
+  "VSTOCK_USDT": {
+    "max_position_usdt": 9404.7,
+    "max_vol": 2900,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 324.3
+  },
+  "UNHSTOCK_USDT": {
+    "max_position_usdt": 10294.800000000001,
+    "max_vol": 3000,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 343.16
+  },
+  "TFUEL_USDT": {
+    "max_position_usdt": 433.65500000000003,
+    "max_vol": 215,
+    "contract_size": 100,
+    "max_leverage": 20,
+    "last_price": 0.02017
+  },
+  "PNUT_USDC": {
+    "max_position_usdt": 5334.0,
+    "max_vol": 6000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.0889
+  },
+  "POPCAT_USDC": {
+    "max_position_usdt": 5265.0,
+    "max_vol": 5000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.1053
+  },
+  "TON_USDC": {
+    "max_position_usdt": 6343.2,
+    "max_vol": 3600,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 1.762
+  },
+  "BIO_USDC": {
+    "max_position_usdt": 4625.0,
+    "max_vol": 10000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.04625
+  },
+  "MASTOCK_USDT": {
+    "max_position_usdt": 9694.62,
+    "max_vol": 18000,
+    "contract_size": 0.001,
+    "max_leverage": 50,
+    "last_price": 538.59
+  },
+  "GESTOCK_USDT": {
+    "max_position_usdt": 10809.96,
+    "max_vol": 34000,
+    "contract_size": 0.001,
+    "max_leverage": 50,
+    "last_price": 317.94
+  },
+  "NOWSTOCK_USDT": {
+    "max_position_usdt": 8681.0745,
+    "max_vol": 1285,
+    "contract_size": 0.01,
+    "max_leverage": 50,
+    "last_price": 675.57
+  },
+  "ETC_USDC": {
+    "max_position_usdt": 4361.28,
+    "max_vol": 3300,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 13.216
+  },
+  "MNT_USDC": {
+    "max_position_usdt": 4482.0,
+    "max_vol": 4500,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.996
+  },
+  "ENS_USDC": {
+    "max_position_usdt": 4763.685,
+    "max_vol": 4350,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 10.951
+  },
+  "PENDLE_USDC": {
+    "max_position_usdt": 5467.2,
+    "max_vol": 2400,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 2.278
+  },
+  "ASMLSTOCK_USDT": {
+    "max_position_usdt": 11602.212,
+    "max_vol": 9200,
+    "contract_size": 0.001,
+    "max_leverage": 50,
+    "last_price": 1261.11
+  },
+  "REI_USDT": {
+    "max_position_usdt": 111.06,
+    "max_vol": 300,
+    "contract_size": 100,
+    "max_leverage": 50,
+    "last_price": 0.003702
+  },
+  "VANA_USDC": {
+    "max_position_usdt": 3996.8,
+    "max_vol": 16000,
+    "contract_size": 0.1,
+    "max_leverage": 125,
+    "last_price": 2.498
+  },
+  "SAHARA_USDC": {
+    "max_position_usdt": 5614.0,
+    "max_vol": 20000,
+    "contract_size": 10,
+    "max_leverage": 125,
+    "last_price": 0.02807
+  },
+  "ACNSTOCK_USDT": {
+    "max_position_usdt": 10751.83,
+    "max_vol": 37000,
+    "contract_size": 0.001,
+    "max_leverage": 50,
+    "last_price": 290.59
+  },
+  "GALA_USDC": {
+    "max_position_usdt": 4888.0,
+    "max_vol": 6500,
+    "contract_size": 100,
+    "max_leverage": 125,
+    "last_price": 0.00752
+  },
+  "STX_USDC": {
+    "max_position_usdt": 6072.9,
+    "max_vol": 15500,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.3918
+  },
+  "NEIROCTO_USDC": {
+    "max_position_usdt": 5560.0,
+    "max_vol": 4000,
+    "contract_size": 10000,
+    "max_leverage": 125,
+    "last_price": 0.000139
+  },
+  "EIGEN_USDC": {
+    "max_position_usdt": 4870.8,
+    "max_vol": 11000,
+    "contract_size": 1,
+    "max_leverage": 125,
+    "last_price": 0.4428
+  }
+}

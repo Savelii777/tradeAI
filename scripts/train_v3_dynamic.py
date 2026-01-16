@@ -66,7 +66,7 @@ FEATURE_MODE = 'core20'  # 'core20', 'ultra', 'minimal' or 'full'
 # ============================================================
 SL_ATR_MULT = 1.5       # Base SL multiplier (adaptive based on strength)
 MAX_LEVERAGE = 50.0     # Maximum leverage (50x)
-RISK_PCT = 0.05         # 5% Risk per trade
+MARGIN_BUFFER = 0.98    # 98% of capital for full deposit entry
 FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
 LOOKAHEAD = 12          # 1 hour on M5
 
@@ -79,7 +79,6 @@ SLIPPAGE_PCT = 0.0005         # 0.05% slippage (REALISTIC)
 
 # V8 IMPROVEMENTS
 USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
-USE_DYNAMIC_LEVERAGE = True  # Boost leverage for high-confidence signals
 USE_AGGRESSIVE_TRAIL = True  # Tighter trailing at medium R-multiples
 
 
@@ -463,31 +462,27 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     direction = signal['direction']
     pred_strength = signal.get('pred_strength', 2.0)
     
-    # === V8: ADAPTIVE STOP LOSS (CORRECTED) ===
-    # Strong signal (High Conf) -> WIDER SL (Give room to breathe for big move)
-    # Weak signal (Low Conf) -> TIGHT SL (Cut losses fast if not moving)
-    if USE_ADAPTIVE_SL:
-        if pred_strength >= 3.0:      # Strong signal: room to breathe
-            sl_mult = 1.6
-        elif pred_strength >= 2.0:    # Medium signal: standard
-            sl_mult = 1.5
-        else:                          # Weak signal: tight leash
-            sl_mult = 1.2
+    # === ATR-BASED STOP LOSS (дальше, стабильнее) ===
+    # Adaptive SL: 1.2-1.6x ATR based on strength
+    if pred_strength >= 3.0:
+        sl_mult = 1.6  # Strong: room to breathe
+    elif pred_strength >= 2.0:
+        sl_mult = 1.5  # Medium: standard
     else:
-        sl_mult = SL_ATR_MULT
+        sl_mult = 1.2  # Weak: tight
     
     sl_dist = atr * sl_mult
     
-    # === BALANCED BREAKEVEN TRIGGER ===
-    # Not too early (loses profits), not too late (more stop losses)
+    # === ATR-BASED BREAKEVEN TRIGGER ===
     if pred_strength >= 3.0:
-        be_trigger_mult = 2.5   # Strong: wait for 2.5 ATR before BE
+        be_trigger_mult = 2.5
     elif pred_strength >= 2.0:
-        be_trigger_mult = 2.2   # Medium: wait for 2.2 ATR
+        be_trigger_mult = 2.2
     else:
-        be_trigger_mult = 1.8   # Weak: wait for 1.8 ATR
+        be_trigger_mult = 1.8
     
     be_trigger_dist = atr * be_trigger_mult
+    be_margin_dist = atr * 1.0  # Lock 1.0 ATR profit
     
     if direction == 'LONG':
         sl_price = entry_price - sl_dist
@@ -514,36 +509,28 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 exit_time = bar.name
                 break
             
+            # Breakeven trigger - ATR-based
             if not breakeven_active and bar['high'] >= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price + (atr * 1.0)  # BE margin = 1.0 ATR profit locked
+                sl_price = entry_price + be_margin_dist  # Lock 1.0 ATR profit
             
-            # Progressive Trailing Stop
+            # Trailing - R-based multipliers
             if breakeven_active:
                 current_profit = bar['high'] - entry_price
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === BALANCED TRAILING ===
-                # Lock profits but give room for continuation
-                if USE_AGGRESSIVE_TRAIL:
-                    if r_multiple > 5.0:      # Super Pump: Lock it
-                        trail_mult = 0.6
-                    elif r_multiple > 3.0:    # Good Trend: Medium trail
-                        trail_mult = 1.2
-                    elif r_multiple > 2.0:    # Developing: Loose trail
-                        trail_mult = 1.8
-                    else:                      # Early: Let it breathe
-                        trail_mult = 2.5
+                # R-based trailing
+                if r_multiple > 5.0:
+                    trail_mult = 0.6
+                elif r_multiple > 3.0:
+                    trail_mult = 1.2
+                elif r_multiple > 2.0:
+                    trail_mult = 1.8
                 else:
-                    # Original logic
-                    trail_mult = 2.0
-                    if r_multiple > 5.0:
-                        trail_mult = 0.5
-                    elif r_multiple > 3.0:
-                        trail_mult = 1.5
+                    trail_mult = 2.5
                 
-                new_sl = bar['high'] - (atr * trail_mult)
+                new_sl = bar['high'] - atr * trail_mult
                 if new_sl > sl_price:
                     sl_price = new_sl
                     
@@ -554,35 +541,28 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
                 exit_time = bar.name
                 break
             
+            # Breakeven trigger - ATR-based
             if not breakeven_active and bar['low'] <= be_trigger_price:
                 breakeven_active = True
-                sl_price = entry_price - (atr * 1.0)  # BE margin = 1.0 ATR profit locked
+                sl_price = entry_price - be_margin_dist  # Lock 1.0 ATR profit
             
-            # Progressive Trailing Stop
+            # Trailing - R-based multipliers
             if breakeven_active:
                 current_profit = entry_price - bar['low']
                 r_multiple = current_profit / sl_dist
                 max_r_reached = max(max_r_reached, r_multiple)
                 
-                # === BALANCED TRAILING ===
-                # Lock profits but give room for continuation
-                if USE_AGGRESSIVE_TRAIL:
-                    if r_multiple > 5.0:      # Super Pump
-                        trail_mult = 0.6
-                    elif r_multiple > 3.0:    # Good Trend
-                        trail_mult = 1.2
-                    elif r_multiple > 2.0:    # Developing
-                        trail_mult = 1.8
-                    else:                      # Early
-                        trail_mult = 2.5
+                # R-based trailing
+                if r_multiple > 5.0:
+                    trail_mult = 0.6
+                elif r_multiple > 3.0:
+                    trail_mult = 1.2
+                elif r_multiple > 2.0:
+                    trail_mult = 1.8
                 else:
-                    trail_mult = 2.0
-                    if r_multiple > 5.0:
-                        trail_mult = 0.5
-                    elif r_multiple > 3.0:
-                        trail_mult = 1.5
+                    trail_mult = 2.5
                 
-                new_sl = bar['low'] + (atr * trail_mult)
+                new_sl = bar['low'] + atr * trail_mult
                 if new_sl < sl_price:
                     sl_price = new_sl
                     
@@ -599,7 +579,7 @@ def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
 def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float = 10000.0) -> list:
     """
     Execute signals enforcing the 'Single Slot' constraint.
-    Calculates Real Dollar PnL with 5% Risk.
+    RISK-BASED POSITION SIZING: ATR stops + 5% risk per trade.
     """
     # Sort by time. If times are equal, sort by score (descending)
     signals.sort(key=lambda x: (x['timestamp'], -x['score']))
@@ -608,8 +588,11 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
     last_exit_time = pd.Timestamp.min.tz_localize('UTC')  # Must be timezone-aware (UTC)
     balance = initial_balance
     
+    RISK_PCT = 0.05  # 5% риска от депозита при стопе
+    
     print(f"Processing {len(signals)} potential signals...")
     print(f"Initial Balance: ${balance:,.2f}")
+    print(f"Position sizing: RISK-BASED (5% loss per stop, ATR-based stops)")
     
     for signal in signals:
         # Constraint: Can only hold 1 position
@@ -626,38 +609,27 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
             exit_price = result['exit_price']
             sl_dist = result['sl_dist']
             
-            # === V8: DYNAMIC RISK BASED ON SIGNAL QUALITY ===
-            base_risk = RISK_PCT  # 5%
+            # === RISK-BASED POSITION SIZING ===
+            # Размер позиции рассчитан так, чтобы при стопе терять ровно 5% от депозита
+            risk_amount = balance * RISK_PCT  # Сколько готовы потерять
+            sl_pct = sl_dist / entry_price  # Стоп в % от цены
             
-            if USE_DYNAMIC_LEVERAGE:
-                # Boost risk for high-quality signals
-                score = signal.get('score', 0.3)
-                timing = signal.get('timing_prob', 0.5)
-                strength = signal.get('pred_strength', 2.0)
-                
-                # Quality multiplier: 0.8x to 1.5x based on signal quality
-                quality = (score / 0.5) * (timing / 0.6) * (strength / 2.0)
-                quality_mult = np.clip(quality, 0.8, 1.5)
-                
-                risk_amount = balance * base_risk * quality_mult
-            else:
-                risk_amount = balance * base_risk
-            
-            sl_pct = sl_dist / entry_price
-            
-            # Position Size (Value in $) based on risk
+            # position_size * sl_pct = risk_amount
             position_size = risk_amount / sl_pct
             
-            # CRITICAL: Apply MAX_LEVERAGE limit FIRST
+            # Ограничения
             max_position_by_leverage = balance * MAX_LEVERAGE
-            if position_size > max_position_by_leverage:
-                position_size = max_position_by_leverage
+            original_position = position_size
+            position_size = min(position_size, max_position_by_leverage, MAX_POSITION_SIZE)
             
-            # THEN apply liquidity limit
-            if position_size > MAX_POSITION_SIZE:
-                position_size = MAX_POSITION_SIZE
+            # CRITICAL: Если position урезан, нужно уменьшить стоп чтобы сохранить 5% риск!
+            if position_size < original_position:
+                # Пересчитываем стоп для сохранения риска
+                new_sl_pct = risk_amount / position_size
+                sl_dist = new_sl_pct * entry_price
+                sl_pct = new_sl_pct
             
-            # Calculate FINAL leverage
+            # Рассчитываем итоговое плечо
             leverage = position_size / balance
             
             # PnL Calculation (with slippage)
