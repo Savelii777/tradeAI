@@ -1,0 +1,8 @@
+{
+  "feature_mode": "auto",
+  "use_optuna": true,
+  "use_ensemble": true,
+  "catboost_available": true,
+  "num_features": 26,
+  "training_date": "2026-01-18T20:48:08.696211"
+}

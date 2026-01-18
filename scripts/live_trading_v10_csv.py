@@ -117,13 +117,15 @@ class Config:
     # Timeframes
     TIMEFRAMES = ['1m', '5m', '15m']
     
-    # Signal Thresholds (same as train_v3_dynamic.py)
-    MIN_CONF = 0.58
+    # Signal Thresholds (V13 - higher quality)
+    MIN_CONF = 0.65  # V13: stricter confidence threshold
     MIN_TIMING = 1.8
     MIN_STRENGTH = 2.5
+    CONFIDENCE_BOOST_THRESHOLD = 0.75  # V13: boost risk above this confidence
     
-    # Risk Management
-    RISK_PCT = 0.05
+    # Risk Management (V13 - dynamic sizing)
+    BASE_RISK_PCT = 0.05  # V13: base risk 5%
+    MAX_RISK_PCT = 0.07   # V13: max risk 7% for high confidence
     MAX_LEVERAGE = 50.0
     MAX_HOLDING_BARS = 150
     ENTRY_FEE = 0.0002
@@ -139,6 +141,10 @@ class Config:
     USE_ADAPTIVE_SL = True
     USE_DYNAMIC_LEVERAGE = True
     USE_AGGRESSIVE_TRAIL = True
+    
+    # V13 Filters
+    USE_REGIME_FILTER = True  # V13: skip low volatility regimes
+    USE_MTF_CONFIRMATION = True  # V13: require multi-timeframe confirmation
     
     # MEXC API
     MEXC_BASE_URL = "https://contract.mexc.com"
@@ -162,6 +168,76 @@ class Config:
             secrets = yaml.safe_load(f)
         
         return secrets
+
+
+# ============================================================
+# V13 HELPER FUNCTIONS
+# ============================================================
+def calculate_dynamic_risk(confidence: float, timing: float) -> float:
+    """
+    V13: Dynamic risk sizing based on signal quality.
+    
+    Base: 5% risk
+    High confidence (>0.75) + strong timing (>2.5): 7% risk
+    """
+    if confidence >= Config.CONFIDENCE_BOOST_THRESHOLD and timing >= 2.5:
+        return Config.MAX_RISK_PCT  # 7%
+    elif confidence >= Config.CONFIDENCE_BOOST_THRESHOLD:
+        return 0.06  # 6%
+    else:
+        return Config.BASE_RISK_PCT  # 5%
+
+
+def check_regime_filter(df: pd.DataFrame) -> bool:
+    """
+    V13: Filter out low volatility regimes.
+    
+    Returns True if regime is tradeable, False to skip.
+    """
+    if not Config.USE_REGIME_FILTER:
+        return True
+    
+    if 'atr' not in df.columns or len(df) < 20:
+        return True
+    
+    # Get recent ATR values
+    recent_atr = df['atr'].tail(20)
+    current_atr = recent_atr.iloc[-1]
+    avg_atr = recent_atr.mean()
+    
+    # Skip if ATR too low (< 50% of average)
+    if current_atr < avg_atr * 0.5:
+        return False
+    
+    return True
+
+
+def check_mtf_confirmation(data: Dict[str, pd.DataFrame], direction: str) -> bool:
+    """
+    V13: Multi-timeframe trend confirmation.
+    
+    Checks if M5 and M15 trends align with M1 signal direction.
+    """
+    if not Config.USE_MTF_CONFIRMATION:
+        return True
+    
+    try:
+        # Get recent closes
+        m5_close = data['5m']['close'].tail(20)
+        m15_close = data['15m']['close'].tail(10)
+        
+        # Calculate simple trends (current vs average)
+        m5_trend = m5_close.iloc[-1] > m5_close.mean()
+        m15_trend = m15_close.iloc[-1] > m15_close.mean()
+        
+        if direction == 'LONG':
+            return m5_trend and m15_trend
+        elif direction == 'SHORT':
+            return (not m5_trend) and (not m15_trend)
+        
+        return True
+    except:
+        return True  # On error, don't filter
 
 
 # ============================================================
@@ -507,31 +583,38 @@ class CSVDataManager:
             if existing is None:
                 continue
             
-            try:
-                # Fetch only last 2 candles (current forming + last closed)
-                candles = self.binance.fetch_ohlcv(pair, tf, limit=2)
-                
-                if not candles:
-                    continue
-                
-                # Convert to DataFrame
-                new_df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                new_df['timestamp'] = pd.to_datetime(new_df['timestamp'], unit='ms', utc=True)
-                new_df.set_index('timestamp', inplace=True)
-                
-                # Append/update only new candles
-                combined = pd.concat([existing, new_df])
-                combined = combined[~combined.index.duplicated(keep='last')]
-                combined.sort_index(inplace=True)
-                
-                data[tf] = combined
-                
-                # IMPORTANT: Save to CSV so data persists between restarts!
-                self.save_csv(pair, tf, combined)
-                
-            except Exception as e:
-                logger.debug(f"Error updating {pair} {tf}: {e}")
+            # Retry logic for API errors
+            candles = None
+            max_retries = 3
+            for retry in range(max_retries):
+                try:
+                    # Fetch only last 2 candles (current forming + last closed)
+                    candles = self.binance.fetch_ohlcv(pair, tf, limit=2)
+                    break  # Success
+                except Exception as e:
+                    if retry < max_retries - 1:
+                        logger.debug(f"Retry {retry+1}/{max_retries} for {pair} {tf}: {e}")
+                        time.sleep(0.5)
+                    else:
+                        logger.warning(f"Failed to update {pair} {tf} after {max_retries} retries")
+            
+            if not candles:
                 continue
+            
+            # Convert to DataFrame
+            new_df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            new_df['timestamp'] = pd.to_datetime(new_df['timestamp'], unit='ms', utc=True)
+            new_df.set_index('timestamp', inplace=True)
+            
+            # Append/update only new candles
+            combined = pd.concat([existing, new_df])
+            combined = combined[~combined.index.duplicated(keep='last')]
+            combined.sort_index(inplace=True)
+            
+            data[tf] = combined
+            
+            # IMPORTANT: Save to CSV so data persists between restarts!
+            self.save_csv(pair, tf, combined)
         
         # Update cache
         self._data_cache[pair] = data
@@ -1048,7 +1131,11 @@ class PortfolioManager:
             logger.error("❌ No balance available")
             return False
         
-        entry_price = signal['price']
+        # Apply slippage to entry price
+        raw_price = signal['price']
+        slippage_mult = 1 + Config.SLIPPAGE_PCT if signal['direction'] == 'LONG' else 1 - Config.SLIPPAGE_PCT
+        entry_price = raw_price * slippage_mult
+        
         atr = signal['atr']
         pred_strength = signal.get('pred_strength', 2.0)
         
@@ -1063,10 +1150,13 @@ class PortfolioManager:
         stop_distance = atr * sl_mult
         stop_loss = entry_price - stop_distance if signal['direction'] == 'LONG' else entry_price + stop_distance
         
-        # === RISK-BASED POSITION SIZING ===
-        # Размер позиции рассчитан так, чтобы при стопе терять ровно 5% от депозита
-        RISK_PCT = 0.05  # 5% риска от депозита
+        # === V13: DYNAMIC RISK-BASED POSITION SIZING ===
+        # Risk scales 5-7% based on signal quality
+        confidence = signal.get('confidence', Config.MIN_CONF)
+        timing = signal.get('timing', Config.MIN_TIMING)
+        RISK_PCT = calculate_dynamic_risk(confidence, timing)
         risk_amount = self.capital * RISK_PCT
+        logger.info(f"📊 Dynamic Risk: {RISK_PCT*100:.1f}% (conf={confidence:.2f}, timing={timing:.1f})")
         sl_pct = stop_distance / entry_price
         
         # position_size = risk_amount / sl_pct
@@ -1794,21 +1884,34 @@ def process_pair_for_signal(
         # Shows: direction, confidence, timing, strength for each pair
         logger.debug(f"  {pair}: {direction} conf={dir_conf:.2f} tim={timing:.2f} str={strength:.1f}")
         
-        # Return result for logging
+        # Return result for logging (V13: added price and confidence)
         result = {
             'pair': pair,
             'direction': direction,
             'dir_pred': dir_pred,
             'conf': dir_conf,
+            'confidence': dir_conf,  # V13: for dynamic risk
             'timing': timing,
             'strength': strength,
+            'pred_strength': strength,  # V13: alias for open_position
             'atr': row['atr'].iloc[0] if 'atr' in row.columns else 0.0,
+            'price': row['close'].iloc[0],  # V13: required for open_position
             'is_signal': False
         }
         
-        # Check if it's a valid signal
+        # Check if it's a valid signal (V13: stricter thresholds + filters)
         if dir_pred != 1:  # Not sideways
             if dir_conf >= Config.MIN_CONF and timing >= Config.MIN_TIMING and strength >= Config.MIN_STRENGTH:
+                # V13: Apply regime filter
+                if not check_regime_filter(df):
+                    logger.debug(f"  {pair}: Filtered by regime (low volatility)")
+                    return result
+                
+                # V13: Apply MTF confirmation
+                if not check_mtf_confirmation(data, direction):
+                    logger.debug(f"  {pair}: Filtered by MTF (no trend confirmation)")
+                    return result
+                
                 result['is_signal'] = True
         
         return result
