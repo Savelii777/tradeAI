@@ -317,6 +317,8 @@ def main():
     parser = argparse.ArgumentParser(description='Fetch data for multiple pairs')
     parser.add_argument('--pairs-file', type=str, default='config/pairs_list.json',
                         help='Path to pairs list JSON')
+    parser.add_argument('--pairs', type=str, nargs='+', default=None,
+                        help='Specific pairs to fetch (e.g., DOT/USDT:USDT POL/USDT:USDT)')
     parser.add_argument('--days', type=int, default=30,
                         help='Number of days to fetch (default: 30)')
     parser.add_argument('--timeframes', type=str, nargs='+', default=['5m', '1h', '4h'],
@@ -330,19 +332,23 @@ def main():
     
     args = parser.parse_args()
     
-    # Load pairs
-    try:
-        symbols = load_pairs_list(args.pairs_file)
-        if args.limit:
-            symbols = symbols[:args.limit]
-        logger.info(f"Loaded {len(symbols)} pairs from {args.pairs_file}")
-    except FileNotFoundError:
-        logger.error(f"Pairs file not found: {args.pairs_file}")
-        logger.info("Run 'python scripts/fetch_pairs.py' first")
-        return 1
+    # Load pairs - use --pairs if specified, otherwise load from file
+    if args.pairs:
+        symbols = args.pairs
+        logger.info(f"Using {len(symbols)} pairs from command line: {symbols}")
+    else:
+        try:
+            symbols = load_pairs_list(args.pairs_file)
+            if args.limit:
+                symbols = symbols[:args.limit]
+            logger.info(f"Loaded {len(symbols)} pairs from {args.pairs_file}")
+        except FileNotFoundError:
+            logger.error(f"Pairs file not found: {args.pairs_file}")
+            logger.info("Run 'python scripts/fetch_pairs.py' first")
+            return 1
     
     if not symbols:
-        logger.error("No pairs found in file")
+        logger.error("No pairs found")
         return 1
     
     # Create fetcher

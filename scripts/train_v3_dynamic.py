@@ -1824,6 +1824,20 @@ def main():
     # Train
     train_df = pd.concat(all_train).dropna()
     
+    # === ВЫВОД ПЕРИОДА ОБУЧЕНИЯ ===
+    if len(train_df) > 0:
+        train_period_start = train_df.index.min()
+        train_period_end = train_df.index.max()
+        train_days_actual = (train_period_end - train_period_start).days
+        print("\n" + "="*70)
+        print("📅 ПЕРИОД ОБУЧЕНИЯ:")
+        print("="*70)
+        print(f"  Начало:  {train_period_start.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        print(f"  Конец:   {train_period_end.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        print(f"  Дней:    {train_days_actual} дней")
+        print(f"  Записей: {len(train_df):,} строк")
+        print("="*70 + "\n")
+    
     # === FEATURE SELECTION BASED ON MODE ===
     available_cols = set(train_df.columns)
     selected_features_importance = None  # Store importance for saving
@@ -1895,6 +1909,24 @@ def main():
     print("\n" + "="*70)
     print(f"RUNNING BACKTEST (Test Days: {args.test_days})")
     print("="*70)
+    
+    # === ВЫВОД ТЕСТОВОГО ПЕРИОДА ===
+    if test_features:
+        all_test_timestamps = []
+        for pair, df in test_features.items():
+            if len(df) > 0:
+                all_test_timestamps.extend(df.index.tolist())
+        
+        if all_test_timestamps:
+            test_period_start = min(all_test_timestamps)
+            test_period_end = max(all_test_timestamps)
+            test_days_actual = (test_period_end - test_period_start).days
+            print("\n📅 ПЕРИОД ТЕСТИРОВАНИЯ:")
+            print(f"  Начало:  {test_period_start.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+            print(f"  Конец:   {test_period_end.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+            print(f"  Дней:    {test_days_actual} дней")
+            print(f"  Пар:     {len(test_features)}")
+            print()
     
     all_signals = []
     for pair, df in test_features.items():

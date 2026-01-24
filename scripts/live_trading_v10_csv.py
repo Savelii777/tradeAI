@@ -49,6 +49,9 @@ import pandas as pd
 import numpy as np
 import yaml
 from loguru import logger
+from sklearn.base import BaseEstimator, ClassifierMixin
+import lightgbm as lgb
+from catboost import CatBoostClassifier
 
 # MEXC WEB API requires curl_cffi for TLS fingerprinting bypass
 try:
@@ -77,6 +80,80 @@ from src.utils.constants import (
     CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES
 )
 from train_mtf import MTFFeatureEngine
+
+
+# ============================================================
+# ENSEMBLE MODEL CLASS (needed for loading trained model)
+# ============================================================
+class EnsembleDirectionModel(ClassifierMixin, BaseEstimator):
+    """
+    Ensemble of LightGBM + CatBoost for more stable predictions.
+    Required for unpickling the trained model.
+    """
+    _estimator_type = "classifier"
+    
+    def __init__(self, lgb_params=None, use_catboost=True):
+        self.lgb_params = lgb_params
+        self.use_catboost = use_catboost
+        self.lgb_model = None
+        self.catboost_model = None
+        self.weights = {'lgb': 0.5, 'catboost': 0.5}
+        self._classes = np.array([0, 1, 2])
+    
+    @property
+    def classes_(self):
+        return self._classes
+        
+    def fit(self, X, y, sample_weight=None):
+        lgb_default = {
+            'objective': 'multiclass',
+            'num_class': 3,
+            'metric': 'multi_logloss',
+            'boosting_type': 'gbdt',
+            'n_estimators': 300,
+            'max_depth': 5,
+            'num_leaves': 31,
+            'min_child_samples': 50,
+            'learning_rate': 0.03,
+            'subsample': 0.8,
+            'colsample_bytree': 0.7,
+            'reg_alpha': 0.1,
+            'reg_lambda': 0.1,
+            'random_state': 42,
+            'verbosity': -1
+        }
+        lgb_default.update(self.lgb_params or {})
+        
+        self.lgb_model = lgb.LGBMClassifier(**lgb_default)
+        self.lgb_model.fit(X, y, sample_weight=sample_weight)
+        
+        if self.use_catboost:
+            self.catboost_model = CatBoostClassifier(
+                iterations=300, depth=5, learning_rate=0.03,
+                l2_leaf_reg=3, loss_function='MultiClass',
+                classes_count=3, random_seed=42, verbose=False
+            )
+            self.catboost_model.fit(X, y, sample_weight=sample_weight)
+        
+        self._classes = np.unique(y)
+        return self
+    
+    def predict_proba(self, X):
+        lgb_proba = self.lgb_model.predict_proba(X)
+        if self.use_catboost and self.catboost_model is not None:
+            cat_proba = self.catboost_model.predict_proba(X)
+            return self.weights['lgb'] * lgb_proba + self.weights['catboost'] * cat_proba
+        return lgb_proba
+    
+    def predict(self, X):
+        proba = self.predict_proba(X)
+        return np.argmax(proba, axis=1)
+    
+    @property
+    def feature_importances_(self):
+        if self.lgb_model is not None:
+            return self.lgb_model.feature_importances_
+        return None
 
 
 # ============================================================
@@ -2144,7 +2221,9 @@ def main():
                             'direction': 'LONG' if signal_result['dir_pred'] == 2 else 'SHORT',
                             'price': ticker['last'],
                             'atr': signal_result['atr'],
-                            'pred_strength': signal_result['strength']
+                            'pred_strength': signal_result['strength'],
+                            'confidence': signal_result['conf'],  # V13: for dynamic risk
+                            'timing': signal_result['timing'],    # V13: for dynamic risk
                         }
                         
                         if portfolio.open_position(signal):
