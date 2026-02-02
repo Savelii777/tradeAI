@@ -31,6 +31,7 @@ Usage:
 """
 
 import sys
+import os
 import time
 import json
 import hmac
@@ -194,10 +195,10 @@ class Config:
     # Timeframes
     TIMEFRAMES = ['1m', '5m', '15m']
     
-    # Signal Thresholds (V13 - higher quality)
-    MIN_CONF = 0.65  # V13: stricter confidence threshold
-    MIN_TIMING = 1.8
-    MIN_STRENGTH = 2.5
+    # Signal Thresholds (V13 - adjusted for live conditions)
+    MIN_CONF = 0.55  # Minimum confidence for signals
+    MIN_TIMING = 1.5  # Minimum timing score (lowered to 1.5)
+    MIN_STRENGTH = 2.0  # Minimum strength score (lowered to 2.0)
     CONFIDENCE_BOOST_THRESHOLD = 0.75  # V13: boost risk above this confidence
     
     # Risk Management (V13 - dynamic sizing)
@@ -227,9 +228,9 @@ class Config:
     MEXC_BASE_URL = "https://contract.mexc.com"
     
     # Performance optimization
-    # Note: 8 workers is optimal for M2 chip (8 cores)
+    # Note: 16 workers for better parallelism on 8-core server
     # More workers = more context switching overhead + API rate limits
-    MAX_WORKERS = 8  # Parallel threads for scanning (match CPU cores)
+    MAX_WORKERS = 16  # Parallel threads for scanning (increased from 8)
     FEATURE_CACHE_SIZE = 50  # Number of rows to keep in incremental update
     
     @classmethod
@@ -467,7 +468,11 @@ class CSVDataManager:
         # ALWAYS save to Parquet to protect training CSVs
         filepath = self._get_parquet_path(pair, timeframe)
         try:
-            df.to_parquet(filepath, engine='pyarrow')
+            # Atomic write: write to temp file first, then rename
+            # This prevents corruption if another process reads while writing
+            temp_filepath = str(filepath) + '.tmp'
+            df.to_parquet(temp_filepath, engine='pyarrow')
+            os.replace(temp_filepath, str(filepath))  # Atomic on POSIX systems
             logger.debug(f"💾 Saved {len(df)} candles to {filepath}")
         except Exception as e:
             # Log error but DO NOT fall back to CSV - protect training data!
@@ -688,10 +693,13 @@ class CSVDataManager:
             combined = combined[~combined.index.duplicated(keep='last')]
             combined.sort_index(inplace=True)
             
-            data[tf] = combined
+            # IMPORTANT: Save ONLY CLOSED candles (remove last forming candle)
+            # This ensures saved data matches backtest (no lookahead bias)
+            closed_candles = combined.iloc[:-1] if len(combined) > 0 else combined
+            self.save_csv(pair, tf, closed_candles)
             
-            # IMPORTANT: Save to CSV so data persists between restarts!
-            self.save_csv(pair, tf, combined)
+            # Store closed candles in cache too (NOT combined with forming candle)
+            data[tf] = closed_candles
         
         # Update cache
         self._data_cache[pair] = data
@@ -1239,8 +1247,9 @@ class PortfolioManager:
         # position_size = risk_amount / sl_pct
         position_value = risk_amount / sl_pct
         
-        # Ограничения
-        max_position_by_leverage = self.capital * Config.MAX_LEVERAGE
+        # Ограничения (используем 98% капитала для маржи)
+        available_margin = self.capital * 0.98
+        max_position_by_leverage = available_margin * Config.MAX_LEVERAGE
         original_position = position_value
         position_value = min(position_value, max_position_by_leverage, Config.MAX_POSITION_SIZE)
         
@@ -1259,8 +1268,9 @@ class PortfolioManager:
             sl_pct = new_sl_pct
             logger.warning(f"⚠️ Position capped! Adjusted stop to {sl_pct*100:.2f}% for 5% risk")
         
-        # Рассчитываем итоговое плечо
-        leverage = position_value / self.capital
+        # Рассчитываем итоговое плечо (используем 98% капитала, 2% буфер)
+        available_margin = self.capital * 0.98
+        leverage = position_value / available_margin
         leverage = min(leverage, int(Config.MAX_LEVERAGE))
         
         logger.info(f"📊 ATR: {atr:.6f} | SL dist: {stop_distance:.6f} ({sl_pct*100:.2f}%) | Leverage: {leverage:.1f}x")
@@ -1478,6 +1488,7 @@ def prepare_features(data: Dict[str, pd.DataFrame], mtf_fe: MTFFeatureEngine) ->
     Prepare features from CSV data - EXACTLY like backtest!
     
     This is the key function that ensures live matches backtest.
+    NO CACHING - full calculation every time for accuracy.
     """
     # Use only last N candles - matches backtest window size
     # This ensures rolling indicators have same context as training
@@ -1485,6 +1496,8 @@ def prepare_features(data: Dict[str, pd.DataFrame], mtf_fe: MTFFeatureEngine) ->
     LOOKBACK_M5 = 1500   # ~5 days of 5m data  
     LOOKBACK_M15 = 500   # ~5 days of 15m data
     
+    # Data already contains ONLY closed candles (forming candle removed in fast_update_candle)
+    # No need to do iloc[:-1] here - that would remove the LAST CLOSED candle!
     m1 = data['1m'].tail(LOOKBACK_M1)
     m5 = data['5m'].tail(LOOKBACK_M5)
     m15 = data['15m'].tail(LOOKBACK_M15)
@@ -1923,8 +1936,7 @@ def process_pair_for_signal(
         if data is None:
             return None
         
-        # FULL FEATURE CALCULATION - same as backtest!
-        # We MUST use full data for correct rolling indicators (EMA-200, etc.)
+        # FULL FEATURE CALCULATION - same as backtest (no caching for accuracy)
         df = prepare_features(data, mtf_fe)
         
         if df is None or len(df) < 2:

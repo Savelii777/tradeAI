@@ -93,7 +93,9 @@ USE_ENSEMBLE = True     # Enable LGB + CatBoost ensemble
 # 🎯 V13 IMPROVEMENTS - 10/10 CONFIG
 # ============================================================
 # 1. Confidence Threshold - торгуем только с высокой уверенностью
-MIN_CONFIDENCE = 0.65           # Минимальная уверенность модели (было 0.58)
+MIN_CONFIDENCE = 0.60           # Минимальная уверенность модели (lowered to 0.55) было 0.65
+MIN_TIMING = 1.7                # Минимальный timing score (lowered to 1.5) было 1.8
+MIN_STRENGTH = 2.3              # Минимальный strength score (lowered to 2.0) было 2.5
 CONFIDENCE_BOOST_THRESHOLD = 0.75  # При этой уверенности увеличиваем сайз
 
 # 2. Regime Filter - не торгуем в боковике
@@ -987,15 +989,19 @@ def train_models(X_train, y_train, X_val, y_val):
 # PORTFOLIO BACKTEST (V9 - Realistic Thresholds)
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
-                    min_conf: float = None, min_timing: float = 1.8, min_strength: float = 2.5) -> list:
+                    min_conf: float = None, min_timing: float = None, min_strength: float = None) -> list:
                     
     """
     Generate all valid signals for a single pair.
     V13: Added confidence threshold, regime filter, MTF confirmation.
     """
-    # Use configured confidence threshold
+    # Use configured thresholds
     if min_conf is None:
         min_conf = MIN_CONFIDENCE
+    if min_timing is None:
+        min_timing = MIN_TIMING
+    if min_strength is None:
+        min_strength = MIN_STRENGTH
     
     signals = []
     skipped_regime = 0
