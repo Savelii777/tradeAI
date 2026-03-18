@@ -1,0 +1,21 @@
+{
+  "version": "v22_momentum",
+  "sl_atr_mult": 1.5,
+  "be_trigger_atr": 1.5,
+  "be_margin_atr": 0.8,
+  "max_leverage": 20.0,
+  "fee_pct": 0.0002,
+  "slippage_pct": 0.0002,
+  "ml_threshold": 0.5,
+  "target_r": 2.0,
+  "cooldown_bars": 4,
+  "num_features": 10,
+  "training_date": "2026-02-13T16:15:51.364748",
+  "results": {
+    "wr": 44.34389140271493,
+    "pf": 0.6391878703964424,
+    "trades": 221,
+    "tpd": 12.277777777777779,
+    "pnl": -57.88253069146543
+  }
+}

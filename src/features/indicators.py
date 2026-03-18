@@ -289,7 +289,89 @@ class TechnicalIndicators:
         
         return pd.DataFrame(feature_dict, index=df.index)
         
-    # -------------------- Volatility Indicators --------------------
+    def stochrsi(
+        self,
+        series: pd.Series,
+        rsi_period: int = 14,
+        stoch_period: int = 14,
+        smooth_k: int = 1,
+        smooth_d: int = 3
+    ) -> Tuple[pd.Series, pd.Series]:
+        """
+        Calculate Stochastic RSI (StochRSI).
+        
+        StochRSI applies Stochastic formula to RSI values instead of price.
+        More sensitive than standard Stochastic, better for ranging markets.
+        
+        Args:
+            series: Price series.
+            rsi_period: RSI calculation period (default 14).
+            stoch_period: Stochastic lookback period (default 14).
+            smooth_k: %K smoothing (default 1 = no smoothing).
+            smooth_d: %D smoothing period (default 3).
+            
+        Returns:
+            Tuple of (stochrsi_k, stochrsi_d) in range 0-100.
+        """
+        # Step 1: Calculate RSI
+        rsi = self.rsi(series, rsi_period)
+        
+        # Step 2: Apply Stochastic to RSI values
+        rsi_min = rsi.rolling(window=stoch_period).min()
+        rsi_max = rsi.rolling(window=stoch_period).max()
+        
+        # StochRSI K = 100 * (RSI - RSI_min) / (RSI_max - RSI_min)
+        stochrsi_k = 100 * (rsi - rsi_min) / (rsi_max - rsi_min)
+        stochrsi_k = stochrsi_k.fillna(50)  # Neutral value
+        
+        # Step 3: Smooth %K if needed
+        if smooth_k > 1:
+            stochrsi_k = stochrsi_k.rolling(window=smooth_k).mean()
+        
+        # Step 4: Calculate %D (SMA of %K)
+        stochrsi_d = stochrsi_k.rolling(window=smooth_d).mean()
+        
+        return stochrsi_k, stochrsi_d
+    
+    def calculate_stochrsi_features(
+        self,
+        df: pd.DataFrame,
+        rsi_period: int = 14,
+        stoch_period: int = 14,
+        smooth_k: int = 1,
+        smooth_d: int = 3
+    ) -> pd.DataFrame:
+        """
+        Calculate StochRSI-based features (from TradingView strategy).
+        
+        Args:
+            df: DataFrame with 'close' column.
+            rsi_period: RSI period (14 in TradingView).
+            stoch_period: Stochastic period (14 in TradingView).
+            smooth_k: %K smoothing (1 in TradingView).
+            smooth_d: %D smoothing (3 in TradingView).
+            
+        Returns:
+            DataFrame with StochRSI features.
+        """
+        stochrsi_k, stochrsi_d = self.stochrsi(
+            df['close'], rsi_period, stoch_period, smooth_k, smooth_d
+        )
+        
+        # Detect crossovers
+        cross_up = (stochrsi_k > stochrsi_d) & (stochrsi_k.shift(1) <= stochrsi_d.shift(1))
+        cross_down = (stochrsi_k < stochrsi_d) & (stochrsi_k.shift(1) >= stochrsi_d.shift(1))
+        
+        feature_dict = {
+            'stochrsi_k': stochrsi_k,
+            'stochrsi_d': stochrsi_d,
+            'stochrsi_cross_up': cross_up.astype(int),
+            'stochrsi_cross_down': cross_down.astype(int),
+            'stochrsi_oversold': (stochrsi_k < 33).astype(int),  # TradingView lower zone
+            'stochrsi_overbought': (stochrsi_k > 67).astype(int),  # TradingView upper zone
+        }
+        
+        return pd.DataFrame(feature_dict, index=df.index)
     
     def atr(
         self,

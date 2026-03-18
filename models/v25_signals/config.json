@@ -1,0 +1,31 @@
+{
+  "version": "v25_signals",
+  "sl_atr_mult": 1.5,
+  "target_r": 2.0,
+  "max_leverage": 20.0,
+  "fee_pct": 0.0002,
+  "threshold": 0.7,
+  "cooldown_bars": 4,
+  "features": [
+    "m15_trend",
+    "dist_to_low",
+    "efficiency",
+    "dist_to_high",
+    "compression"
+  ],
+  "date": "2026-02-13T16:57:56.473883",
+  "results_ml": {
+    "wr": 14.285714285714285,
+    "pf": 0.24588462223878296,
+    "trades": 7,
+    "tpd": 0.5833333333333334,
+    "pnl": -12.519311016519524
+  },
+  "results_baseline": {
+    "wr": 30.927835051546392,
+    "pf": 0.6011756146999032,
+    "trades": 194,
+    "tpd": 24.25,
+    "pnl": -59.06155210333186
+  }
+}

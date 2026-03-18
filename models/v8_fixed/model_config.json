@@ -3,6 +3,6 @@
   "use_optuna": false,
   "use_ensemble": false,
   "catboost_available": true,
-  "num_features": 22,
-  "training_date": "2026-03-18T02:59:33.797068"
+  "num_features": 23,
+  "training_date": "2026-03-02T08:37:10.689798"
 }

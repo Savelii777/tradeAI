@@ -46,10 +46,13 @@ class MarketStructure:
         
     def detect_swings(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Detect swing highs and lows.
+        Detect swing highs and lows WITHOUT LOOK-AHEAD BIAS.
         
-        A swing high is a high surrounded by lower highs.
-        A swing low is a low surrounded by higher lows.
+        A swing high is a high that was highest in a lookback window.
+        A swing low is a low that was lowest in a lookback window.
+        
+        ✅ FIXED: Uses ONLY past data, no future candles required!
+        This ensures backtest and live results match perfectly.
         
         Args:
             df: DataFrame with OHLC data.
@@ -61,26 +64,30 @@ class MarketStructure:
         high = df['high']
         low = df['low']
         
-        # Detect swing highs
+        # Detect swing highs and lows
         swing_high = pd.Series(False, index=df.index)
         swing_low = pd.Series(False, index=df.index)
         
-        # FIXED: Use larger end buffer to ensure stability when new candles are added
-        # Without this, swings near the end of dataset change as new data arrives
-        end_buffer = self.swing_period * 3  # 3x buffer for stability
+        # ✅ NEW APPROACH: Check if current bar is highest/lowest in LOOKBACK window
+        # This uses ONLY historical data, no future candles needed!
+        # Увеличен lookback для большего количества swing patterns
+        lookback = self.swing_period * 4  # Было *2, теперь *4 = 20 свечей назад
         
-        for i in range(self.swing_period, len(df) - end_buffer):
-            # Check if current high is highest in window
-            window_start = i - self.swing_period
-            window_end = i + self.swing_period + 1
+        for i in range(lookback, len(df)):
+            # Lookback window (only past bars)
+            window_start = i - lookback
+            window_end = i + 1  # Include current bar
             
+            # Swing high: current high is highest in lookback window
             if high.iloc[i] == high.iloc[window_start:window_end].max():
-                if high.iloc[i] > high.iloc[i - 1] and high.iloc[i] > high.iloc[i + 1]:
+                # Additional check: high is higher than previous bar (confirming it's a peak)
+                if i > 0 and high.iloc[i] > high.iloc[i - 1]:
                     swing_high.iloc[i] = True
                     
-            # Check if current low is lowest in window
+            # Swing low: current low is lowest in lookback window
             if low.iloc[i] == low.iloc[window_start:window_end].min():
-                if low.iloc[i] < low.iloc[i - 1] and low.iloc[i] < low.iloc[i + 1]:
+                # Additional check: low is lower than previous bar (confirming it's a trough)
+                if i > 0 and low.iloc[i] < low.iloc[i - 1]:
                     swing_low.iloc[i] = True
                     
         swings['swing_high'] = swing_high

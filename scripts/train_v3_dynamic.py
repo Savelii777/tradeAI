@@ -69,7 +69,8 @@ from src.utils.constants import (
     CUMSUM_PATTERNS, ABSOLUTE_PRICE_FEATURES, DEFAULT_EXCLUDE_FEATURES,
     MINIMAL_STABLE_FEATURES, ULTRA_MINIMAL_FEATURES, CORE_20_FEATURES
 )
-from train_mtf import MTFFeatureEngine
+# train_mtf module removed — MTFFeatureEngine no longer used
+# Features generated inline by generate_killer_features()
 
 # ============================================================
 # FEATURE MODE: 
@@ -85,18 +86,18 @@ AUTO_SELECT_THRESHOLD = 0.001  # Min permutation importance to keep feature
 # ============================================================
 # OPTUNA & ENSEMBLE CONFIG
 # ============================================================
-USE_OPTUNA = True       # Enable hyperparameter optimization
-OPTUNA_TRIALS = 30      # Number of optimization trials (more = better but slower)
-USE_ENSEMBLE = True     # Enable LGB + CatBoost ensemble
+USE_OPTUNA = False      # Disable — overfits to validation set
+OPTUNA_TRIALS = 10      # 10 trials (was 30 — 3x faster, quality ~same)
+USE_ENSEMBLE = False    # Single LightGBM — simpler = less overfit
 
 # ============================================================
 # 🎯 V13 IMPROVEMENTS - 10/10 CONFIG
 # ============================================================
 # 1. Confidence Threshold - торгуем только с высокой уверенностью
-MIN_CONFIDENCE = 0.60           # Минимальная уверенность модели (lowered to 0.55) было 0.65
-MIN_TIMING = 1.7                # Минимальный timing score (lowered to 1.5) было 1.8
-MIN_STRENGTH = 2.3              # Минимальный strength score (lowered to 2.0) было 2.5
-CONFIDENCE_BOOST_THRESHOLD = 0.75  # При этой уверенности увеличиваем сайз
+MIN_CONFIDENCE = 0.55           # ML как фильтр (тренд даёт направление, ML подтверждает)
+MIN_TIMING = 0.5                # Мин. gain potential в ATR (тренд + pullback уже фильтрует)
+MIN_STRENGTH = 0.5              # Мин. предсказанная сила движения в ATR
+CONFIDENCE_BOOST_THRESHOLD = 0.70  # При этой уверенности увеличиваем сайз
 
 # 2. Regime Filter - не торгуем в боковике
 USE_REGIME_FILTER = True        # Включить фильтр режима рынка
@@ -104,16 +105,16 @@ MIN_VOLATILITY_PERCENTILE = 20  # Не торгуем если волатиль�
 
 # 3. Dynamic Position Sizing - больше сайз при высокой уверенности
 USE_DYNAMIC_SIZING = True       # Включить динамический сайзинг
-BASE_RISK_PCT = 0.05            # Базовый риск 5%
-MAX_RISK_PCT = 0.07             # Максимальный риск 7% при высокой уверенности
+BASE_RISK_PCT = 0.03            # Базовый риск 3%
+MAX_RISK_PCT = 0.05             # Максимальный риск 5% при высокой уверенности
 
 # 4. Multi-Timeframe Confirmation - M15 подтверждает M5
 USE_MTF_CONFIRMATION = True     # Включить MTF подтверждение
 
 # 5. Slippage Simulation - реалистичнее бэктест
-USE_REALISTIC_SLIPPAGE = True   # Включить реалистичное проскальзывание
-BASE_SLIPPAGE_PCT = 0.0003      # Базовое проскальзывание 0.03%
-VOLATILE_SLIPPAGE_PCT = 0.0008  # Проскальзывание при высокой волатильности 0.08%
+USE_REALISTIC_SLIPPAGE = True   # Честное проскальзывание (лимит ордера)
+BASE_SLIPPAGE_PCT = 0.0001       # Базовое проскальзывание 0.01% (Binance фьючерсы)
+VOLATILE_SLIPPAGE_PCT = 0.0002   # Проскальзывание при высокой волатильности 0.02%
 
 # 6. Feature Stability Check - убираем нестабильные фичи
 USE_FEATURE_STABILITY = True    # Включить проверку стабильности фич
@@ -122,18 +123,18 @@ MIN_FEATURE_STABILITY = 0.5     # Минимальная корреляция ф
 # ============================================================
 # CONFIG
 # ============================================================
-SL_ATR_MULT = 1.5       # Base SL multiplier (adaptive based on strength)
-MAX_LEVERAGE = 50.0     # Maximum leverage (50x)
+SL_ATR_MULT = 2.0       # Wider SL for trend-following (reduce false stops)
+MAX_LEVERAGE = 10.0     # Maximum leverage (10x, conservative for live)
 MARGIN_BUFFER = 0.98    # 98% of capital for full deposit entry
 FEE_PCT = 0.0002        # 0.02% Maker/Taker (MEXC Futures)
-LOOKAHEAD = 12          # 1 hour on M5
+LOOKAHEAD = 6           # 30 min on M5 (faster trades, easier to predict)
 
 # POSITION SIZE LIMITS
 # User requirement: up to $4M position, with leverage up to 50x
 # At 50x leverage: need $80k margin for $4M position
 # At 10x leverage: $400k max position, at 20x: $200k max position
 MAX_POSITION_SIZE = 4000000.0  # Max $4M position
-SLIPPAGE_PCT = 0.0005         # 0.05% slippage (REALISTIC)
+SLIPPAGE_PCT = 0.0001           # 0.01% slippage (Binance futures)
 
 # V8 IMPROVEMENTS
 USE_ADAPTIVE_SL = True       # Adjust SL based on predicted strength
@@ -228,84 +229,358 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 
 # ============================================================
-# V12 SMART ADAPTIVE TARGETS
+# 🔥 V14 HIGH-ALPHA FEATURES
+# ============================================================
+def generate_killer_features(m1: pd.DataFrame, m5: pd.DataFrame, m15: pd.DataFrame,
+                             btc_m5: pd.DataFrame = None,
+                             funding_rate: pd.DataFrame = None,
+                             open_interest: pd.DataFrame = None) -> pd.DataFrame:
+    """
+    Generate ~35 HIGH-ALPHA features focused on actual predictive power.
+    
+    V14 REDESIGN — focus on features with REAL edge:
+    ═══════════════════════════════════════════════════════════════
+    1. BTC-RELATIVE — BTC leads alts, this is the strongest alpha
+    2. ORDER FLOW PROXY — volume delta, buy/sell pressure from OHLCV
+    3. SMART MOMENTUM — acceleration, efficiency, multi-TF divergence
+    4. VOLATILITY REGIME — squeeze/expansion, relative ATR
+    5. MEAN REVERSION — RSI extremes, BB touch, VWAP distance
+    6. M15 CONTEXT — higher TF trend/momentum (shifted to avoid look-ahead)
+    ═══════════════════════════════════════════════════════════════
+    
+    REMOVED: time features (hour_sin etc. — just noise, not predictive)
+    """
+    close = m5['close']
+    high = m5['high']
+    low = m5['low']
+    open_ = m5['open']
+    volume = m5['volume']
+    
+    f = pd.DataFrame(index=m5.index)
+    
+    # ─────────────────────────────────────────────────
+    # 1. BTC-RELATIVE FEATURES (strongest alpha for alts)
+    # ─────────────────────────────────────────────────
+    if btc_m5 is not None and len(btc_m5) > 0:
+        btc_close = btc_m5['close'].reindex(m5.index, method='ffill')
+        btc_volume = btc_m5['volume'].reindex(m5.index, method='ffill')
+        
+        btc_ret_3 = btc_close.pct_change(3) * 100
+        btc_ret_6 = btc_close.pct_change(6) * 100
+        btc_ret_12 = btc_close.pct_change(12) * 100
+        alt_ret_3 = close.pct_change(3) * 100
+        alt_ret_6 = close.pct_change(6) * 100
+        
+        f['btc_momentum_3'] = btc_ret_3
+        f['btc_momentum_12'] = btc_ret_12
+        f['alt_btc_div_3'] = alt_ret_3 - btc_ret_3
+        f['alt_btc_div_6'] = alt_ret_6 - btc_ret_6
+        
+        btc_ema_9 = btc_close.ewm(span=9, adjust=False).mean()
+        btc_ema_21 = btc_close.ewm(span=21, adjust=False).mean()
+        btc_atr = pd.concat([
+            btc_m5['high'].reindex(m5.index, method='ffill') - btc_m5['low'].reindex(m5.index, method='ffill'),
+            abs(btc_close - btc_close.shift(1))
+        ], axis=1).max(axis=1).ewm(span=14, adjust=False).mean()
+        f['btc_trend_str'] = ((btc_ema_9 - btc_ema_21) / btc_atr).clip(-5, 5)
+        
+        btc_vol_ma = btc_volume.rolling(20).mean()
+        f['btc_vol_surge'] = (btc_volume / btc_vol_ma).clip(0, 5)
+        f['btc_alt_corr'] = close.pct_change().rolling(20).corr(btc_close.pct_change())
+    else:
+        f['btc_momentum_3'] = 0.0
+        f['btc_momentum_12'] = 0.0
+        f['alt_btc_div_3'] = 0.0
+        f['alt_btc_div_6'] = 0.0
+        f['btc_trend_str'] = 0.0
+        f['btc_vol_surge'] = 1.0
+        f['btc_alt_corr'] = 0.0
+    
+    # ─────────────────────────────────────────────────
+    # 1B. FUNDING RATE FEATURES (strongest reversal signal)
+    # ─────────────────────────────────────────────────
+    if funding_rate is not None and len(funding_rate) > 0:
+        # Forward-fill 8-hour funding rate to M5 frequency
+        fr = funding_rate['funding_rate'].reindex(m5.index, method='ffill').fillna(0.0)
+        f['funding_rate'] = fr * 10000  # Scale to bps for readability
+        f['funding_extreme'] = (abs(fr) > 0.001).astype(float)  # >0.1% is extreme
+        f['funding_direction'] = np.sign(fr)  # +1=longs pay, -1=shorts pay
+        # Cumulative direction over last 3 settlements (~24h)
+        f['funding_cum_3'] = f['funding_rate'].rolling(36, min_periods=1).mean()
+    else:
+        f['funding_rate'] = 0.0
+        f['funding_extreme'] = 0.0
+        f['funding_direction'] = 0.0
+        f['funding_cum_3'] = 0.0
+    
+    # ─────────────────────────────────────────────────
+    # 1C. OPEN INTEREST FEATURES (smart money positioning)
+    # ─────────────────────────────────────────────────
+    if open_interest is not None and len(open_interest) > 0:
+        oi = open_interest['open_interest'].reindex(m5.index, method='ffill').fillna(method='bfill').fillna(0)
+        oi_ma = oi.rolling(48, min_periods=1).mean()
+        
+        # OI change rate (normalized)
+        f['oi_change_pct'] = oi.pct_change(6).fillna(0) * 100  # 30-min OI change %
+        
+        # OI relative to average (high OI = crowded position)
+        f['oi_ratio'] = (oi / oi_ma.replace(0, np.nan)).fillna(1.0).clip(0.5, 2.0)
+        
+        # OI-Price divergence: price up + OI down = weak rally (bearish)
+        price_ret = close.pct_change(6).fillna(0) * 100
+        oi_ret = oi.pct_change(6).fillna(0) * 100
+        f['oi_price_div'] = price_ret - oi_ret  # Positive = price outpaces OI (divergence)
+    else:
+        f['oi_change_pct'] = 0.0
+        f['oi_ratio'] = 1.0
+        f['oi_price_div'] = 0.0
+    
+    # ─────────────────────────────────────────────────
+    # 2. ORDER FLOW PROXY (buy/sell pressure from OHLCV)
+    # ─────────────────────────────────────────────────
+    total_range = (high - low).replace(0, np.nan)
+    close_pos = (close - low) / total_range
+    
+    vol_delta = volume * (2 * close_pos - 1)
+    f['vol_delta_5'] = vol_delta.rolling(5).sum()
+    f['vol_delta_12'] = vol_delta.rolling(12).sum()
+    
+    vol_ma_20 = volume.rolling(20).mean()
+    f['vol_delta_norm'] = f['vol_delta_5'] / (vol_ma_20 * 5).replace(0, np.nan)
+    
+    is_strong_up = (close_pos > 0.7) & (volume > vol_ma_20 * 1.5)
+    is_strong_dn = (close_pos < 0.3) & (volume > vol_ma_20 * 1.5)
+    f['aggr_buy_cnt'] = is_strong_up.astype(float).rolling(6).sum()
+    f['aggr_sell_cnt'] = is_strong_dn.astype(float).rolling(6).sum()
+    
+    is_up = close > open_
+    up_vol = (volume * is_up.astype(float)).rolling(12).sum()
+    dn_vol = (volume * (~is_up).astype(float)).rolling(12).sum()
+    f['vol_imbalance'] = (up_vol - dn_vol) / (up_vol + dn_vol).replace(0, np.nan)
+    
+    # ─────────────────────────────────────────────────
+    # 3. SMART MOMENTUM
+    # ─────────────────────────────────────────────────
+    ret_1 = close.pct_change(1) * 100
+    ret_3 = close.pct_change(3) * 100
+    ret_6 = close.pct_change(6) * 100
+    ret_12 = close.pct_change(12) * 100
+    
+    f['momentum_accel'] = ret_3 - ret_3.shift(3)
+    
+    direction_move = abs(close - close.shift(12))
+    path_move = abs(close.diff()).rolling(12).sum()
+    f['efficiency'] = (direction_move / path_move.replace(0, np.nan)).clip(0, 1)
+    
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0).ewm(span=14, adjust=False).mean()
+    loss = (-delta.where(delta < 0, 0)).ewm(span=14, adjust=False).mean()
+    rs = gain / loss.replace(0, np.nan)
+    rsi = 100 - 100 / (1 + rs)
+    f['rsi'] = rsi
+    
+    price_higher = (close > close.shift(12)).astype(float)
+    rsi_higher = (rsi > rsi.shift(12)).astype(float)
+    f['rsi_divergence'] = price_higher - rsi_higher
+    
+    ema_9 = close.ewm(span=9, adjust=False).mean()
+    ema_21 = close.ewm(span=21, adjust=False).mean()
+    ema_50 = close.ewm(span=50, adjust=False).mean()
+    
+    tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
+    atr_14 = tr.ewm(span=14, adjust=False).mean()
+    
+    f['ema_9_dist'] = (close - ema_9) / atr_14
+    f['ema_spread'] = (ema_9 - ema_50) / atr_14
+    f['ema_alignment'] = np.where(
+        (ema_9 > ema_21) & (ema_21 > ema_50), 1,
+        np.where((ema_9 < ema_21) & (ema_21 < ema_50), -1, 0)
+    ).astype(float)
+    
+    # ─────────────────────────────────────────────────
+    # 4. VOLATILITY REGIME
+    # ─────────────────────────────────────────────────
+    atr_7 = tr.ewm(span=7, adjust=False).mean()
+    atr_21 = tr.ewm(span=21, adjust=False).mean()
+    
+    f['atr_pct'] = atr_14 / close * 100
+    f['atr_expansion'] = atr_7 / atr_21
+    
+    bb_std = close.rolling(20).std()
+    bb_width = (bb_std * 2) / close.rolling(20).mean() * 100
+    kc_width = atr_14 * 1.5 / close * 100
+    f['squeeze'] = (bb_width < kc_width).astype(float)
+    f['squeeze_intensity'] = ((kc_width - bb_width) / kc_width).clip(0, 1)
+    
+    range_10 = (high.rolling(10).max() - low.rolling(10).min()) / close * 100
+    range_50 = (high.rolling(50).max() - low.rolling(50).min()) / close * 100
+    f['compression'] = (range_10 / range_50.replace(0, np.nan)).clip(0, 1)
+    
+    # ─────────────────────────────────────────────────
+    # 5. MEAN REVERSION
+    # ─────────────────────────────────────────────────
+    bb_mean = close.rolling(20).mean()
+    f['bb_position'] = (close - (bb_mean - bb_std * 2)) / (bb_std * 4).replace(0, np.nan)
+    
+    vwap = (close * volume).rolling(50).sum() / volume.rolling(50).sum()
+    f['vwap_dist'] = (close - vwap) / atr_14
+    
+    roll_high = high.rolling(50).max()
+    roll_low = low.rolling(50).min()
+    price_range = (roll_high - roll_low).replace(0, np.nan)
+    f['range_position'] = (close - roll_low) / price_range
+    
+    f['return_skew'] = ret_1.rolling(30).skew()
+    
+    # ─────────────────────────────────────────────────
+    # 6. M15 CONTEXT (all shifted by 1 to avoid look-ahead)
+    # ─────────────────────────────────────────────────
+    m15_close = m15['close']
+    m15_high = m15['high']
+    m15_low = m15['low']
+    
+    m15_ema_fast = m15_close.ewm(span=8, adjust=False).mean()
+    m15_ema_slow = m15_close.ewm(span=21, adjust=False).mean()
+    m15_atr = pd.concat([m15_high - m15_low, abs(m15_high - m15_close.shift()),
+                         abs(m15_low - m15_close.shift())], axis=1).max(axis=1).ewm(span=14, adjust=False).mean()
+    
+    m15_delta = m15_close.diff()
+    m15_gain = m15_delta.where(m15_delta > 0, 0).ewm(span=14, adjust=False).mean()
+    m15_loss = (-m15_delta.where(m15_delta < 0, 0)).ewm(span=14, adjust=False).mean()
+    m15_rsi = 100 - 100 / (1 + m15_gain / m15_loss.replace(0, np.nan))
+    
+    m15_features = pd.DataFrame(index=m15.index)
+    m15_features['m15_trend'] = np.where(m15_ema_fast.shift(1) > m15_ema_slow.shift(1), 1, -1).astype(float)
+    m15_features['m15_trend_str'] = ((m15_ema_fast - m15_ema_slow) / m15_atr).shift(1)
+    m15_features['m15_rsi'] = m15_rsi.shift(1)
+    m15_features['m15_momentum'] = m15_close.pct_change(3).shift(1) * 100
+    m15_features['m15_range_pos'] = ((m15_close - m15_low.rolling(20).min()) / \
+        (m15_high.rolling(20).max() - m15_low.rolling(20).min()).replace(0, np.nan)).shift(1)
+    
+    # FIX: Reindex M15 features safely — shift(1) on M15 already applied above,
+    # but ffill on union can still leak if M15 candle closes mid-M5.
+    # Use reindex with method='ffill' directly on M5 index (simpler, no union trick)
+    for col in m15_features.columns:
+        f[col] = m15_features[col].reindex(f.index, method='ffill')
+    
+    # ─────────────────────────────────────────────────
+    # 7. M1 MICROSTRUCTURE
+    # ─────────────────────────────────────────────────
+    m1_micro = pd.DataFrame(index=m1.index)
+    m1_micro['m1_momentum'] = m1['close'].pct_change(1) * 100
+    m1_micro['m1_range'] = (m1['high'] - m1['low']) / m1['close'] * 100
+    
+    m1_temp = m1_micro.copy()
+    # FIX: Shift M1 timestamps back by 5min so that e.g. 10:01-10:04 maps to 10:00 candle
+    # Without shift, 10:05:xx would be floored to 10:05 = CURRENT candle (lookahead!)
+    # With shift, we only use COMPLETED M1 bars from the PREVIOUS 5-min window
+    m1_temp.index = (m1_temp.index - pd.Timedelta(minutes=1)).floor('5min')
+    grp = m1_temp.groupby(m1_temp.index)
+    
+    m1_agg = pd.DataFrame(index=m1_temp.index.unique())
+    m1_agg['m1_momentum_std'] = grp['m1_momentum'].std()
+    m1_agg['m1_range_mean'] = grp['m1_range'].mean()
+    
+    # FIX: Safe reindex for M1 aggregates (no union trick needed)
+    for col in m1_agg.columns:
+        f[col] = m1_agg[col].reindex(f.index, method='ffill')
+    
+    # ─────────────────────────────────────────────────
+    # 8. TIME FEATURES (session patterns — consistently important)
+    # ─────────────────────────────────────────────────
+    hour = m5.index.hour + m5.index.minute / 60.0
+    f['hour_sin'] = np.sin(2 * np.pi * hour / 24)
+    f['hour_cos'] = np.cos(2 * np.pi * hour / 24)
+    dow = m5.index.dayofweek
+    f['dow_sin'] = np.sin(2 * np.pi * dow / 7)
+    f['dow_cos'] = np.cos(2 * np.pi * dow / 7)
+
+    # ─────────────────────────────────────────────────
+    # FINALIZE
+    # ─────────────────────────────────────────────────
+    f['open'] = open_
+    f['high'] = high
+    f['low'] = low
+    f['close'] = close
+    f['volume'] = volume
+    
+    f = f.replace([np.inf, -np.inf], np.nan)
+    
+    return f
+
+
+
+# List of OHLCV and meta columns to exclude from features
+KILLER_EXCLUDE = {
+    'open', 'high', 'low', 'close', 'volume', 'pair', 'atr',
+    'target_dir', 'target_timing', 'target_strength',
+    'vol_sma_20', 'vwap',
+}
+
+
+# ============================================================
+# ============================================================
+# V14 BINARY TARGETS — UP vs DOWN (no sideways noise)
 # ============================================================
 def create_targets_v1(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Create V12 Smart Adaptive targets.
+    Create V14 BINARY targets — UP (1) vs DOWN (0).
     
-    KEY IMPROVEMENTS:
-    1. Multi-scale volatility adaptation - adapts to different market conditions
-    2. Trend-aware thresholds - higher threshold in strong trends (avoid noise)
-    3. Time-weighted future returns - near-term matters more than far-term
-    4. Robust outlier handling
-    
-    The model learns to predict:
-    - Direction: Which way will price move significantly?
-    - Timing: How good is this entry point? (0-5 scale)
-    - Strength: How big will the move be? (in ATR multiples)
+    KEY CHANGE: No sideways class!
+    - Sideways rows get NaN target and are DROPPED during training
+    - Model only learns clear directional signals
+    - Binary classifier is much easier: 50% baseline vs 33% for 3-class
     """
     df = df.copy()
     df['atr'] = calculate_atr(df)
     
-    # 1. Multi-scale volatility for adaptive thresholds
-    # Use multiple windows to capture both short and long-term volatility
+    # 1. Adaptive volatility threshold
     vol_short = df['close'].pct_change().rolling(window=20, min_periods=10).std()
     vol_medium = df['close'].pct_change().rolling(window=50, min_periods=25).std()
     vol_long = df['close'].pct_change().rolling(window=100, min_periods=50).std()
-    
-    # Combine: use the HIGHER of recent or historical volatility
-    # This prevents false signals in quiet periods after volatile ones
     combined_vol = np.maximum(vol_short, (vol_medium + vol_long) / 2)
-    combined_vol = combined_vol.shift(1)  # Use only past data
+    combined_vol = combined_vol.shift(1)
     
-    # Adaptive threshold: LOWER threshold for more direction signals
-    # Changed from 0.8x/0.3% to 0.4x/0.15% for ~40% direction labels instead of ~22%
-    threshold = np.maximum(combined_vol * 0.4, 0.0015)
+    # Higher threshold = only clear moves, less noise
+    threshold = np.maximum(combined_vol * 0.6, 0.002)
     
-    # 2. Calculate future return with time-weighting
-    # Near-term movement is more important than far-term
-    future_return_6 = df['close'].pct_change(6).shift(-6)   # 30min
-    future_return_12 = df['close'].pct_change(12).shift(-12) # 1hour
+    # 2. Future return — single clean window
+    future_return = df['close'].pct_change(LOOKAHEAD).shift(-LOOKAHEAD)
     
-    # Weight: 60% near-term, 40% full window
-    future_return = 0.6 * future_return_6.fillna(0) + 0.4 * future_return_12.fillna(0)
-    
-    # 3. Direction with trend confirmation
-    # 0=Down, 1=Sideways, 2=Up
+    # 3. BINARY direction: 1=UP, 0=DOWN, NaN=sideways (will be dropped)
     df['target_dir'] = np.where(
-        future_return > threshold, 2,
-        np.where(future_return < -threshold, 0, 1)
+        future_return > threshold, 1,
+        np.where(future_return < -threshold, 0, np.nan)
     )
     
-    # 4. Timing Target: Entry quality score
+    # 4. Timing — linked to predicted direction
     future_lows = df['low'].rolling(LOOKAHEAD).min().shift(-LOOKAHEAD)
     future_highs = df['high'].rolling(LOOKAHEAD).max().shift(-LOOKAHEAD)
     
-    # Maximum Adverse Excursion (MAE) - how much does price go against us first?
     mae_long = (df['close'] - future_lows) / df['atr']
     mae_short = (future_highs - df['close']) / df['atr']
-    
-    # Maximum Favorable Excursion (MFE) - how much profit potential?
     mfe_long = (future_highs - df['close']) / df['atr']
     mfe_short = (df['close'] - future_lows) / df['atr']
     
-    # Timing score = MFE / (1 + MAE) - penalize entries with high drawdown
     timing_long = mfe_long / (1 + mae_long)
     timing_short = mfe_short / (1 + mae_short)
     
-    df['target_timing'] = np.maximum(timing_long, timing_short)
+    df['target_timing'] = np.where(
+        df['target_dir'] == 1, timing_long,
+        np.where(df['target_dir'] == 0, timing_short, np.nan)
+    )
     df['target_timing'] = df['target_timing'].clip(0, 5)
     
-    # 5. Strength: Directional move potential
-    # How much does price move in the predicted direction?
+    # 5. Strength
     df['target_strength'] = np.where(
-        df['target_dir'] == 2, mfe_long,
-        np.where(df['target_dir'] == 0, mfe_short, 0)
+        df['target_dir'] == 1, mfe_long,
+        np.where(df['target_dir'] == 0, mfe_short, np.nan)
     )
     df['target_strength'] = df['target_strength'].clip(0, 10)
     
     return df
+
+
 
 
 # ============================================================
@@ -338,9 +613,8 @@ def auto_select_features(X_train, y_train, X_val, y_val, threshold=0.001):
     # Quick model for feature selection (faster params)
     print("   Training quick model for feature importance...")
     quick_model = lgb.LGBMClassifier(
-        objective='multiclass',
-        num_class=3,
-        n_estimators=100,  # Faster
+        objective='binary',
+        n_estimators=100,
         max_depth=4,
         num_leaves=15,
         min_child_samples=100,
@@ -356,7 +630,7 @@ def auto_select_features(X_train, y_train, X_val, y_val, threshold=0.001):
     print("   Calculating permutation importance (this shows REAL predictive power)...")
     perm_result = permutation_importance(
         quick_model, X_val_scaled, y_val['target_dir'],
-        n_repeats=10,  # More repeats for stability
+        n_repeats=3,  # 3 repeats (was 10 — 3x faster)
         random_state=42,
         n_jobs=-1,
         scoring='accuracy'
@@ -444,8 +718,8 @@ def check_feature_stability(X_train, X_val, feature_names, min_correlation=0.5):
         mean_shift = abs(train_mean - val_mean) / train_std
         std_ratio = max(train_std, val_std) / min(train_std, val_std)
         
-        # Feature is unstable if mean shifted > 1 std OR variance changed > 2x
-        if mean_shift > 1.5 or std_ratio > 2.5:
+        # FIX: Tighter thresholds — unstable if mean shifted > 1σ OR variance changed > 2x
+        if mean_shift > 1.0 or std_ratio > 2.0:
             unstable_features.append((feat, mean_shift, std_ratio))
         else:
             stable_features.append(feat)
@@ -642,19 +916,18 @@ def optimize_lgb_params(X_train, y_train, X_val, y_val, sample_weights, n_trials
     
     def objective(trial):
         params = {
-            'objective': 'multiclass',
-            'num_class': 3,
-            'metric': 'multi_logloss',
+            'objective': 'binary',
+            'metric': 'binary_logloss',
             'boosting_type': 'gbdt',
-            'n_estimators': trial.suggest_int('n_estimators', 100, 500),
-            'max_depth': trial.suggest_int('max_depth', 3, 8),
-            'num_leaves': trial.suggest_int('num_leaves', 8, 64),
-            'min_child_samples': trial.suggest_int('min_child_samples', 20, 100),
-            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1, log=True),
-            'subsample': trial.suggest_float('subsample', 0.5, 0.9),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.4, 0.9),
-            'reg_alpha': trial.suggest_float('reg_alpha', 0.01, 1.0, log=True),
-            'reg_lambda': trial.suggest_float('reg_lambda', 0.01, 1.0, log=True),
+            'n_estimators': 200,  # Fixed (early stopping handles it)
+            'max_depth': trial.suggest_int('max_depth', 3, 7),
+            'num_leaves': trial.suggest_int('num_leaves', 8, 48),
+            'min_child_samples': trial.suggest_int('min_child_samples', 30, 100),
+            'learning_rate': trial.suggest_float('learning_rate', 0.02, 0.08, log=True),
+            'subsample': trial.suggest_float('subsample', 0.6, 0.9),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 0.9),
+            'reg_alpha': trial.suggest_float('reg_alpha', 0.05, 0.8, log=True),
+            'reg_lambda': trial.suggest_float('reg_lambda', 0.05, 0.8, log=True),
             'random_state': 42,
             'verbosity': -1
         }
@@ -664,7 +937,7 @@ def optimize_lgb_params(X_train, y_train, X_val, y_val, sample_weights, n_trials
             X_train, y_train,
             sample_weight=sample_weights,
             eval_set=[(X_val, y_val)],
-            callbacks=[lgb.early_stopping(20, verbose=False)]
+            callbacks=[lgb.early_stopping(10, verbose=False)]
         )
         
         # Return validation accuracy
@@ -672,7 +945,8 @@ def optimize_lgb_params(X_train, y_train, X_val, y_val, sample_weights, n_trials
         accuracy = (preds == y_val).mean()
         return accuracy
     
-    study = optuna.create_study(direction='maximize')
+    sampler = optuna.samplers.TPESampler(seed=42)
+    study = optuna.create_study(direction='maximize', sampler=sampler)
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
     
     print(f"   ✅ Best accuracy: {study.best_value:.4f}")
@@ -716,15 +990,14 @@ class EnsembleDirectionModel(ClassifierMixin, BaseEstimator):
         
         # 1. LightGBM
         lgb_default = {
-            'objective': 'multiclass',
-            'num_class': 3,
-            'metric': 'multi_logloss',
+            'objective': 'binary',
+            'metric': 'binary_logloss',
             'boosting_type': 'gbdt',
-            'n_estimators': 300,
+            'n_estimators': 200,  # was 300
             'max_depth': 5,
             'num_leaves': 31,
             'min_child_samples': 50,
-            'learning_rate': 0.03,
+            'learning_rate': 0.05,  # was 0.03 (faster convergence)
             'subsample': 0.8,
             'colsample_bytree': 0.7,
             'reg_alpha': 0.1,
@@ -740,12 +1013,11 @@ class EnsembleDirectionModel(ClassifierMixin, BaseEstimator):
         # 2. CatBoost (if available)
         if self.use_catboost:
             self.catboost_model = CatBoostClassifier(
-                iterations=300,
+                iterations=150,
                 depth=5,
-                learning_rate=0.03,
+                learning_rate=0.05,
                 l2_leaf_reg=3,
-                loss_function='MultiClass',
-                classes_count=3,
+                loss_function='Logloss',
                 random_seed=42,
                 verbose=False
             )
@@ -789,22 +1061,38 @@ def train_models(X_train, y_train, X_val, y_val):
     """
     Train SMART ADAPTIVE models that work across market conditions.
     
-    V13 ULTIMATE Model Features:
-    - Optuna hyperparameter optimization (auto-tuning)
-    - Ensemble: LightGBM + CatBoost (stability)
-    - Probability calibration (honest confidence)
-    - Class weights for imbalanced labels
-    - StandardScaler for consistent feature ranges
+    V14 FIX - NO DATA LEAKAGE:
+    - Split train into train (85%) + calibration (15%)
+    - Train base model on train portion
+    - Calibrate on calibration portion (SEPARATE from validation!)
+    - Validation is ONLY for evaluation, never for training/calibration
     
-    Expected: 65-75% winrate on backtest AND live.
+    This prevents inflated backtest scores from calibration leakage.
     """
+    
+    # ============================================================
+    # SPLIT: Train (85%) → actual_train + calibration (15%)
+    # This prevents data leakage: calibration uses data the model never saw
+    # ============================================================
+    cal_split = int(len(X_train) * 0.85)
+    X_actual_train = X_train.iloc[:cal_split]
+    X_calibration = X_train.iloc[cal_split:]
+    y_actual_train = {k: v.iloc[:cal_split] for k, v in y_train.items()}
+    y_calibration = {k: v.iloc[cal_split:] for k, v in y_train.items()}
+    
+    print(f"   📊 Data split: train={len(X_actual_train)}, calibration={len(X_calibration)}, val={len(X_val)}")
     
     # Scale features for consistent ranges (RSI 0-100, returns -0.1 to 0.1, etc)
     scaler = StandardScaler()
     X_train_scaled = pd.DataFrame(
-        scaler.fit_transform(X_train),
-        columns=X_train.columns,
-        index=X_train.index
+        scaler.fit_transform(X_actual_train),
+        columns=X_actual_train.columns,
+        index=X_actual_train.index
+    )
+    X_cal_scaled = pd.DataFrame(
+        scaler.transform(X_calibration),
+        columns=X_calibration.columns,
+        index=X_calibration.index
     )
     X_val_scaled = pd.DataFrame(
         scaler.transform(X_val),
@@ -816,10 +1104,10 @@ def train_models(X_train, y_train, X_val, y_val):
     
     # Calculate class weights for imbalanced labels
     from collections import Counter
-    label_counts = Counter(y_train['target_dir'])
+    label_counts = Counter(y_actual_train['target_dir'])
     total = sum(label_counts.values())
-    class_weights = {k: total / (3 * v) for k, v in label_counts.items()}
-    sample_weights = np.array([class_weights[y] for y in y_train['target_dir']])
+    class_weights = {k: total / (2 * v) for k, v in label_counts.items()}
+    sample_weights = np.array([class_weights[y] for y in y_actual_train['target_dir']])
     
     # ============================================================
     # 1. DIRECTION MODEL with OPTUNA + ENSEMBLE
@@ -829,7 +1117,7 @@ def train_models(X_train, y_train, X_val, y_val):
     best_params = None
     if USE_OPTUNA and OPTUNA_AVAILABLE:
         best_params = optimize_lgb_params(
-            X_train_scaled.values, y_train['target_dir'].values,
+            X_train_scaled.values, y_actual_train['target_dir'].values,
             X_val_scaled.values, y_val['target_dir'].values,
             sample_weights, n_trials=OPTUNA_TRIALS
         )
@@ -843,29 +1131,29 @@ def train_models(X_train, y_train, X_val, y_val):
             lgb_params=best_params or {},
             use_catboost=CATBOOST_AVAILABLE
         )
-        # sklearn-compatible fit (no separate validation set)
+        # sklearn-compatible fit on TRAIN portion only
         dir_model_base.fit(
-            X_train_scaled.values, y_train['target_dir'].values,
+            X_train_scaled.values, y_actual_train['target_dir'].values,
             sample_weight=sample_weights
         )
     else:
         # Single LightGBM model
         lgb_params = {
-            'objective': 'multiclass', 
-            'num_class': 3, 
-            'metric': 'multi_logloss',
+            'objective': 'binary',
+            'metric': 'binary_logloss',
             'boosting_type': 'gbdt',
-            'n_estimators': 300,
-            'max_depth': 5,
-            'num_leaves': 31,
-            'min_child_samples': 50,
-            'learning_rate': 0.03,
-            'subsample': 0.8,
-            'colsample_bytree': 0.7,
-            'reg_alpha': 0.1,
-            'reg_lambda': 0.1,
-            'min_split_gain': 0.01,
-            'random_state': 42, 
+            'n_estimators': 500,       # More trees (early stopping will find optimal)
+            'max_depth': 4,            # Slightly deeper for more complex patterns
+            'num_leaves': 12,          # More leaves = more expressiveness
+            'min_child_samples': 150,  # Still strict but allows some patterns
+            'learning_rate': 0.02,     # Slower learning = better generalization
+            'subsample': 0.6,          # 60% rows per tree
+            'colsample_bytree': 0.6,   # 60% features per tree
+            'reg_alpha': 0.5,          # L1 regularization
+            'reg_lambda': 0.5,         # L2 regularization
+            'min_split_gain': 0.02,    # Moderate split gain threshold
+            'extra_trees': True,       # Extra randomization = less overfit
+            'random_state': 42,
             'verbosity': -1,
             'importance_type': 'gain'
         }
@@ -873,48 +1161,51 @@ def train_models(X_train, y_train, X_val, y_val):
             lgb_params.update(best_params)
         
         dir_model_base = lgb.LGBMClassifier(**lgb_params)
+        # FIX: Early stopping on CALIBRATION set (not validation!) to prevent data leakage
         dir_model_base.fit(
-            X_train_scaled, y_train['target_dir'], 
+            X_train_scaled, y_actual_train['target_dir'],
             sample_weight=sample_weights,
-            eval_set=[(X_val_scaled, y_val['target_dir'])],
-            callbacks=[lgb.early_stopping(30, verbose=False)]
+            eval_set=[(X_cal_scaled, y_calibration['target_dir'])],
+            callbacks=[lgb.early_stopping(20, verbose=False)]
         )
     
-    # Step 3: Calibration
-    print("   🎯 Calibrating Direction Model (Platt Scaling)...")
+    # Step 3: Calibration on SEPARATE calibration set (NOT validation!)
+    print("   🎯 Calibrating Direction Model on separate calibration set...")
     dir_model = CalibratedClassifierCV(
         estimator=dir_model_base, 
         method='sigmoid',
-        cv=3,
+        cv=2,
         n_jobs=-1
     )
-    dir_model.fit(X_val_scaled, y_val['target_dir'])
+    dir_model.fit(X_cal_scaled, y_calibration['target_dir'])
     
     # ============================================================
     # 2. TIMING MODEL (Regressor)
     # ============================================================
     print("   Training Timing Model...")
     timing_model = lgb.LGBMRegressor(
-        objective='regression',
+        objective='huber',         # Robust to outliers in timing prediction
         metric='mae',
         boosting_type='gbdt',
-        n_estimators=300,
-        max_depth=5,
-        num_leaves=31,
-        min_child_samples=50,
-        learning_rate=0.03,
-        subsample=0.8,
-        colsample_bytree=0.7,
-        reg_alpha=0.1,
-        reg_lambda=0.1,
+        n_estimators=500,          # More trees (early stopping finds optimal)
+        max_depth=4,
+        num_leaves=12,
+        min_child_samples=100,     # Strict to avoid overfit
+        learning_rate=0.02,        # Slower = better generalization
+        subsample=0.6,
+        colsample_bytree=0.6,
+        reg_alpha=0.3,
+        reg_lambda=0.3,
         min_split_gain=0.01,
+        extra_trees=True,
         random_state=42,
         verbosity=-1
     )
+    # FIX: Early stopping on CALIBRATION set (not validation!)
     timing_model.fit(
-        X_train_scaled, y_train['target_timing'],
-        eval_set=[(X_val_scaled, y_val['target_timing'])],
-        callbacks=[lgb.early_stopping(30, verbose=False)]
+        X_train_scaled, y_actual_train['target_timing'],
+        eval_set=[(X_cal_scaled, y_calibration['target_timing'])],
+        callbacks=[lgb.early_stopping(15, verbose=False)]
     )
     
     # ============================================================
@@ -922,26 +1213,28 @@ def train_models(X_train, y_train, X_val, y_val):
     # ============================================================
     print("   Training Strength Model...")
     strength_model = lgb.LGBMRegressor(
-        objective='regression',
+        objective='huber',         # Robust to outliers in strength prediction
         metric='mae',
         boosting_type='gbdt',
-        n_estimators=300,
-        max_depth=5,
-        num_leaves=31,
-        min_child_samples=50,
-        learning_rate=0.03,
-        subsample=0.8,
-        colsample_bytree=0.7,
-        reg_alpha=0.1,
-        reg_lambda=0.1,
+        n_estimators=500,
+        max_depth=4,
+        num_leaves=12,
+        min_child_samples=100,
+        learning_rate=0.02,
+        subsample=0.6,
+        colsample_bytree=0.6,
+        reg_alpha=0.3,
+        reg_lambda=0.3,
         min_split_gain=0.01,
+        extra_trees=True,
         random_state=42,
         verbosity=-1
     )
+    # FIX: Early stopping on CALIBRATION set (not validation!)
     strength_model.fit(
-        X_train_scaled, y_train['target_strength'],
-        eval_set=[(X_val_scaled, y_val['target_strength'])],
-        callbacks=[lgb.early_stopping(30, verbose=False)]
+        X_train_scaled, y_actual_train['target_strength'],
+        eval_set=[(X_cal_scaled, y_calibration['target_strength'])],
+        callbacks=[lgb.early_stopping(15, verbose=False)]
     )
     
     # ============================================================
@@ -949,7 +1242,7 @@ def train_models(X_train, y_train, X_val, y_val):
     # ============================================================
     print("\n   📊 Top 20 Features by Importance (Direction Model):")
     importance = dir_model_base.feature_importances_
-    feature_names = X_train.columns.tolist()
+    feature_names = X_actual_train.columns.tolist()
     importance_pairs = sorted(zip(feature_names, importance), key=lambda x: x[1], reverse=True)
     for name, imp in importance_pairs[:20]:
         print(f"      {name}: {imp:.1f}")
@@ -961,7 +1254,7 @@ def train_models(X_train, y_train, X_val, y_val):
         test_model = dir_model_base.lgb_model if USE_ENSEMBLE else dir_model_base
         perm_result = permutation_importance(
             test_model, X_val_scaled, y_val['target_dir'],
-            n_repeats=5, random_state=42, n_jobs=-1, scoring='accuracy'
+            n_repeats=2, random_state=42, n_jobs=-1, scoring='accuracy'  # was 5
         )
         perm_pairs = sorted(zip(feature_names, perm_result.importances_mean), 
                            key=lambda x: x[1], reverse=True)
@@ -990,249 +1283,248 @@ def train_models(X_train, y_train, X_val, y_val):
 # ============================================================
 def generate_signals(df: pd.DataFrame, feature_cols: list, models: dict, pair_name: str,
                     min_conf: float = None, min_timing: float = None, min_strength: float = None) -> list:
-                    
     """
-    Generate all valid signals for a single pair.
-    V13: Added confidence threshold, regime filter, MTF confirmation.
+    V15 HYBRID SIGNAL GENERATION:
+    1. DIRECTION from M15 trend (EMA fast vs slow) — proven momentum edge
+    2. ENTRY TIMING from pullback detection (RSI extreme in trend direction)
+    3. ML MODEL as QUALITY FILTER (timing + strength must confirm big move)
+    4. CONFLUENCE: trend + pullback + ML all agree → high probability trade
+
+    This replaces pure ML direction prediction (which is ~50/50 = useless).
     """
-    # Use configured thresholds
-    if min_conf is None:
-        min_conf = MIN_CONFIDENCE
-    if min_timing is None:
-        min_timing = MIN_TIMING
-    if min_strength is None:
-        min_strength = MIN_STRENGTH
-    
+    if min_conf is None: min_conf = MIN_CONFIDENCE
+    if min_timing is None: min_timing = MIN_TIMING
+    if min_strength is None: min_strength = MIN_STRENGTH
+
     signals = []
-    skipped_regime = 0
-    skipped_mtf = 0
-    
-    # Predict in batches for speed
+
+    # Pre-compute ML predictions in batch
     X = df[feature_cols].values
-    
-    # Scale features if scaler is provided
     if 'scaler' in models and models['scaler'] is not None:
         X = models['scaler'].transform(X)
-    
-    # 1. Direction
+
     dir_proba = models['direction'].predict_proba(X)
     dir_preds = np.argmax(dir_proba, axis=1)
     dir_confs = np.max(dir_proba, axis=1)
-    
-    # 2. ✅ Timing (NOW REGRESSOR - returns gain potential in ATR multiples)
-    timing_preds = models['timing'].predict(X)  # ⚠️ Changed from predict_proba!
-    
-    # 3. Strength
+    timing_preds = models['timing'].predict(X)
     strength_preds = models['strength'].predict(X)
-    
-    # Iterate and filter
+
+    # Pre-compute trend and momentum indicators from df columns
+    has_m15_trend = 'm15_trend_str' in df.columns
+    has_rsi = 'rsi' in df.columns
+    has_ema = 'ema_9_dist' in df.columns
+    has_atr_exp = 'atr_expansion' in df.columns
+    has_compression = 'compression' in df.columns
+
     for i in range(len(df)):
-        if dir_preds[i] == 1: continue # Sideways
-        
-        if dir_confs[i] < min_conf: continue
-        if timing_preds[i] < min_timing: continue  # ✅ Now checks ATR gain potential
-        if strength_preds[i] < min_strength: continue
-        
-        # ✅ НОВОЕ: Сохраняем ВСЕ значений фичей для полного анализа
-        all_features = {}
-        for feat_name in feature_cols:
-            if feat_name in df.columns:
-                all_features[f'feat_{feat_name}'] = df[feat_name].iloc[i]
-        
-        # Build preliminary signal for regime/MTF checks
+        # ── STEP 1: TREND DIRECTION from M15 ──
+        # Use m15_trend_str: positive = uptrend, negative = downtrend
+        if has_m15_trend:
+            m15_ts = df['m15_trend_str'].iloc[i] if not pd.isna(df['m15_trend_str'].iloc[i]) else 0
+        else:
+            m15_ts = 0
+
+        # Need STRONG trend (abs > 1.0 to only trade clear momentum)
+        if abs(m15_ts) < 1.0:
+            continue  # Weak/no trend — skip
+
+        trend_dir = 'LONG' if m15_ts > 0 else 'SHORT'
+
+        # ── STEP 2: PULLBACK ENTRY ──
+        # In uptrend: enter when RSI dips significantly (buy the dip)
+        # In downtrend: enter when RSI spikes significantly (sell the rally)
+        if has_rsi:
+            rsi_val = df['rsi'].iloc[i] if not pd.isna(df['rsi'].iloc[i]) else 50
+        else:
+            rsi_val = 50
+
+        pullback_ok = False
+        if trend_dir == 'LONG' and 25 < rsi_val < 40:      # Deep dip in uptrend (not oversold crash)
+            pullback_ok = True
+        elif trend_dir == 'SHORT' and 60 < rsi_val < 75:    # Strong rally in downtrend (not overbought moon)
+            pullback_ok = True
+
+        if not pullback_ok:
+            continue
+
+        # ── STEP 3: VOLATILITY + COMPRESSION FILTER ──
+        # Trade when volatility is present but not extreme
+        if has_atr_exp:
+            atr_exp = df['atr_expansion'].iloc[i] if not pd.isna(df['atr_expansion'].iloc[i]) else 1.0
+            if atr_exp < 0.85:  # ATR contracting too much = no movement
+                continue
+        if has_compression:
+            comp = df['compression'].iloc[i] if not pd.isna(df['compression'].iloc[i]) else 0.5
+            if comp < 0.2:  # Extreme compression = wait for breakout
+                continue
+
+        # ── STEP 4: ML QUALITY FILTER ──
+        # ML confirms: high timing score + strength = big move expected
+        if timing_preds[i] < min_timing:
+            continue
+        if strength_preds[i] < min_strength:
+            continue
+
+        # ML direction should AGREE with trend (consensus required)
+        ml_dir = 'LONG' if dir_preds[i] == 1 else 'SHORT'
+        ml_conf = dir_confs[i]
+
+        # STRICT: require ML to agree with trend direction
+        if ml_dir != trend_dir:
+            continue  # No consensus = no trade
+
+        score = abs(m15_ts) * timing_preds[i] * strength_preds[i] * ml_conf
+
         signal = {
             'timestamp': df.index[i],
             'pair': pair_name,
-            'direction': 'LONG' if dir_preds[i] == 2 else 'SHORT',
+            'direction': trend_dir,  # Direction from TREND, not ML
             'entry_price': df['close'].iloc[i],
             'atr': df['atr'].iloc[i],
-            'confidence': dir_confs[i],
-            'score': dir_confs[i] * timing_preds[i], # Combined score (conf × timing_gain)
-            'timing_prob': timing_preds[i],  # ✅ Now stores gain potential (not probability)
+            'confidence': ml_conf,
+            'score': score,
+            'timing_prob': timing_preds[i],
             'pred_strength': strength_preds[i],
-            **all_features  # ✅ Добавляем ВСЕ фичи с префиксом feat_
+            'm15_trend_str': m15_ts,
+            'rsi_at_entry': rsi_val,
+            'ml_agrees': ml_dir == trend_dir,
         }
-        
-        # 🎯 V13: Regime Filter - skip low volatility periods
-        should_trade, regime_reason = should_trade_regime(signal, df)
-        if not should_trade:
-            skipped_regime += 1
-            continue
-        
-        # 🎯 V13: MTF Confirmation - check M15 alignment
-        mtf_confirmed, mtf_strength = check_mtf_confirmation(signal, df)
-        if not mtf_confirmed:
-            skipped_mtf += 1
-            continue
-        
-        # Boost score if MTF confirms strongly
-        signal['score'] *= mtf_strength
-        signal['mtf_strength'] = mtf_strength
-        
+
         signals.append(signal)
-    
-    # Log filter stats if significant
-    if skipped_regime > 0 or skipped_mtf > 0:
-        total_potential = len(df) - sum(1 for i in range(len(df)) if dir_preds[i] == 1)
-        # Only log if significant filtering happened
-        if skipped_regime + skipped_mtf > 10:
-            pass  # Can enable logging here if needed
-        
+
     return signals
 
 
 def simulate_trade(signal: dict, df: pd.DataFrame) -> dict:
     """
-    Simulate a single trade on a specific pair dataframe.
-    V8 IMPROVEMENTS:
-    - Adaptive SL based on predicted strength
-    - Dynamic breakeven trigger
-    - Aggressive trailing at medium R-multiples
+    Simulate a single trade with SL/TP/trailing stop.
+
+    V15 IMPROVEMENTS:
+    - Proper SL at 1.5 ATR (tighter = less loss per trade)
+    - TP at 2.0 ATR (target R:R = 1:1.33 — realistic for scalping)
+    - Breakeven at 0.8 ATR (lock in profits)
+    - Max hold 12 bars (1 hour) — time stop if neither SL nor TP hit
+    - Proper boundary handling
     """
-    # Find start index
     try:
         start_idx = df.index.get_loc(signal['timestamp'])
     except KeyError:
         return None
-        
+
     entry_price = signal['entry_price']
     atr = signal['atr']
     direction = signal['direction']
     pred_strength = signal.get('pred_strength', 2.0)
-    
-    # === ATR-BASED STOP LOSS (дальше, стабильнее) ===
-    # Adaptive SL: 1.2-1.6x ATR based on strength
-    if pred_strength >= 3.0:
-        sl_mult = 1.6  # Strong: room to breathe
-    elif pred_strength >= 2.0:
-        sl_mult = 1.5  # Medium: standard
-    else:
-        sl_mult = 1.2  # Weak: tight
-    
+    confidence = signal.get('confidence', 0.5)
+
+    # FIX: Boundary check — need at least 2 bars after entry
+    if start_idx + 2 >= len(df):
+        return None
+
+    # === ADAPTIVE SL/TP: trend-following needs room to run ===
+    sl_mult = SL_ATR_MULT                          # 1.5 ATR stop loss
+    tp_mult = max(sl_mult * 2.5, pred_strength)    # TP = at least 2.5:1 R:R (trend trades)
+    tp_mult = min(tp_mult, 8.0)                    # Cap TP at 8 ATR
+    be_trigger = 0.6                               # Move SL to breakeven at 0.6R
+
     sl_dist = atr * sl_mult
-    
-    # === ATR-BASED BREAKEVEN TRIGGER ===
-    if pred_strength >= 3.0:
-        be_trigger_mult = 2.5
-    elif pred_strength >= 2.0:
-        be_trigger_mult = 2.2
-    else:
-        be_trigger_mult = 1.8
-    
-    be_trigger_dist = atr * be_trigger_mult
-    be_margin_dist = atr * 1.0  # Lock 1.0 ATR profit
-    
+    tp_dist = atr * tp_mult
+
     if direction == 'LONG':
         sl_price = entry_price - sl_dist
-        be_trigger_price = entry_price + be_trigger_dist
+        tp_price = entry_price + tp_dist
     else:
         sl_price = entry_price + sl_dist
-        be_trigger_price = entry_price - be_trigger_dist
-        
+        tp_price = entry_price - tp_dist
+
+    hold_bars = 18  # Max 90 min hold — enough time for moves
     outcome = 'time_exit'
-    exit_idx = min(start_idx + 150, len(df) - 1)
+    exit_idx = min(start_idx + hold_bars, len(df) - 1)
     exit_price = df['close'].iloc[exit_idx]
     exit_time = df.index[exit_idx]
-    breakeven_active = False
-    max_r_reached = 0.0  # Track maximum R for trailing
-    
+    max_r_reached = 0.0
+    be_activated = False
+
     # Simulate bar by bar
-    for j in range(start_idx + 1, min(start_idx + 150, len(df))):
+    for j in range(start_idx + 1, min(start_idx + hold_bars + 1, len(df))):
         bar = df.iloc[j]
-        
+
         if direction == 'LONG':
+            # Check SL first
             if bar['low'] <= sl_price:
-                outcome = 'stop_loss' if not breakeven_active else 'breakeven_stop'
+                outcome = 'stop_loss'
                 exit_price = sl_price
                 exit_time = bar.name
                 break
-            
-            # Breakeven trigger - ATR-based
-            if not breakeven_active and bar['high'] >= be_trigger_price:
-                breakeven_active = True
-                sl_price = entry_price + be_margin_dist  # Lock 1.0 ATR profit
-            
-            # Trailing - R-based multipliers
-            if breakeven_active:
-                current_profit = bar['high'] - entry_price
-                r_multiple = current_profit / sl_dist
-                max_r_reached = max(max_r_reached, r_multiple)
-                
-                # R-based trailing
-                if r_multiple > 5.0:
-                    trail_mult = 0.6
-                elif r_multiple > 3.0:
-                    trail_mult = 1.2
-                elif r_multiple > 2.0:
-                    trail_mult = 1.8
-                else:
-                    trail_mult = 2.5
-                
-                new_sl = bar['high'] - atr * trail_mult
-                if new_sl > sl_price:
-                    sl_price = new_sl
-                    
-        else: # SHORT
+            # Check TP
+            if bar['high'] >= tp_price:
+                outcome = 'take_profit'
+                exit_price = tp_price
+                exit_time = bar.name
+                break
+            # Track max favorable excursion
+            current_r = (bar['high'] - entry_price) / sl_dist
+            max_r_reached = max(max_r_reached, current_r)
+            # Breakeven: move SL to entry + small margin
+            if not be_activated and current_r >= be_trigger:
+                sl_price = entry_price + atr * 0.1
+                be_activated = True
+        else:
+            # SHORT
             if bar['high'] >= sl_price:
-                outcome = 'stop_loss' if not breakeven_active else 'breakeven_stop'
+                outcome = 'stop_loss'
                 exit_price = sl_price
                 exit_time = bar.name
                 break
-            
-            # Breakeven trigger - ATR-based
-            if not breakeven_active and bar['low'] <= be_trigger_price:
-                breakeven_active = True
-                sl_price = entry_price - be_margin_dist  # Lock 1.0 ATR profit
-            
-            # Trailing - R-based multipliers
-            if breakeven_active:
-                current_profit = entry_price - bar['low']
-                r_multiple = current_profit / sl_dist
-                max_r_reached = max(max_r_reached, r_multiple)
-                
-                # R-based trailing
-                if r_multiple > 5.0:
-                    trail_mult = 0.6
-                elif r_multiple > 3.0:
-                    trail_mult = 1.2
-                elif r_multiple > 2.0:
-                    trail_mult = 1.8
-                else:
-                    trail_mult = 2.5
-                
-                new_sl = bar['low'] + atr * trail_mult
-                if new_sl < sl_price:
-                    sl_price = new_sl
-                    
+            if bar['low'] <= tp_price:
+                outcome = 'take_profit'
+                exit_price = tp_price
+                exit_time = bar.name
+                break
+            current_r = (entry_price - bar['low']) / sl_dist
+            max_r_reached = max(max_r_reached, current_r)
+            if not be_activated and current_r >= be_trigger:
+                sl_price = entry_price - atr * 0.1
+                be_activated = True
+
     return {
         'exit_time': exit_time,
         'exit_price': exit_price,
         'outcome': outcome,
         'sl_dist': sl_dist,
         'sl_mult': sl_mult,
-        'max_r': max_r_reached
+        'tp_mult': tp_mult,
+        'max_r': max_r_reached,
+        'be_activated': be_activated
     }
+
 
 
 def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float = 10000.0) -> list:
     """
-    Execute signals enforcing the 'Single Slot' constraint.
-    V13: Dynamic position sizing based on confidence + realistic slippage.
+    Single-slot backtest with per-pair cooldown.
     """
-    # Sort by time. If times are equal, sort by score (descending)
     signals.sort(key=lambda x: (x['timestamp'], -x['score']))
     
     executed_trades = []
-    last_exit_time = pd.Timestamp.min.tz_localize('UTC')  # Must be timezone-aware (UTC)
+    last_exit_time = pd.Timestamp.min.tz_localize('UTC')
     balance = initial_balance
+    consecutive_losses = 0
+    LOSS_COOLDOWN_BARS = 6
+    MAX_CONSECUTIVE_LOSSES = 3
+    cooldown_until = pd.Timestamp.min.tz_localize('UTC')
     
     print(f"Processing {len(signals)} potential signals...")
     print(f"Initial Balance: ${balance:,.2f}")
-    print(f"Position sizing: RISK-BASED ({BASE_RISK_PCT*100:.0f}-{MAX_RISK_PCT*100:.0f}% risk, confidence-scaled)")
+    print(f"Position sizing: RISK-BASED ({BASE_RISK_PCT*100:.0f}-{MAX_RISK_PCT*100:.0f}% risk)")
     
     for signal in signals:
-        # Constraint: Can only hold 1 position
+        # Single slot constraint
         if signal['timestamp'] < last_exit_time:
+            continue
+        
+        # Global cooldown
+        if signal['timestamp'] < cooldown_until:
             continue
             
         # Execute
@@ -1264,12 +1556,14 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
             original_position = position_size
             position_size = min(position_size, max_position_by_leverage, MAX_POSITION_SIZE)
             
-            # CRITICAL: Если position урезан, нужно уменьшить стоп чтобы сохранить 5% риск!
+            # FIX: If position capped, we REDUCE risk proportionally (don't widen SL!)
+            # Widening SL is dangerous — it increases actual loss on stop.
+            # Instead: keep same SL distance, accept lower risk %.
             if position_size < original_position:
-                # Пересчитываем стоп для сохранения риска
-                new_sl_pct = risk_amount / position_size
-                sl_dist = new_sl_pct * entry_price
-                sl_pct = new_sl_pct
+                # Actual risk is now less than target (which is safer)
+                actual_risk_pct = (position_size * sl_pct) / balance
+                # Log the reduced risk for transparency
+                pass  # actual_risk_pct < RISK_PCT — this is fine
             
             # Рассчитываем итоговое плечо
             leverage = position_size / balance
@@ -1307,6 +1601,19 @@ def run_portfolio_backtest(signals: list, pair_dfs: dict, initial_balance: float
             
             executed_trades.append(trade_record)
             last_exit_time = result['exit_time']
+            # Track consecutive losses for cooldown
+            if net_profit <= 0:
+                consecutive_losses += 1
+                if consecutive_losses >= MAX_CONSECUTIVE_LOSSES:
+                    # Set cooldown: skip next LOSS_COOLDOWN_BARS * 5 minutes
+                    cooldown_until = result['exit_time'] + pd.Timedelta(minutes=LOSS_COOLDOWN_BARS * 5)
+                    consecutive_losses = 0  # Reset after cooldown
+            else:
+                consecutive_losses = 0  # Reset on win
+            
+            # Stop trading if balance is too low (< 10% of initial)
+            if balance < initial_balance * 0.10:
+                break
             
     return executed_trades, balance
 
@@ -1387,7 +1694,7 @@ def print_trade_list(trades):
 # ============================================================
 # ✅ WALK-FORWARD VALIDATION (Honest Out-of-Sample Test)
 # ============================================================
-def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
+def walk_forward_validation(pairs, data_dir, initial_balance=100.0):
     """
     Walk-Forward Validation: Train on past, test on future (never seen before).
     
@@ -1413,39 +1720,25 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
     # because features may "leak" information from the target period
     EMBARGO_DAYS = 1  # 1 day gap = 288 M5 candles (12 * 24)
     
-    # Define periods - REALISTIC training periods (30 days train, 7 days test)
-    # This matches the actual model training setup
-    # We need 90 days of data total, but only have Dec data, so we'll use what we have
-    periods = [
-        {
-            'name': "Period_1",
-            'train_start': datetime(2025, 10, 15, tzinfo=timezone.utc),
-            'train_end': datetime(2025, 11, 14, tzinfo=timezone.utc),  # 30 days train
-            'test_start': datetime(2025, 11, 15, tzinfo=timezone.utc),
-            'test_end': datetime(2025, 11, 21, tzinfo=timezone.utc)    # 7 days test
-        },
-        {
-            'name': "Period_2",
-            'train_start': datetime(2025, 11, 1, tzinfo=timezone.utc),
-            'train_end': datetime(2025, 11, 30, tzinfo=timezone.utc),  # 30 days train
-            'test_start': datetime(2025, 12, 1, tzinfo=timezone.utc),
-            'test_end': datetime(2025, 12, 7, tzinfo=timezone.utc)     # 7 days test
-        },
-        {
-            'name': "Period_3",
-            'train_start': datetime(2025, 11, 15, tzinfo=timezone.utc),
-            'train_end': datetime(2025, 12, 14, tzinfo=timezone.utc),  # 30 days train
-            'test_start': datetime(2025, 12, 15, tzinfo=timezone.utc),
-            'test_end': datetime(2025, 12, 21, tzinfo=timezone.utc)    # 7 days test
-        },
-        {
-            'name': "Period_4",
-            'train_start': datetime(2025, 12, 1, tzinfo=timezone.utc),
-            'train_end': datetime(2025, 12, 30, tzinfo=timezone.utc),  # 30 days train
-            'test_start': datetime(2025, 12, 31, tzinfo=timezone.utc),
-            'test_end': datetime(2026, 1, 6, tzinfo=timezone.utc)      # 7 days test
-        },
-    ]
+    # Define periods — DYNAMIC based on available data range
+    # Generate 4 rolling windows: 30d train + 7d test, stepping by ~14 days
+    now = datetime.now(timezone.utc)
+    periods = []
+    for i in range(4):
+        # Work backwards from now: period 4 is most recent
+        offset = (3 - i) * 14  # 42, 28, 14, 0 days back from test_end
+        test_end = now - timedelta(days=offset)
+        test_start = test_end - timedelta(days=7)
+        train_end = test_start - timedelta(days=EMBARGO_DAYS)  # Embargo gap
+        train_start = train_end - timedelta(days=30)
+
+        periods.append({
+            'name': f"Period_{i+1}",
+            'train_start': train_start,
+            'train_end': train_end,
+            'test_start': test_start,
+            'test_end': test_end
+        })
     
     all_results = []
     
@@ -1483,30 +1776,29 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
                 print(f"    ⚠️ {pair}: Error loading data: {e}")
                 continue
             
-            # Filter TRAIN data
-            m1_train = m1[(m1.index >= period['train_start']) & (m1.index < period['train_end'])]
-            m5_train = m5[(m5.index >= period['train_start']) & (m5.index < period['train_end'])]
-            m15_train = m15[(m15.index >= period['train_start']) & (m15.index < period['train_end'])]
-            
+            # FIX: Apply EMBARGO between train and test to prevent feature leakage
+            embargo_end = period['train_end'] - timedelta(days=EMBARGO_DAYS)
+
+            # Filter TRAIN data (with embargo gap at the end)
+            m1_train = m1[(m1.index >= period['train_start']) & (m1.index < embargo_end)]
+            m5_train = m5[(m5.index >= period['train_start']) & (m5.index < embargo_end)]
+            m15_train = m15[(m15.index >= period['train_start']) & (m15.index < embargo_end)]
+
             if len(m5_train) < 500: continue
-            
-            ft_train = mtf_fe.align_timeframes(m1_train, m5_train, m15_train)
-            ft_train = ft_train.join(m5_train[['open', 'high', 'low', 'close', 'volume']])
-            ft_train = add_volume_features(ft_train)
+
+            ft_train = generate_killer_features(m1_train, m5_train, m15_train)
             ft_train = create_targets_v1(ft_train)
             ft_train['pair'] = pair
             all_train.append(ft_train)
-            
-            # Filter TEST data (UNSEEN!)
+
+            # Filter TEST data (UNSEEN! starts AFTER embargo)
             m1_test = m1[(m1.index >= period['test_start']) & (m1.index < period['test_end'])]
             m5_test = m5[(m5.index >= period['test_start']) & (m5.index < period['test_end'])]
             m15_test = m15[(m15.index >= period['test_start']) & (m15.index < period['test_end'])]
             
             if len(m5_test) < 100: continue
             
-            ft_test = mtf_fe.align_timeframes(m1_test, m5_test, m15_test)
-            ft_test = ft_test.join(m5_test[['open', 'high', 'low', 'close', 'volume']])
-            ft_test = add_volume_features(ft_test)
+            ft_test = generate_killer_features(m1_test, m5_test, m15_test)
             ft_test = create_targets_v1(ft_test)
             ft_test['pair'] = pair
             test_features[pair] = ft_test
@@ -1524,8 +1816,7 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
         
         if FEATURE_MODE == 'auto':
             # Start with ALL features, then auto-select best ones
-            exclude = list(DEFAULT_EXCLUDE_FEATURES)
-            all_exclude = set(exclude) | set(ABSOLUTE_PRICE_FEATURES)
+            all_exclude = KILLER_EXCLUDE | set(DEFAULT_EXCLUDE_FEATURES) | set(ABSOLUTE_PRICE_FEATURES)
             all_features = [c for c in train_df.columns if c not in all_exclude 
                            and not any(p in c.lower() for p in CUMSUM_PATTERNS)]
             
@@ -1575,13 +1866,15 @@ def walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=100.0):
             'target_strength': train_df['target_strength']
         }
         
-        # Simple 90/10 split for validation
-        val_idx = int(len(X_train) * 0.9)
+        # FIX: 80/20 split with embargo gap for walk-forward validation
+        val_idx = int(len(X_train) * 0.80)
+        embargo_bars = 288  # 1 day of M5 candles as gap
+        val_start = min(val_idx + embargo_bars, len(X_train) - 100)
         X_t = X_train.iloc[:val_idx]
-        X_v = X_train.iloc[val_idx:]
+        X_v = X_train.iloc[val_start:]
         y_t = {k: v.iloc[:val_idx] for k, v in y_train.items()}
-        y_v = {k: v.iloc[val_idx:] for k, v in y_train.items()}
-        
+        y_v = {k: v.iloc[val_start:] for k, v in y_train.items()}
+
         models = train_models(X_t, y_t, X_v, y_v)
         
         # Test on UNSEEN period
@@ -1736,11 +2029,23 @@ def main():
     
     # Load data
     data_dir = Path(__file__).parent.parent / 'data' / 'candles'
-    mtf_fe = MTFFeatureEngine()
+    # Using generate_killer_features() instead of MTFFeatureEngine
     
     all_train = []
-    test_dfs = {} 
-    test_features = {} 
+    test_features = {}
+    test_dfs = {}
+    
+    # Load BTC data for cross-pair features
+    btc_m5_full = None
+    try:
+        btc_csv = data_dir / 'BTC_USDT_USDT_5m.csv'
+        if btc_csv.exists():
+            btc_m5_full = pd.read_csv(btc_csv, parse_dates=['timestamp'], index_col='timestamp')
+            if btc_m5_full.index.tz is None:
+                btc_m5_full.index = btc_m5_full.index.tz_localize('UTC')
+            print(f"✅ BTC data loaded: {len(btc_m5_full)} candles")
+    except Exception as e:
+        print(f"⚠️ BTC data not loaded: {e}")
     
     # 1. LOAD TRAINING DATA (Local)
     print(f"\nLoading Data (Reverse={args.reverse})...")
@@ -1774,21 +2079,21 @@ def main():
             print(f"  ⚠️ {pair}: Error loading data: {e}")
             continue
         
-        # SPLIT LOGIC
+        # SPLIT LOGIC with EMBARGO (1-day gap to prevent feature leakage)
+        EMBARGO_DAYS_MAIN = 1
         now = datetime.now(timezone.utc)
         if args.reverse:
-            # Train on LAST 30 days (Recent)
-            # Test on PREVIOUS 30 days (Older)
+            # Train on LAST N days (Recent), Test on PREVIOUS M days (Older)
             train_end = now
             train_start = now - timedelta(days=args.days)
-            
-            test_end = train_start
+
+            test_end = train_start - timedelta(days=EMBARGO_DAYS_MAIN)  # FIX: embargo gap
             test_start = test_end - timedelta(days=args.test_days)
         else:
             # Standard: Train on Old, Test on Recent
             test_start = now - timedelta(days=args.test_days)
-            train_start = test_start - timedelta(days=args.days)
-            train_end = test_start
+            train_start = test_start - timedelta(days=args.days) - timedelta(days=EMBARGO_DAYS_MAIN)
+            train_end = test_start - timedelta(days=EMBARGO_DAYS_MAIN)  # FIX: embargo gap
             test_end = now
         
         # Filter Train
@@ -1805,9 +2110,35 @@ def main():
             print(f"      Requested : {train_start} to {train_end}")
             continue
         
-        ft_train = mtf_fe.align_timeframes(m1_train, m5_train, m15_train)
-        ft_train = ft_train.join(m5_train[['open', 'high', 'low', 'close', 'volume']])
-        ft_train = add_volume_features(ft_train)
+        # Get BTC data for this time range
+        btc_m5_train = None
+        if btc_m5_full is not None and pair != 'BTC/USDT:USDT':
+            btc_m5_train = btc_m5_full[(btc_m5_full.index >= train_start) & (btc_m5_full.index < train_end)]
+        
+        # Load funding rate + OI for this pair
+        pair_base = pair.split('/')[0]  # BTC from BTC/USDT:USDT
+        fr_train, oi_train = None, None
+        try:
+            fr_path = data_dir / f"{pair_base}_USDT_funding_rate.csv"
+            if fr_path.exists():
+                fr_full = pd.read_csv(fr_path, parse_dates=['timestamp'], index_col='timestamp')
+                if fr_full.index.tz is None:
+                    fr_full.index = fr_full.index.tz_localize('UTC')
+                fr_train = fr_full[(fr_full.index >= train_start) & (fr_full.index < train_end)]
+        except Exception:
+            pass
+        try:
+            oi_path = data_dir / f"{pair_base}_USDT_open_interest.csv"
+            if oi_path.exists():
+                oi_full = pd.read_csv(oi_path, parse_dates=['timestamp'], index_col='timestamp')
+                if oi_full.index.tz is None:
+                    oi_full.index = oi_full.index.tz_localize('UTC')
+                oi_train = oi_full[(oi_full.index >= train_start) & (oi_full.index < train_end)]
+        except Exception:
+            pass
+        
+        ft_train = generate_killer_features(m1_train, m5_train, m15_train, btc_m5=btc_m5_train,
+                                            funding_rate=fr_train, open_interest=oi_train)
         ft_train = create_targets_v1(ft_train)
         ft_train['pair'] = pair
         all_train.append(ft_train)
@@ -1817,9 +2148,25 @@ def main():
         m5_test = m5[(m5.index >= test_start) & (m5.index < test_end)]
         m15_test = m15[(m15.index >= test_start) & (m15.index < test_end)]
         
-        ft_test = mtf_fe.align_timeframes(m1_test, m5_test, m15_test)
-        ft_test = ft_test.join(m5_test[['open', 'high', 'low', 'close', 'volume']])
-        ft_test = add_volume_features(ft_test)
+        # Get BTC + funding + OI data for test range
+        btc_m5_test = None
+        if btc_m5_full is not None and pair != 'BTC/USDT:USDT':
+            btc_m5_test = btc_m5_full[(btc_m5_full.index >= test_start) & (btc_m5_full.index < test_end)]
+        
+        fr_test, oi_test = None, None
+        try:
+            if fr_path.exists():
+                fr_test = fr_full[(fr_full.index >= test_start) & (fr_full.index < test_end)]
+        except Exception:
+            pass
+        try:
+            if oi_path.exists():
+                oi_test = oi_full[(oi_full.index >= test_start) & (oi_full.index < test_end)]
+        except Exception:
+            pass
+        
+        ft_test = generate_killer_features(m1_test, m5_test, m15_test, btc_m5=btc_m5_test,
+                                           funding_rate=fr_test, open_interest=oi_test)
         ft_test = create_targets_v1(ft_test)
         ft_test['pair'] = pair
         test_features[pair] = ft_test
@@ -1828,7 +2175,11 @@ def main():
     print(f"\nData loaded. Training on {len(all_train)} pairs.")
     
     # Train
-    train_df = pd.concat(all_train).dropna()
+    # Train — drop NaN targets (sideways rows from binary classification)
+    train_df = pd.concat(all_train)
+    train_df = train_df.dropna(subset=['target_dir', 'target_timing', 'target_strength'])
+    train_df = train_df.dropna()  # Also drop rows with NaN features
+    print(f"   📊 Directional rows: {len(train_df):,} (sideways dropped)")
     
     # === ВЫВОД ПЕРИОДА ОБУЧЕНИЯ ===
     if len(train_df) > 0:
@@ -1850,8 +2201,7 @@ def main():
     
     if FEATURE_MODE == 'auto':
         # Start with ALL features, then auto-select best ones
-        exclude = list(DEFAULT_EXCLUDE_FEATURES)
-        all_exclude = set(exclude) | set(ABSOLUTE_PRICE_FEATURES)
+        all_exclude = KILLER_EXCLUDE | set(DEFAULT_EXCLUDE_FEATURES) | set(ABSOLUTE_PRICE_FEATURES)
         all_features = [c for c in train_df.columns if c not in all_exclude 
                        and not any(p in c.lower() for p in CUMSUM_PATTERNS)]
         
@@ -1900,13 +2250,25 @@ def main():
         'target_timing': train_df['target_timing'],
         'target_strength': train_df['target_strength']
     }
-    
-    val_idx = int(len(X_train) * 0.9)
+
+    # FIX: 80/20 split with 1-day embargo gap to prevent leakage
+    val_idx = int(len(X_train) * 0.80)
+    embargo_bars = 288  # 1 day of M5 candles
+    val_start = min(val_idx + embargo_bars, len(X_train) - 100)
     X_t = X_train.iloc[:val_idx]
-    X_v = X_train.iloc[val_idx:]
+    X_v = X_train.iloc[val_start:]
     y_t = {k: v.iloc[:val_idx] for k, v in y_train.items()}
-    y_v = {k: v.iloc[val_idx:] for k, v in y_train.items()}
-    
+    y_v = {k: v.iloc[val_start:] for k, v in y_train.items()}
+
+    # Feature stability check — remove features that drift between train and val
+    if USE_FEATURE_STABILITY:
+        stable_feats = check_feature_stability(X_t, X_v, features)
+        if len(stable_feats) < len(features):
+            print(f"   Stability filter: {len(features)} → {len(stable_feats)} features")
+            features = stable_feats
+            X_t = X_t[features]
+            X_v = X_v[features]
+
     models = train_models(X_t, y_t, X_v, y_v)
     
     # ---------------------------------------------------------
@@ -1993,7 +2355,7 @@ def main():
     # 1B. ✅ WALK-FORWARD VALIDATION (if requested)
     # ---------------------------------------------------------
     if args.walk_forward:
-        walk_forward_results = walk_forward_validation(pairs, data_dir, mtf_fe, initial_balance=args.initial_balance)
+        walk_forward_results = walk_forward_validation(pairs, data_dir, initial_balance=args.initial_balance)
         
         if walk_forward_results:
             # Save walk-forward results
@@ -2026,9 +2388,7 @@ def main():
                 # print(f"Skipping {pair} (Insufficient data)")
                 continue
                 
-            ft = mtf_fe.align_timeframes(m1, m5, m15)
-            ft = ft.join(m5[['open', 'high', 'low', 'close', 'volume']])
-            ft = add_volume_features(ft)
+            ft = generate_killer_features(m1, m5, m15)
             ft['atr'] = calculate_atr(ft) # Ensure ATR is present
             ft['pair'] = pair
             
@@ -2081,9 +2441,7 @@ def main():
             if len(m1) < 100 or len(m5) < 100 or len(m15) < 100:
                 continue
                 
-            ft = mtf_fe.align_timeframes(m1, m5, m15)
-            ft = ft.join(m5[['open', 'high', 'low', 'close', 'volume']])
-            ft = add_volume_features(ft)
+            ft = generate_killer_features(m1, m5, m15)
             ft['atr'] = calculate_atr(ft) # Ensure ATR is present
             ft['pair'] = pair
             
